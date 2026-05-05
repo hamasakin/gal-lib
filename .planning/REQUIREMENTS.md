@@ -5,6 +5,8 @@
 
 ## v1 Requirements
 
+**v1 total: 53 requirements across 12 categories.**
+
 ### Scanning（目录扫描与游戏识别）
 
 - [ ] **SCAN-01**: 用户可以添加 1 个或多个游戏库根目录，并可单独移除
@@ -125,64 +127,64 @@
 
 | Requirement | Phase | Status |
 |-------------|-------|--------|
-| SCAN-01 | TBD | Pending |
-| SCAN-02 | TBD | Pending |
-| SCAN-03 | TBD | Pending |
-| SCAN-04 | TBD | Pending |
-| SCAN-05 | TBD | Pending |
-| SCAN-06 | TBD | Pending |
-| SCAN-07 | TBD | Pending |
-| SCAN-08 | TBD | Pending |
-| META-01 | TBD | Pending |
-| META-02 | TBD | Pending |
-| META-03 | TBD | Pending |
-| META-04 | TBD | Pending |
-| META-05 | TBD | Pending |
-| META-06 | TBD | Pending |
-| META-07 | TBD | Pending |
-| LAUNCH-01 | TBD | Pending |
-| LAUNCH-02 | TBD | Pending |
-| LAUNCH-03 | TBD | Pending |
-| LAUNCH-04 | TBD | Pending |
-| LAUNCH-05 | TBD | Pending |
-| TIME-01 | TBD | Pending |
-| TIME-02 | TBD | Pending |
-| TIME-03 | TBD | Pending |
-| TIME-04 | TBD | Pending |
-| TIME-05 | TBD | Pending |
-| LIB-01 | TBD | Pending |
-| LIB-02 | TBD | Pending |
-| LIB-03 | TBD | Pending |
-| LIB-04 | TBD | Pending |
-| LIB-05 | TBD | Pending |
-| LIB-06 | TBD | Pending |
-| LIB-07 | TBD | Pending |
-| TAG-01 | TBD | Pending |
-| TAG-02 | TBD | Pending |
-| TAG-03 | TBD | Pending |
-| TAG-04 | TBD | Pending |
-| STAT-01 | TBD | Pending |
-| STAT-02 | TBD | Pending |
-| STAT-03 | TBD | Pending |
-| STAT-04 | TBD | Pending |
-| TRAY-01 | TBD | Pending |
-| TRAY-02 | TBD | Pending |
-| TRAY-03 | TBD | Pending |
-| STATS-01 | TBD | Pending |
-| STATS-02 | TBD | Pending |
-| SHOT-01 | TBD | Pending |
-| SHOT-02 | TBD | Pending |
-| SAVE-01 | TBD | Pending |
-| SAVE-02 | TBD | Pending |
-| SAVE-03 | TBD | Pending |
-| APP-01 | TBD | Pending |
-| APP-02 | TBD | Pending |
-| APP-03 | TBD | Pending |
+| APP-01 | Phase 1 | Pending |
+| APP-02 | Phase 1 | Pending |
+| APP-03 | Phase 1 | Pending |
+| LIB-01 | Phase 1 | Pending |
+| SCAN-01 | Phase 2 | Pending |
+| SCAN-02 | Phase 2 | Pending |
+| SCAN-03 | Phase 2 | Pending |
+| SCAN-04 | Phase 2 | Pending |
+| SCAN-05 | Phase 2 | Pending |
+| SCAN-06 | Phase 2 | Pending |
+| SCAN-07 | Phase 2 | Pending |
+| SCAN-08 | Phase 2 | Pending |
+| META-01 | Phase 2 | Pending |
+| META-02 | Phase 2 | Pending |
+| META-03 | Phase 2 | Pending |
+| META-04 | Phase 2 | Pending |
+| META-05 | Phase 2 | Pending |
+| META-06 | Phase 2 | Pending |
+| META-07 | Phase 2 | Pending |
+| LIB-02 | Phase 2 | Pending |
+| LIB-06 | Phase 2 | Pending |
+| LAUNCH-01 | Phase 3 | Pending |
+| LAUNCH-02 | Phase 3 | Pending |
+| LAUNCH-03 | Phase 3 | Pending |
+| LAUNCH-04 | Phase 3 | Pending |
+| LAUNCH-05 | Phase 3 | Pending |
+| TIME-01 | Phase 3 | Pending |
+| TIME-02 | Phase 3 | Pending |
+| TIME-03 | Phase 3 | Pending |
+| TIME-04 | Phase 3 | Pending |
+| TIME-05 | Phase 3 | Pending |
+| TRAY-01 | Phase 3 | Pending |
+| TRAY-02 | Phase 3 | Pending |
+| TRAY-03 | Phase 3 | Pending |
+| LIB-03 | Phase 4 | Pending |
+| LIB-04 | Phase 4 | Pending |
+| LIB-05 | Phase 4 | Pending |
+| LIB-07 | Phase 4 | Pending |
+| TAG-01 | Phase 4 | Pending |
+| TAG-02 | Phase 4 | Pending |
+| TAG-03 | Phase 4 | Pending |
+| TAG-04 | Phase 4 | Pending |
+| STAT-01 | Phase 4 | Pending |
+| STAT-02 | Phase 4 | Pending |
+| STAT-03 | Phase 4 | Pending |
+| STAT-04 | Phase 4 | Pending |
+| STATS-01 | Phase 5 | Pending |
+| STATS-02 | Phase 5 | Pending |
+| SHOT-01 | Phase 5 | Pending |
+| SHOT-02 | Phase 5 | Pending |
+| SAVE-01 | Phase 5 | Pending |
+| SAVE-02 | Phase 5 | Pending |
+| SAVE-03 | Phase 5 | Pending |
 
 **Coverage:**
-- v1 requirements: 52 total
-- Mapped to phases: 0 (filled by roadmapper)
-- Unmapped: 52 ⚠️
+- v1 requirements: 53 total
+- Mapped to phases: 53 ✓
+- Unmapped: 0
 
 ---
 *Requirements defined: 2026-05-06*
