@@ -161,18 +161,18 @@
 | TRAY-01 | Phase 3 | Pending |
 | TRAY-02 | Phase 3 | Pending |
 | TRAY-03 | Phase 3 | Pending |
-| LIB-03 | Phase 4 | Pending |
-| LIB-04 | Phase 4 | Pending |
+| LIB-03 | Phase 4 | Backend Ready (04b) |
+| LIB-04 | Phase 4 | Backend Ready (04b) |
 | LIB-05 | Phase 4 | Pending |
 | LIB-07 | Phase 4 | Pending |
-| TAG-01 | Phase 4 | Pending |
-| TAG-02 | Phase 4 | Pending |
-| TAG-03 | Phase 4 | Pending |
+| TAG-01 | Phase 4 | Backend Ready (04b) |
+| TAG-02 | Phase 4 | Backend Ready (04b) |
+| TAG-03 | Phase 4 | Backend Ready (04b) |
 | TAG-04 | Phase 4 | Pending |
-| STAT-01 | Phase 4 | Pending |
-| STAT-02 | Phase 4 | Pending |
-| STAT-03 | Phase 4 | Pending |
-| STAT-04 | Phase 4 | Pending |
+| STAT-01 | Phase 4 | Backend Ready (04b) |
+| STAT-02 | Phase 4 | Backend Ready (04b) |
+| STAT-03 | Phase 4 | Backend Ready (04b) |
+| STAT-04 | Phase 4 | Backend Ready (04b) |
 | STATS-01 | Phase 5 | Pending |
 | STATS-02 | Phase 5 | Pending |
 | SHOT-01 | Phase 5 | Pending |
