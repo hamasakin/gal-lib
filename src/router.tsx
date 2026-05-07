@@ -2,6 +2,7 @@ import { createHashRouter } from "react-router-dom";
 import App from "./App";
 import { Library } from "./routes/Library";
 import { Settings } from "./routes/Settings";
+import Detail from "./routes/Detail";
 
 /**
  * Application router.
@@ -13,9 +14,13 @@ import { Settings } from "./routes/Settings";
  * make path-based routers unreliable). Do not switch to history-mode or
  * in-memory routers in this project.
  *
- * Phase 1 routes — exactly two:
- *   /          → <Library />   (empty-state)
- *   /settings  → <Settings />  (placeholder)
+ * Phase 1 routes:
+ *   /          → <Library />
+ *   /settings  → <Settings />
+ *
+ * Phase 3 (03f) addition:
+ *   /games/:id → <Detail />   (minimal: cover + name + total time +
+ *                              LE config form + sessions list)
  */
 export const router = createHashRouter([
   {
@@ -24,6 +29,7 @@ export const router = createHashRouter([
     children: [
       { index: true, element: <Library /> },
       { path: "settings", element: <Settings /> },
+      { path: "games/:id", element: <Detail /> },
     ],
   },
 ]);

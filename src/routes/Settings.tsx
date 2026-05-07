@@ -23,7 +23,7 @@
  * frontend cache aligned with SQLite truth (no stale rowid problems).
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import {
@@ -32,7 +32,11 @@ import {
   removeScanRoot,
   startScan,
 } from "@/lib/scan";
+// 03f: LE path config — alias setLePath to applyLePath to avoid clashing
+// with the local React state setter `setLePath` (same name).
+import { getLePath, setLePath as applyLePath } from "@/lib/launch";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Select,
@@ -60,6 +64,11 @@ export function Settings() {
   const scanRoots = useLibraryStore((s) => s.scanRoots);
   const setScanRoots = useLibraryStore((s) => s.setScanRoots);
   const navigate = useNavigate();
+  // 03f: LE path display state. `null` = backend has no persisted path
+  // (or persisted path is stale and was filtered out — see 03d's
+  // `get_le_path` stale-fallback). UI renders the locked copy "未检测到"
+  // in that case.
+  const [lePath, setLePath] = useState<string | null>(null);
 
   // Initial load — refresh on mount so Settings always shows DB truth (e.g.
   // user opens Settings the first time, or after a hot-reload).
@@ -70,7 +79,40 @@ export function Settings() {
         // eslint-disable-next-line no-console
         console.error("[Settings] listScanRoots failed:", e);
       });
+    getLePath()
+      .then(setLePath)
+      .catch((e: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("[Settings] getLePath failed:", e);
+      });
   }, [setScanRoots]);
+
+  /**
+   * Manual LE path override. Opens a file-picker filtered to .exe, sends
+   * the picked path to `set_le_path` (which validates `exists()` and
+   * persists to data/config.json::le_path). On success the input updates
+   * and a confirmation toast renders.
+   */
+  async function onPickLePath() {
+    let picked: string | string[] | null;
+    try {
+      picked = await openDialog({
+        filters: [{ name: "LEProc", extensions: ["exe"] }],
+        multiple: false,
+      });
+    } catch (e: unknown) {
+      toast.error(`打开文件选择失败 — ${String(e)}`);
+      return;
+    }
+    if (typeof picked !== "string") return; // user cancelled
+    try {
+      await applyLePath(picked);
+      setLePath(picked);
+      toast.success("已设置 LE 路径");
+    } catch (e: unknown) {
+      toast.error(`设置失败 — ${String(e)}`);
+    }
+  }
 
   async function onAdd() {
     let picked: string | string[] | null;
@@ -216,6 +258,29 @@ export function Settings() {
           </ul>
 
           <Button onClick={() => void onAdd()}>添加根目录</Button>
+        </section>
+
+        {/* ─── Locale Emulator section (03f) ─────────────────────────── */}
+        <section className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold text-foreground">
+              Locale Emulator
+            </h2>
+            <p className="text-body text-muted-foreground">
+              用于将日文游戏转区启动；自动检测如果失败请手动指定 LEProc.exe 路径
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <Input
+              readOnly
+              value={lePath ?? "未检测到"}
+              className="flex-1"
+              title={lePath ?? undefined}
+            />
+            <Button variant="secondary" onClick={() => void onPickLePath()}>
+              选择 LEProc.exe
+            </Button>
+          </div>
         </section>
 
         {/* ─── 扫描操作 section ──────────────────────────────────────── */}
