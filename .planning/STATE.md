@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-03e-PLAN.md (system tray + close-to-tray + background-lifetime; ready for 03f frontend wiring)
-last_updated: "2026-05-07T14:43:30.000Z"
-last_activity: 2026-05-07 -- Phase 3 plan 03e executed (tray icon + WindowEvent::CloseRequested interceptor + quit-path session cleanup)
+stopped_at: Completed 03-03f-PLAN.md (Phase 3 wave 6/6 — launch UI + Detail page + Settings LE + tray toast). PHASE 3 COMPLETE.
+last_updated: "2026-05-07T15:00:00.000Z"
+last_activity: 2026-05-07 -- Phase 3 plan 03f executed (frontend wire-up: src/lib/launch.ts + ActiveSessionBar + Detail route + GameCard launch buttons + Settings LE section + close-to-tray toast)
 progress:
   total_phases: 5
-  completed_phases: 2
+  completed_phases: 3
   total_plans: 18
-  completed_plans: 17
-  percent: 94
+  completed_plans: 18
+  percent: 100
 ---
 
 # Project State
@@ -25,20 +25,20 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 
 ## Current Position
 
-Phase: 3 (launch-playtime) — IN PROGRESS
-Plan: 5 of 6 complete (03e done — tray icon + close-to-tray + quit-path session cleanup); next is 03f (frontend wire-up: detail page + active-session bar + tray toast)
-Status: Ready to execute 03f
-Last activity: 2026-05-07 -- Phase 3 plan 03e executed
+Phase: 3 (launch-playtime) — COMPLETE
+Plan: 6 of 6 complete (03f done — launch UI + Detail page + Settings LE + tray toast)
+Status: Phase 3 complete; Phase 4 (full detail page + tags + ratings + notes) is next
+Last activity: 2026-05-07 -- Phase 3 plan 03f executed (frontend wire-up)
 
-Progress: [██████████████████░░] 94% (17/18 plans complete; Phase 3 wave 5/6 done)
+Progress: [████████████████████] 100% (18/18 plans complete; Phase 3 fully wrapped)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 17 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03e)
-- Average duration: ~26min/plan
-- Total execution time: ~7.05 hours
+- Total plans completed: 18 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f) — ALL plans through Phase 3 done
+- Average duration: ~25min/plan
+- Total execution time: ~7.25 hours
 
 **By Phase:**
 
@@ -46,12 +46,12 @@ Progress: [██████████████████░░] 94% (17
 |-------|-------|-------|----------|
 | 1. Foundation | 6 | ~3h | ~30min |
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
-| 3. Launch & Playtime | 5/6 | ~29min so far | ~5.8min |
+| 3. Launch & Playtime | 6/6 | ~41min | ~6.8min |
 
 **Recent Trend:**
 
-- Last 6 plans: 02f → 03a → 03b → 03c → 03d → 03e
-- Trend: 03e added Tauri 2 system tray + close-to-tray + graceful quit (cancel active session before app.exit); 2 Rule 3 deviations auto-fixed (AppPaths.pool visibility + missing tauri::{Manager,Emitter} imports); cargo check + release build both exit 0; capabilities/default.json untouched (core:default already covers tray)
+- Last 6 plans: 03a → 03b → 03c → 03d → 03e → 03f
+- Trend: Phase 3 closed in 41min cumulative wall time (smallest plan velocity in project) — backend (03a-03e) was tightly scoped, 03f frontend wired everything via existing typed invoke + Zustand patterns. 03f added 7 invoke helpers + 2 event subs + ActiveSessionBar + Detail page + GameCard launch overlay + Settings LE section + first-time tray toast with localStorage gate. 5 Rule 2/3 auto-fixes (boot-time hydration, no-exe inline callout, single-session UI lock, no-exe badge reposition, unused import). pnpm typecheck + vite build + cargo check all exit 0.
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
@@ -62,6 +62,7 @@ Progress: [██████████████████░░] 94% (17
 | Phase 03 P03c | 5min | 2 tasks | 5 files (2 new + 3 modified) |
 | Phase 03 P03d | 3min | 2 tasks | 4 files (1 new + 3 modified) |
 | Phase 03 P03e | 12min | 1 task | 4 files (1 new + 3 modified) |
+| Phase 03 P03f | 12min | 2 tasks | 9 files (3 new + 6 modified) |
 
 ## Accumulated Context
 
@@ -127,6 +128,13 @@ Recent decisions affecting current work:
 - **03e**: `AppPaths.pool` visibility lifted from private to `pub(crate)` so the sync helper can read the OnceCell directly; existing async `pool()` accessor unchanged
 - **03e**: `capabilities/default.json` untouched — `core:default` already covers `core:tray:default` and `core:app:default` in Tauri 2.x (verified by clean cargo check + release build)
 - **03e**: `update_tray_tooltip(app, text)` exposed as pub but `#[allow(dead_code)]` — stable extension point for "currently playing X" tooltip in later phases (out of scope for P3)
+- **03f**: `src/lib/launch.ts` mirrors backend wire format 1:1 — ActiveSession (no rename_all → snake_case fields preserved) and SessionRow (explicit serde rename_all = "snake_case" both directions); 7 invoke wrappers + 2 event subs (`active-session-changed` payload `Option<ActiveSession>`, `close-to-tray` no payload)
+- **03f**: `useLibraryStore.activeSession` is single source of truth for both ActiveSessionBar (visibility) and GameCard (launch button state) — module-scope subscription in main.tsx + boot-time `getActiveSession()` hydration before listener attaches (survives webview reload mid-session)
+- **03f**: GameCard launch button uses 3-state visibility logic — not active OR no session → opacity-0 group-hover:opacity-100 default Play; this card is active → opacity-100 destructive Square (强制结束); some other card is active → entirely hidden (single-session UI lock mirrors backend rejection)
+- **03f**: Detail page (`/games/:id`) bundles "save config + launch" into a single 启动 button (separate 保存配置 button deferred to Phase 4 when more fields land); cwd empty-string sent as undefined (preserves NULL = "use default") while launch_args empty-string is sent verbatim (lets user clear)
+- **03f**: Settings LE path section uses aliased import `setLePath as applyLePath` to avoid name clash with React local state setter `setLePath` (TS would reject the shadowing inside the same function scope)
+- **03f**: Close-to-tray toast uses localStorage flag `gal-lib:tray-toast-dismissed` (purely UI affordance, doesn't need to survive uninstall, sync writes from action handler) — backend continues to emit on every close, frontend filters
+- **03f**: ActiveSessionBar 1Hz tick via setInterval driven by useEffect dep on activeSession — interval auto-cleans when activeSession→null (component returns null and effect cleanup fires); no separate auto-hide timer like ScanProgressBar (session lifecycle is binary in store)
 
 ### Pending Todos
 
@@ -146,6 +154,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-07T14:43:30.000Z
-Stopped at: Completed 03-03e-PLAN.md (Phase 3 wave 5/6 — tray icon + close-to-tray + quit-path session cleanup; ready for 03f frontend wiring)
+Last session: 2026-05-07T15:00:00.000Z
+Stopped at: Completed 03-03f-PLAN.md (Phase 3 wave 6/6 — frontend launch UI + Detail page + Settings LE + tray toast). PHASE 3 COMPLETE.
 Resume file: None
