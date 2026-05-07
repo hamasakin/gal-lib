@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-02c (scan engine — types/walker/exe_score/run_scan)
-last_updated: "2026-05-07T13:30:00Z"
-last_activity: 2026-05-07 -- Phase 2 02c complete (filesystem scan engine: types + walker + exe_score + run_scan orchestrator)
+stopped_at: Completed 02-02d-PLAN.md (cover_cache + ingest + 9 tauri commands + plugins)
+last_updated: "2026-05-07T13:23:46.511Z"
+last_activity: 2026-05-07
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 9
-  percent: 75
+  completed_plans: 10
+  percent: 83
 ---
 
 # Project State
@@ -26,9 +26,9 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 2 (library-ingest) — EXECUTING
-Plan: 3 of 6 complete (next: 02d Tauri command surface — scan-progress event + cancel_scan / run_full_scan / run_incremental_scan commands)
-Status: Ready to execute next wave
-Last activity: 2026-05-07 -- Phase 2 02c complete (scan engine — pure Rust backend; zero Tauri/frontend changes)
+Plan: 4 of 6 complete (next: 02d Tauri command surface — scan-progress event + cancel_scan / run_full_scan / run_incremental_scan commands)
+Status: Ready to execute
+Last activity: 2026-05-07
 
 Progress: [████████░░] 75%
 
@@ -53,6 +53,7 @@ Progress: [████████░░] 75%
 - Trend: Steady ~30min/plan; 02c added 13 unit tests (4 exe_score + 5 walker + 4 run_scan), all green; 1 Rule-2 deviation (lib.rs `mod scan;` had to land in Task 1 not Task 2 due to Rust crate-level module hard requirement)
 
 *Updated after each plan completion*
+| Phase 02 P02d | 75min | 3 tasks | 5 files |
 
 ## Accumulated Context
 
@@ -77,6 +78,10 @@ Recent decisions affecting current work:
 - **02c**: Tie-break on mtime (newest wins); per-entry walkdir errors swallowed via `filter_map(Result::ok)` — single permission-denied dir doesn't abort the scan
 - **02c**: `run_scan` takes `Fn(ScanProgress)+Send+Sync+'static` callback — module is unit-testable without Tauri AppHandle; 02d wires `app.emit("scan-progress", ...)`
 - **02c**: `ScanContext` bundles cancel (`Arc<AtomicBool>`) + skip (`Arc<Mutex<HashSet<PathBuf>>>`) — single shared handle for all scan-related Tauri State
+- [Phase ?]: AppPaths.pool uses tokio::sync::OnceCell<Arc<SqlitePool>> with async pool() helper — sqlx 0.8 connect_lazy panics outside Tokio context, init must defer to first command invoke
+- [Phase ?]: Cover cache returns relative path covers/{game_id}.{ext}; URL gated to http(s) only; Content-Type → ext mapping (jpg/png/webp); other types rejected
+- [Phase ?]: Ingest pipeline: Bangumi → VNDB fallback at ≥80 confidence threshold (per 02-CONTEXT lock); UPSERT in start_scan to allow re-scanning; COALESCE in bind/refresh to preserve existing cover/IDs on partial refresh
+- [Phase ?]: Tauri commands count = 10 (1 inherited + 9 new); 02f appends list_games as 11th; ScanState wraps Mutex<Option<Arc<ScanContext>>> so cancel/skip can reach in-flight scan from a different command
 
 ### Pending Todos
 
@@ -96,6 +101,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-07
-Stopped at: Completed 02-02c (scan engine — types + walker + exe_score + run_scan orchestrator)
-Resume file: .planning/phases/02-library-ingest/02d-PLAN.md
+Last session: 2026-05-07T13:23:46.508Z
+Stopped at: Completed 02-02d-PLAN.md (cover_cache + ingest + 9 tauri commands + plugins)
+Resume file: None

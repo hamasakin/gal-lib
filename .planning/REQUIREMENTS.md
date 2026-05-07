@@ -15,7 +15,7 @@
 - [ ] **SCAN-04**: 扫描时按"第 N 层子目录 = 一款游戏"识别游戏边界
 - [ ] **SCAN-05**: 扫描自动从游戏目录内识别启动 exe（递归扫描 + 启发式打分排除安装/卸载/启动器/补丁）
 - [ ] **SCAN-06**: 扫描中用户可单独跳过或重试某个目录
-- [ ] **SCAN-07**: 元数据低置信度匹配时让用户从候选列表手动挑选
+- [x] **SCAN-07**: 元数据低置信度匹配时让用户从候选列表手动挑选
 - [ ] **SCAN-08**: 增量扫描跳过已识别的游戏，仅处理新增目录
 
 ### Metadata（元数据匹配）
@@ -23,9 +23,9 @@
 - [ ] **META-01**: 系统从 Bangumi（bgm.tv）拉取游戏元数据（标题、封面、简介、CV、品牌、发行日期、标签）
 - [ ] **META-02**: Bangumi 未命中或低置信度时 fallback 到 VNDB
 - [ ] **META-03**: 目录名清洗（去版本号、汉化标记、商家名、括号噪声）后做模糊搜索
-- [ ] **META-04**: 封面图本地缓存到 `data/covers/`（按 game_id 命名，避免重复下载）
-- [ ] **META-05**: 用户可以手动搜索并绑定指定 Bangumi 或 VNDB ID 修正错配
-- [ ] **META-06**: 用户可以触发单个游戏元数据重新抓取/刷新
+- [x] **META-04**: 封面图本地缓存到 `data/covers/`（按 game_id 命名，避免重复下载）
+- [x] **META-05**: 用户可以手动搜索并绑定指定 Bangumi 或 VNDB ID 修正错配
+- [x] **META-06**: 用户可以触发单个游戏元数据重新抓取/刷新
 - [ ] **META-07**: API 调用有限速器（避免被 Bangumi/VNDB 限流）+ 失败重试
 
 ### Launching（启动器与转区）
@@ -137,14 +137,14 @@
 | SCAN-04 | Phase 2 | Pending |
 | SCAN-05 | Phase 2 | Pending |
 | SCAN-06 | Phase 2 | Pending |
-| SCAN-07 | Phase 2 | Pending |
+| SCAN-07 | Phase 2 | Complete |
 | SCAN-08 | Phase 2 | Pending |
 | META-01 | Phase 2 | Pending |
 | META-02 | Phase 2 | Pending |
 | META-03 | Phase 2 | Pending |
-| META-04 | Phase 2 | Pending |
-| META-05 | Phase 2 | Pending |
-| META-06 | Phase 2 | Pending |
+| META-04 | Phase 2 | Complete |
+| META-05 | Phase 2 | Complete |
+| META-06 | Phase 2 | Complete |
 | META-07 | Phase 2 | Pending |
 | LIB-02 | Phase 2 | Pending |
 | LIB-06 | Phase 2 | Pending |
