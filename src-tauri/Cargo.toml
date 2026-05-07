@@ -36,6 +36,11 @@ tauri-plugin-dialog = "2"
 tauri-plugin-http = "2"
 once_cell = "1"
 futures-util = "0.3"
+# 02d — direct sqlx access from #[tauri::command] handlers (commands.rs).
+# Pin to the same version that `tauri-plugin-sql` already pulls in (0.8) so
+# the workspace resolves a single sqlx; features mirror the plugin
+# (`sqlite + runtime-tokio`) so we share its compiled artifact.
+sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "macros"] }
 
 # Release profile — size-optimized for single-exe distribution (RESEARCH § Architecture).
 # 01f will further tune (e.g. `incremental = false`); leave room for that here.
