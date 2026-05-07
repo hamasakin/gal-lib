@@ -3,6 +3,7 @@ mod cover_cache;
 mod data_dir;
 mod db;
 mod ingest;
+mod launch;
 mod metadata;
 mod scan;
 mod title_clean;

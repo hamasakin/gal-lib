@@ -49,6 +49,10 @@ winreg = "0.52"
 sysinfo = "0.32"
 windows = { version = "0.58", features = ["Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"] }
 
+[dev-dependencies]
+# 03b — `set_le_path` unit test uses TempDir for an isolated config.json fixture.
+tempfile = "3"
+
 # Release profile — size-optimized for single-exe distribution (RESEARCH § Architecture).
 # 01f will further tune (e.g. `incremental = false`); leave room for that here.
 [profile.release]
