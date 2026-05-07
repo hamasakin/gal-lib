@@ -74,7 +74,7 @@ Decimal phases appear between their surrounding integers in numeric order.
   1. 用户可在统计页查看每日/每周/每月游玩时长趋势图，以及按游戏的总时长 Top N 分布
   2. 游戏运行期间截图自动收集到 `data/screenshots/<game_id>/`，用户可在详情页查看、导出、删除截图
   3. 用户可为游戏配置存档目录，手动触发备份（带时间戳），并可从历史列表恢复任意一份存档
-**Plans**: TBD
+**Plans**: 05a, 05b, 05c, 05d, 05e (serial)
 **UI hint**: yes
 
 ## Progress
@@ -88,4 +88,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Library Ingest | 6/6 | Complete | 2026-05-07 |
 | 3. Launch & Playtime | 6/6 | Complete | 2026-05-07 |
 | 4. Library Polish | 6/6 | Complete | 2026-05-08 |
-| 5. Stats & Media | 0/TBD | Not started | - |
+| 5. Stats & Media | 1/5 | In progress | - |

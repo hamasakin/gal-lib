@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 04-04f-PLAN.md (Phase 4 wave 6/6 FINAL — Settings page polish: TagManager + UIPreferences). Phase 4 complete; 24/24 plans done across Phases 1-4."
-last_updated: "2026-05-07T16:21:57.326Z"
-last_activity: 2026-05-07 -- Phase 5 planning complete
+stopped_at: "Completed 05-05a-PLAN.md (Phase 5 wave 1/5 — Schema v5 + Cargo crates screenshots/png + recharts npm)."
+last_updated: "2026-05-08T00:00:00Z"
+last_activity: 2026-05-08 -- Phase 5 wave 1 (05a) complete
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 29
-  completed_plans: 24
-  percent: 83
+  completed_plans: 25
+  percent: 86
 ---
 
 # Project State
@@ -25,20 +25,20 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 
 ## Current Position
 
-Phase: 4 (library-polish) — COMPLETE
-Plan: 6 of 6 complete (04a + 04b + 04c + 04d + 04e + 04f done — schema v4 + shadcn lockup + 13 backend commands + frontend invoke layer / store extensions + Library top bar UI + Sidebar polish + GameCard right-click + Full Detail page + Settings polish; next: Phase 5 — Stats & Media)
+Phase: 5 (stats-media) — IN PROGRESS
+Plan: 1 of 5 complete (05a done — schema v5 + crates screenshots/png + recharts; next: 05b — backend stats queries + screenshot capture orchestrator + save backup commands)
 Status: Ready to execute
-Last activity: 2026-05-07 -- Phase 5 planning complete
+Last activity: 2026-05-08 -- Phase 5 wave 1 (05a) complete
 
-Progress: [████████████████████] 100% (24/24 plans complete; Phase 4 complete)
+Progress: [█████████████████░░░] 86% (25/29 plans complete; Phase 5 wave 1/5 complete)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 24 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04f)
-- Average duration: ~21min/plan
-- Total execution time: ~8.4 hours
+- Total plans completed: 25 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04f + Phase 5: 05a)
+- Average duration: ~20min/plan
+- Total execution time: ~8.6 hours
 
 **By Phase:**
 
@@ -48,11 +48,13 @@ Progress: [████████████████████] 100% (2
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
 | 3. Launch & Playtime | 6/6 | ~41min | ~6.8min |
 | 4. Library Polish | 6/6 | ~68min | ~11.3min |
+| 5. Stats & Media | 1/5 | ~10min | ~10min |
 
 **Recent Trend:**
 
-- Last 6 plans: 04a → 04b → 04c → 04d → 04e → 04f
-- Trend: Phase 4 wave-6 FINAL (04f) Settings page polish. Two new components in src/components/settings/: <TagManager> (full tag CRUD — list rows with colored dot + inline-edit row [Input + 8-color preset swatch picker + 保存/取消] + delete with AlertDialog confirm "确定删除标签『{name}』？已打的游戏会保留，但失去此标签关联"; single editing-state slot prevents parallel-edit UX confusion; "添加标签" button opens dashed-border draft row with id:null sentinel reusing the same commit code path; mutation refetch via listTags()→useLibraryStore.setTags so sidebar reflects new state; 8 preset colors slate/blue/emerald/amber/rose/violet/orange/pink as Tailwind v3 *-500 hex stored in tags.color) and <UIPreferences> (default-sort Select with same 5 SortBy options as SortSelect, persisted to localStorage 'gal-lib:default-sort' via exported loadDefaultSort/saveDefaultSort helpers with whitelist validation against the SortBy enum; theme row rendered as opacity-60 hint span "暗色（深浅色切换将在 Phase 5 加入）" since shadcn Switch isn't installed and disabled Toggle would visually imply togglable surface). Settings.tsx appends both sections after existing P2/P3 sections (扫描根目录 / Locale Emulator / 扫描操作 untouched). pnpm typecheck + vite build green. 1 commit (e282e1a). Phase 4 complete.
+- Last 6 plans: 04b → 04c → 04d → 04e → 04f → 05a
+- Trend: Phase 5 wave-1 (05a) lockup. schema v5 migration (games +screenshot_interval_sec/+save_path; new screenshots + save_backups tables w/ FK CASCADE + 2 indexes; bump schema_version → 5). Rust crates `screenshots = 0.8.10` (cross-platform desktop capture, Windows DXGI/GDI fallback) + `png = 0.17` (pure-Rust encoder; no libpng) for 05b SHOT-01. npm `recharts` pinned to ^2.12 → 2.15.4 (initial `pnpm add recharts` resolved to 3.8.1, re-ran with explicit ^2.12 to honor plan must_haves). db.rs registers V5 via 5th `Migration` entry; new unit test `migrations_v5_adds_screenshots_and_saves` (38/38 lib tests pass = 37 prior + 1 new). v4 test relaxed `len == 4` → `len >= 4` so v5 registration doesn't break it. Smoke: pnpm tauri dev triggered migration; `app_meta.schema_version=5` confirmed via sqlite3. Three Rule-1 deviations (test assertion bugs caught + fixed iteratively before commit). 1 commit (af7b91a).
+- Trend (prev): Phase 4 wave-6 FINAL (04f) Settings page polish. Two new components in src/components/settings/: <TagManager> (full tag CRUD — list rows with colored dot + inline-edit row [Input + 8-color preset swatch picker + 保存/取消] + delete with AlertDialog confirm "确定删除标签『{name}』？已打的游戏会保留，但失去此标签关联"; single editing-state slot prevents parallel-edit UX confusion; "添加标签" button opens dashed-border draft row with id:null sentinel reusing the same commit code path; mutation refetch via listTags()→useLibraryStore.setTags so sidebar reflects new state; 8 preset colors slate/blue/emerald/amber/rose/violet/orange/pink as Tailwind v3 *-500 hex stored in tags.color) and <UIPreferences> (default-sort Select with same 5 SortBy options as SortSelect, persisted to localStorage 'gal-lib:default-sort' via exported loadDefaultSort/saveDefaultSort helpers with whitelist validation against the SortBy enum; theme row rendered as opacity-60 hint span "暗色（深浅色切换将在 Phase 5 加入）" since shadcn Switch isn't installed and disabled Toggle would visually imply togglable surface). Settings.tsx appends both sections after existing P2/P3 sections (扫描根目录 / Locale Emulator / 扫描操作 untouched). pnpm typecheck + vite build green. 1 commit (e282e1a). Phase 4 complete.
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
@@ -70,6 +72,7 @@ Progress: [████████████████████] 100% (2
 | Phase 04 P04d | 12min | 2 tasks | 8 files (3 new + 5 modified) |
 | Phase 04 P04e | 22min | 2 tasks | 3 files (2 new + 1 modified) |
 | Phase 04 P04f | 12min | 1 task | 3 files (2 new + 1 modified) |
+| Phase 05 P05a | 10min | 1 task | 6 files (1 new + 5 modified) |
 
 ## Accumulated Context
 
@@ -168,6 +171,9 @@ Recent decisions affecting current work:
 - **04f**: 8 preset Tailwind-named hues stored as hex literal in tags.color: slate/blue/emerald/amber/rose/violet/orange/pink (v3 *-500 shades). ColorSwatchPicker is a stateless `role="radiogroup"` of round buttons with `aria-checked` + ring-on-active styling — matches the eventual sidebar dot rendering 1:1 (visual consistency between Settings → sidebar)
 - **04f**: Default-sort persistence via localStorage key `gal-lib:default-sort` with `loadDefaultSort()` exported helper that whitelist-validates against the SortBy enum (defends against corrupt writes / future schema changes). Plan permitted localStorage-OR-config.json; chose localStorage to avoid adding new Tauri commands for a UI-only preference. Theme row rendered as disabled hint span (`opacity-60`) rather than disabled Switch because shadcn install lacks Switch and a disabled Toggle would visually imply a togglable surface that misleads users about Phase-5 deferral
 - **04f**: All Phase 4 plans (04a–04f) green; full REQ-ID coverage LIB-03/04/05/07 + TAG-01..04 + STAT-01..04. Settings.tsx final layout: 4 sections (扫描根目录 / Locale Emulator / 扫描操作 / 标签管理 / UI 偏好) under shared `<ScrollArea>` + `max-w-[720px]` + `space-y-8` container. Existing P2/P3 sections untouched per plan guardrail
+- **05a**: Schema v5 = 2 ALTER TABLE games ADD COLUMN (screenshot_interval_sec INTEGER NOT NULL DEFAULT 300 / save_path TEXT) + 2 CREATE TABLE (screenshots / save_backups, both with FK ON DELETE CASCADE on game_id) + 2 CREATE INDEX on game_id + UPDATE app_meta schema_version='5'; v5 migration test counts non-comment ADD-COLUMN/CASCADE lines (mirroring v3/v4 pattern) — protects against the migration's own header doc-comment polluting substring counts
+- **05a**: Phase 5 dep lockup once at foundation step — Rust `screenshots = 0.8` (Windows DXGI/GDI fallback for desktop capture, 05b SHOT-01) + `png = 0.17` (pure-Rust encoder, no external libpng, 05b frame encode) + npm `recharts ^2.12` (resolved 2.15.4 — explicit pin to ^2.12 because default `pnpm add recharts` pulled v3.8.1, plan must_haves spec wins, 05d STATS-01/02 charts)
+- **05a**: schema-bump test pattern lock-in — `m{N}.sql.contains("schema_version") && m{N}.sql.contains("'{N}'")` (split-grep) NOT `contains("schema_version = '{N}'")` because actual SQL is `UPDATE app_meta SET value = '{N}' WHERE key = 'schema_version';` (key/value on opposite sides of clause). v4 test was using the equivalent split form; v5 test now mirrors it. Three Rule-1 test-assertion bugs caught & fixed iteratively before final commit (cascade count off-by-one, schema_version assertion form, prior-version `len == N` exact-equal blocking growth)
 
 ### Pending Todos
 
@@ -188,5 +194,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-05-08T00:00:00Z
-Stopped at: Completed 04-04f-PLAN.md (Phase 4 wave 6/6 FINAL — Settings page polish: TagManager + UIPreferences). Phase 4 complete; 24/24 plans done across Phases 1-4.
+Stopped at: Completed 05-05a-PLAN.md (Phase 5 wave 1/5 — Schema v5 + Cargo crates screenshots/png + recharts npm); 25/29 plans done.
 Resume file: None
