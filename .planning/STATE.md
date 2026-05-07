@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-03c-PLAN.md (process_track + session lifecycle; ready for 03d commands.rs wire-up)
-last_updated: "2026-05-07T14:30:00.000Z"
-last_activity: 2026-05-07 -- Phase 3 plan 03c executed (Win32 process tracking + SQLite session state machine)
+stopped_at: Completed 03-03d-PLAN.md (orchestrator + 7 Tauri commands; ready for 03e tray + frontend wiring)
+last_updated: "2026-05-07T14:31:30.000Z"
+last_activity: 2026-05-07 -- Phase 3 plan 03d executed (launch orchestrator + 7 Tauri commands + ActiveSessionState)
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 15
-  percent: 83
+  completed_plans: 16
+  percent: 89
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 3 (launch-playtime) — IN PROGRESS
-Plan: 3 of 6 complete (03c done — process_track + session lifecycle); next is 03d (commands.rs wire-up)
-Status: Ready to execute 03d
-Last activity: 2026-05-07 -- Phase 3 plan 03c executed
+Plan: 4 of 6 complete (03d done — orchestrator + Tauri commands + ActiveSessionState); next is 03e (tray + frontend wire-up)
+Status: Ready to execute 03e
+Last activity: 2026-05-07 -- Phase 3 plan 03d executed
 
-Progress: [████████████████░░░░] 83% (15/18 plans complete; Phase 3 wave 3/6 done)
+Progress: [█████████████████░░░] 89% (16/18 plans complete; Phase 3 wave 4/6 done)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 15 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03c)
-- Average duration: ~30min/plan
-- Total execution time: ~6.8 hours
+- Total plans completed: 16 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03d)
+- Average duration: ~28min/plan
+- Total execution time: ~6.85 hours
 
 **By Phase:**
 
@@ -46,12 +46,12 @@ Progress: [████████████████░░░░] 83% (15
 |-------|-------|-------|----------|
 | 1. Foundation | 6 | ~3h | ~30min |
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
-| 3. Launch & Playtime | 3/6 | ~14min so far | ~4.7min |
+| 3. Launch & Playtime | 4/6 | ~17min so far | ~4.3min |
 
 **Recent Trend:**
 
-- Last 6 plans: 02d → 02e → 02f → 03a → 03b → 03c
-- Trend: 03c bundled two pure-Rust modules (process_track + session) into 2 atomic commits, 0 deviations, cargo test --lib still 36/36; integration tests deferred to 03d where the Tauri+pool harness exists
+- Last 6 plans: 02e → 02f → 03a → 03b → 03c → 03d
+- Trend: 03d wired the Tauri command surface to the launch subsystem with 7 new commands + ActiveSessionState; 3 deviations all auto-fixed (Rule 2/3): State<'_,T> can't move into spawn (used app.try_state) + stale-LE-path filter + idempotent end_active_session; 36/36 tests still green
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
@@ -60,6 +60,7 @@ Progress: [████████████████░░░░] 83% (15
 | Phase 03 P03a | 6min | 1 task | 4 files (1 new + 3 modified) |
 | Phase 03 P03b | 3min | 1 task | 5 files (2 new + 3 modified) |
 | Phase 03 P03c | 5min | 2 tasks | 5 files (2 new + 3 modified) |
+| Phase 03 P03d | 3min | 2 tasks | 4 files (1 new + 3 modified) |
 
 ## Accumulated Context
 
@@ -111,6 +112,14 @@ Recent decisions affecting current work:
 - **03c**: Elapsed seconds computed in Rust (chrono RFC3339 parse + `.max(0)` clamp) rather than SQL `julianday` — defends deterministically against NTP jumps/clock skew
 - **03c**: Two-statement update (sessions then games), no explicit transaction — sqlx 0.8 Pool serializes SQLite writes; partial failure leaves a correct sessions row that future reconciliation could pick up
 - **03c**: `chrono = "0.4"` with `serde` feature added to Cargo.toml (forward-compat for 03d/03e where lifecycle timestamps may serialize to frontend); `windows` crate features unchanged (03a lockup already covers all calls)
+- **03d**: `launch::orchestrator::launch_game(LaunchInputs) → (session_id, ActiveSession, JoinHandle)` is the single entry-point; `prepare_launch` is split out so missing-exe / missing-LE fail BEFORE a sessions row is created
+- **03d**: `ActiveSessionState(Mutex<Option<ActiveSessionEntry>>)` uses `std::sync::Mutex` (NOT tokio::sync) — locks held only briefly inside command bodies, never across `await`; lock-then-clone-or-take pattern enforced by inspection
+- **03d**: `ActiveSessionEntry` holds the `AbortHandle` (not the JoinHandle) — the JoinHandle is consumed by a watcher task spawned in `launch_game` that awaits → clears state → emits null `active-session-changed`
+- **03d**: `app.try_state::<ActiveSessionState>()` from inside watcher task — `State<'_, T>` is non-`'static` so we can't move it; AppHandle is `'static + Clone + Send`. Cleaner than channel hand-off
+- **03d**: `end_active_session` aborts the wait task FIRST then `session::cancel_session(session_id)` — DB row is the source of truth (session_id is canonical), AbortHandle abort + DB cancel are independently idempotent; emits null event belt-and-braces
+- **03d**: `update_game_launch_config` uses `COALESCE(?, col)` for each field — None bind = SQL NULL = keep existing; Some("") = clear (intentional, lets user wipe launch_args)
+- **03d**: `get_le_path` filters stale paths via `Path::exists()` so Settings UI doesn't display non-existent location as configured (Rule 2 deviation; matches CONTEXT § LE Detection re-detect-on-stale)
+- **03d**: Tauri commands count = 19 (1 inherited + 11 from P02 + 7 new in 03d); `active-session-changed` event payload = `Option<ActiveSession>` (None = no session, Some = active)
 
 ### Pending Todos
 
@@ -130,6 +139,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-07T14:30:00.000Z
-Stopped at: Completed 03-03c-PLAN.md (Phase 3 wave 3/6 — Win32 process tracking + SQLite session lifecycle in `launch::process_track` + `launch::session`)
+Last session: 2026-05-07T14:31:30.000Z
+Stopped at: Completed 03-03d-PLAN.md (Phase 3 wave 4/6 — orchestrator + 7 Tauri commands + ActiveSessionState; ready for 03e tray + frontend)
 Resume file: None
