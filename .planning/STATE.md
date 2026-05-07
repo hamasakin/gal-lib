@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-04b-PLAN.md (Phase 4 wave 2/6 — 13 backend commands: search/sort/filter + tag CRUD + game property updates).
-last_updated: "2026-05-07T15:28:08Z"
-last_activity: 2026-05-07 -- Phase 4 wave 2 (04b) executed
+stopped_at: Completed 04-04c-PLAN.md (Phase 4 wave 3/6 — frontend invoke layer + library store extensions).
+last_updated: "2026-05-07T15:37:00Z"
+last_activity: 2026-05-07 -- Phase 4 wave 3 (04c) executed
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 24
-  completed_plans: 20
-  percent: 83
+  completed_plans: 21
+  percent: 88
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 4 (library-polish)
-Plan: 2 of 6 complete (04a + 04b done — schema v4 + shadcn lockup + 13 backend commands; next: 04c frontend store/lib + Detail tabs scaffolding)
+Plan: 3 of 6 complete (04a + 04b + 04c done — schema v4 + shadcn lockup + 13 backend commands + frontend invoke layer / store extensions; next: 04d Library UI search/sort/filter wiring)
 Status: In progress
-Last activity: 2026-05-07 -- Phase 4 wave 2 (04b) executed
+Last activity: 2026-05-07 -- Phase 4 wave 3 (04c) executed
 
-Progress: [████████████████░░░░] 83% (20/24 plans complete; Phase 4 wave 2/6 done)
+Progress: [█████████████████░░░] 88% (21/24 plans complete; Phase 4 wave 3/6 done)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 20 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04b)
-- Average duration: ~23min/plan
-- Total execution time: ~7.6 hours
+- Total plans completed: 21 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04c)
+- Average duration: ~22min/plan
+- Total execution time: ~7.65 hours
 
 **By Phase:**
 
@@ -47,12 +47,12 @@ Progress: [████████████████░░░░] 83% (20
 | 1. Foundation | 6 | ~3h | ~30min |
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
 | 3. Launch & Playtime | 6/6 | ~41min | ~6.8min |
-| 4. Library Polish | 2/6 | ~19min | ~9.5min |
+| 4. Library Polish | 3/6 | ~22min | ~7.3min |
 
 **Recent Trend:**
 
-- Last 6 plans: 03c → 03d → 03e → 03f → 04a → 04b
-- Trend: Phase 4 wave-2 (04b) added 13 Tauri commands — search_games (LIKE on name/name_cn/path/tag.name + sort_by whitelist + filter ANDed), get_sidebar_categories (tags+counts, statuses, brands, year_decades, favorite_count), tag CRUD (list/create/update/delete + transactional set_game_tags + list_game_tags), and per-property updates (status/favorite/rating/notes/brand-year). Game struct + list_games extended with schema-v4 columns (brand/release_year/is_favorite); shared row_to_game helper keeps list_games and search_games in lockstep. Total commands grew 19 → 32. 3 minor Rule-2 defensive fixes folded into the single feat commit (extend list_games SELECT, whitelist status enum twice, INSERT OR IGNORE for set_game_tags duplicate-tolerant). cargo test --lib still 37/37; ~4min execution.
+- Last 6 plans: 03d → 03e → 03f → 04a → 04b → 04c
+- Trend: Phase 4 wave-3 (04c) wires the 04b backend commands into the TS-side invoke layer. Two new files: `src/lib/search.ts` (SearchFilter / SortBy / SidebarCategories types + searchGames + getSidebarCategories) and `src/lib/tags.ts` (Tag interface + 6 tag CRUD invoke wrappers). `src/lib/games.ts` extended: Game type gains v4 fields (brand: string|null, release_year: number|null, is_favorite: boolean — bool over the wire because row_to_game converts i64 0/1 → bool BEFORE serde), plus 5 update helpers (updateGameStatus / updateGameFavorite / updateGameRating / updateGameNotes / updateGameBrandYear). `src/store/library.ts` extended with 5 new slices (searchQuery / sortBy / filter / tags / sidebar) + 5 paired setters; defaults sortBy="last_played" and filter={} (sentinel for "no clauses"). No UI components touched — 04d/04e/04f own UI. pnpm typecheck clean. Single feat commit, no deviations.
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
@@ -66,6 +66,7 @@ Progress: [████████████████░░░░] 83% (20
 | Phase 03 P03f | 12min | 2 tasks | 9 files (3 new + 6 modified) |
 | Phase 04 P04a | 15min | 2 tasks | 9 files (6 new + 3 modified) |
 | Phase 04 P04b | 4min | 1 task | 2 files (0 new + 2 modified) |
+| Phase 04 P04c | 3min | 1 task | 4 files (2 new + 2 modified) |
 
 ## Accumulated Context
 
@@ -146,6 +147,10 @@ Recent decisions affecting current work:
 - **04b**: set_game_tags is transactional via `pool.begin()` + `tx.commit()` with `INSERT OR IGNORE` (composite PK protects against intra-input duplicates without rolling back the whole assignment); list_games extended to serialize brand/release_year/is_favorite via shared `row_to_game(&SqliteRow)` helper used by both list_games and search_games (single source of column wiring)
 - **04b**: update_game_brand_year intentionally uses bind-NULL = SQL NULL (overwrite-with-NULL when args None) — different from update_game_launch_config's COALESCE(?, col) keep-on-None pattern, because the metadata refresh pipeline needs the ability to *clear* brand/year when a re-fetch returns nothing matched
 - **04b**: Tauri command count = 32 (19 prior + 13 new); is_favorite serialized as JS bool via Rust `bool` field but stored as i64 0/1 (Tauri/serde renders bool → JSON true/false; row_to_game converts via `try_get::<i64,_>(...) != 0`)
+- **04c**: Frontend invoke layer = 2 new files (`src/lib/search.ts` + `src/lib/tags.ts`) + 2 extended files (`src/lib/games.ts` + `src/store/library.ts`); 13 backend commands wired 1:1 as TS invoke wrappers; `Tag` interface single source of truth in tags.ts (search.ts imports via `import type { Tag }`); `SearchFilter` keeps snake_case inner field names (tag_id, year_decade) because those go through serde, not Tauri's outer-arg-name camelCase converter
+- **04c**: Game type extended with v4 fields (brand: string|null, release_year: number|null, is_favorite: boolean — JS-side boolean because row_to_game converts i64 0/1 → bool before serde); 5 update helpers added (updateGameStatus / updateGameFavorite / updateGameRating / updateGameNotes / updateGameBrandYear); store mutations remain non-optimistic (callers re-fetch via searchGames + getSidebarCategories — same source-of-truth rule already in store/library.ts)
+- **04c**: 5 new store slices (searchQuery default "", sortBy default "last_played", filter default {} via EMPTY_FILTER sentinel, tags default [], sidebar default null) + 5 paired setters; sidebar=null = "render skeleton/empty"; filter={} chosen over null so UI can access individual fields without null-guards (backend treats all-undefined as no clauses)
+- **04c**: updateGameFavorite(gameId, favorite) function arg uses terse `favorite` name; the Tauri invoke arg renames to `isFavorite` at the call site (`{ gameId, isFavorite: favorite }`) to match Rust's snake_case `is_favorite` via Tauri auto-conversion — clean JS API, single rename touch point
 
 ### Pending Todos
 
@@ -165,6 +170,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-07T15:28:08Z
-Stopped at: Completed 04-04b-PLAN.md (Phase 4 wave 2/6 — 13 backend commands: search/sort/filter + tag CRUD + game property updates).
+Last session: 2026-05-07T15:37:00Z
+Stopped at: Completed 04-04c-PLAN.md (Phase 4 wave 3/6 — frontend invoke layer + library store extensions).
 Resume file: None

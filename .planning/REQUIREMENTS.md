@@ -161,12 +161,12 @@
 | TRAY-01 | Phase 3 | Pending |
 | TRAY-02 | Phase 3 | Pending |
 | TRAY-03 | Phase 3 | Pending |
-| LIB-03 | Phase 4 | Backend Ready (04b) |
-| LIB-04 | Phase 4 | Backend Ready (04b) |
+| LIB-03 | Phase 4 | Frontend Invoke Ready (04c) |
+| LIB-04 | Phase 4 | Frontend Invoke Ready (04c) |
 | LIB-05 | Phase 4 | Pending |
 | LIB-07 | Phase 4 | Pending |
 | TAG-01 | Phase 4 | Backend Ready (04b) |
-| TAG-02 | Phase 4 | Backend Ready (04b) |
+| TAG-02 | Phase 4 | Frontend Invoke Ready (04c) |
 | TAG-03 | Phase 4 | Backend Ready (04b) |
 | TAG-04 | Phase 4 | Pending |
 | STAT-01 | Phase 4 | Backend Ready (04b) |
