@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-03d-PLAN.md (orchestrator + 7 Tauri commands; ready for 03e tray + frontend wiring)
-last_updated: "2026-05-07T14:31:30.000Z"
-last_activity: 2026-05-07 -- Phase 3 plan 03d executed (launch orchestrator + 7 Tauri commands + ActiveSessionState)
+stopped_at: Completed 03-03e-PLAN.md (system tray + close-to-tray + background-lifetime; ready for 03f frontend wiring)
+last_updated: "2026-05-07T14:43:30.000Z"
+last_activity: 2026-05-07 -- Phase 3 plan 03e executed (tray icon + WindowEvent::CloseRequested interceptor + quit-path session cleanup)
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 16
-  percent: 89
+  completed_plans: 17
+  percent: 94
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 3 (launch-playtime) — IN PROGRESS
-Plan: 4 of 6 complete (03d done — orchestrator + Tauri commands + ActiveSessionState); next is 03e (tray + frontend wire-up)
-Status: Ready to execute 03e
-Last activity: 2026-05-07 -- Phase 3 plan 03d executed
+Plan: 5 of 6 complete (03e done — tray icon + close-to-tray + quit-path session cleanup); next is 03f (frontend wire-up: detail page + active-session bar + tray toast)
+Status: Ready to execute 03f
+Last activity: 2026-05-07 -- Phase 3 plan 03e executed
 
-Progress: [█████████████████░░░] 89% (16/18 plans complete; Phase 3 wave 4/6 done)
+Progress: [██████████████████░░] 94% (17/18 plans complete; Phase 3 wave 5/6 done)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 16 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03d)
-- Average duration: ~28min/plan
-- Total execution time: ~6.85 hours
+- Total plans completed: 17 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03e)
+- Average duration: ~26min/plan
+- Total execution time: ~7.05 hours
 
 **By Phase:**
 
@@ -46,12 +46,12 @@ Progress: [█████████████████░░░] 89% (16
 |-------|-------|-------|----------|
 | 1. Foundation | 6 | ~3h | ~30min |
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
-| 3. Launch & Playtime | 4/6 | ~17min so far | ~4.3min |
+| 3. Launch & Playtime | 5/6 | ~29min so far | ~5.8min |
 
 **Recent Trend:**
 
-- Last 6 plans: 02e → 02f → 03a → 03b → 03c → 03d
-- Trend: 03d wired the Tauri command surface to the launch subsystem with 7 new commands + ActiveSessionState; 3 deviations all auto-fixed (Rule 2/3): State<'_,T> can't move into spawn (used app.try_state) + stale-LE-path filter + idempotent end_active_session; 36/36 tests still green
+- Last 6 plans: 02f → 03a → 03b → 03c → 03d → 03e
+- Trend: 03e added Tauri 2 system tray + close-to-tray + graceful quit (cancel active session before app.exit); 2 Rule 3 deviations auto-fixed (AppPaths.pool visibility + missing tauri::{Manager,Emitter} imports); cargo check + release build both exit 0; capabilities/default.json untouched (core:default already covers tray)
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
@@ -61,6 +61,7 @@ Progress: [█████████████████░░░] 89% (16
 | Phase 03 P03b | 3min | 1 task | 5 files (2 new + 3 modified) |
 | Phase 03 P03c | 5min | 2 tasks | 5 files (2 new + 3 modified) |
 | Phase 03 P03d | 3min | 2 tasks | 4 files (1 new + 3 modified) |
+| Phase 03 P03e | 12min | 1 task | 4 files (1 new + 3 modified) |
 
 ## Accumulated Context
 
@@ -120,6 +121,12 @@ Recent decisions affecting current work:
 - **03d**: `update_game_launch_config` uses `COALESCE(?, col)` for each field — None bind = SQL NULL = keep existing; Some("") = clear (intentional, lets user wipe launch_args)
 - **03d**: `get_le_path` filters stale paths via `Path::exists()` so Settings UI doesn't display non-existent location as configured (Rule 2 deviation; matches CONTEXT § LE Detection re-detect-on-stale)
 - **03d**: Tauri commands count = 19 (1 inherited + 11 from P02 + 7 new in 03d); `active-session-changed` event payload = `Option<ActiveSession>` (None = no session, Some = active)
+- **03e**: Tauri 2 `TrayIconBuilder::with_id("main")` registered in Builder.setup closure (NOT in run prelude — needs &AppHandle); 2-item menu `show` / `quit` + tooltip "gal-lib"; left-click = same as `show`. cargo `tauri` features += `"tray-icon"` (was empty)
+- **03e**: Close-to-tray = `WindowEvent::CloseRequested` → `api.prevent_close()` + `window.hide()` + `app.emit("close-to-tray", ())`; main thread continues running, all tokio session-watcher tasks live independently of webview window so playtime keeps counting
+- **03e**: Tray quit path uses `tauri::async_runtime::block_on` (not spawn) — runs on main thread from menu callback, must complete `cancel_session(pool, sid)` BEFORE `app.exit(0)` (otherwise process dies mid-write); pool accessed via new `commands::get_pool_blocking` (sync `.get()` on OnceCell, no await)
+- **03e**: `AppPaths.pool` visibility lifted from private to `pub(crate)` so the sync helper can read the OnceCell directly; existing async `pool()` accessor unchanged
+- **03e**: `capabilities/default.json` untouched — `core:default` already covers `core:tray:default` and `core:app:default` in Tauri 2.x (verified by clean cargo check + release build)
+- **03e**: `update_tray_tooltip(app, text)` exposed as pub but `#[allow(dead_code)]` — stable extension point for "currently playing X" tooltip in later phases (out of scope for P3)
 
 ### Pending Todos
 
@@ -139,6 +146,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-07T14:31:30.000Z
-Stopped at: Completed 03-03d-PLAN.md (Phase 3 wave 4/6 — orchestrator + 7 Tauri commands + ActiveSessionState; ready for 03e tray + frontend)
+Last session: 2026-05-07T14:43:30.000Z
+Stopped at: Completed 03-03e-PLAN.md (Phase 3 wave 5/6 — tray icon + close-to-tray + quit-path session cleanup; ready for 03f frontend wiring)
 Resume file: None
