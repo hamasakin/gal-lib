@@ -924,27 +924,21 @@ export function Settings() {
 
 **Note on A1:** 这是 Phase 1 最重要的假设。Plan 01c 必须在实施时**实测**验证 — 跑一次 `pnpm tauri dev`，启动后通过 Rust 日志或 SQL 查询确认 db 文件落在 `target/debug/data/app.db`（dev 模式下）；若发现落在 `%APPDATA%\com.gal-lib.app\` 则假设破裂，**降级方案**：放弃 tauri-plugin-sql 的 `Database.load` 自动管理，改为在 Rust 侧直接用 sqlx 建立连接并通过 `tauri::command` 暴露查询接口（更多样板代码但完全可控）。
 
-## Open Questions
+## Open Questions (RESOLVED)
 
 1. **`pnpm tauri build --no-bundle` 出来的单 exe 是否依赖外部 DLL？**
    - What we know: 默认动态链接 MSVC runtime + 系统 WebView2 客户端；Rust stdlib + sqlx-sqlite 默认 bundled（静态）。
    - What's unclear: Visual C++ Redistributable 是否需要用户预装。Tauri 文档暗示需要，但现代 Win10/11 默认有。
-   - Recommendation: Plan 01f 验收时在一台干净 Win10/Win11 VM（或同事电脑）上测试 — 双击 exe 是否提示缺 DLL。若提示，可考虑静态链接 MSVC（`-C target-feature=+crt-static`，但 sqlx 可能不兼容） 或文档说明 VCRedist 依赖。
+   - **RESOLVED:** Plan 01f 验收时在干净 Win10/Win11 测试机上跑 portable 双击启动 E2E；PHASE-01-VERIFICATION.md 记录 dependency 实测状态。不预绑定 VCRedist；若发现缺失，文档化 prerequisite，不阻塞 Phase 1。
 
 2. **是否应该在 Phase 1 引入 GitHub Actions CI 跑 `tauri build`？**
-   - What we know: ROADMAP 与 CONTEXT 未提到 CI。
-   - What's unclear: 是否本地手工 build 即可。
-   - Recommendation: Phase 1 先不做（不阻塞功能）；建立基础的 `pnpm typecheck` + `pnpm lint` 脚本就够。CI 可以在 v1 release 前再补。
+   - **RESOLVED:** Phase 1 不引入 CI；只建立 `pnpm typecheck` + `pnpm lint` + `cargo check` 本地脚本。CI 留到 v1 release 前补。
 
 3. **icons/ 资源从哪里来？**
-   - What we know: tauri.conf.json 要求至少 32x32.png / 128x128.png / icon.ico。
-   - What's unclear: 项目暂无 logo 设计。
-   - Recommendation: Plan 01f 用占位 logo（Tauri 自带模板默认图标即可），美术 logo 留 Phase 4/5 替换。
+   - **RESOLVED:** Phase 1 沿用 `pnpm create tauri-app` 模板默认占位图标；美术 logo 留 Phase 4/5 替换。
 
 4. **"data/" 目录是否应该加到 .gitignore？**
-   - What we know: 它是运行时生成、用户特定数据。
-   - What's unclear: 但 dev 模式下 data/ 创建在 `target/debug/`（已被 .gitignore），不会污染 git。生产用户的 data/ 也不进 git。
-   - Recommendation: 仍然把根目录 `/data/` 加 .gitignore 防御性，避免开发者意外 cd 到 src-tauri/ 后 cargo 工作目录改变导致 data/ 误生成在仓库根。
+   - **RESOLVED:** 把根目录 `/data/` 加进 `.gitignore`（防御性；已在 01a / 01c 的 plan 中实装）。dev 模式 data/ 落在 `src-tauri/target/debug/data/`（已被 target/ 整体忽略）；prod 用户 data/ 不进 git。
 
 ## Environment Availability
 
