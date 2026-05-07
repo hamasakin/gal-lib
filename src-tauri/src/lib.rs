@@ -41,6 +41,7 @@ pub fn run() {
 
     let migrations = db::migrations();
 
+    // 02d 在此追加 .plugin(tauri_plugin_dialog::init()) .plugin(tauri_plugin_http::init())
     tauri::Builder::default()
         .plugin(
             tauri_plugin_sql::Builder::default()

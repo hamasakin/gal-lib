@@ -25,6 +25,17 @@ tauri-plugin-sql = { version = "2", features = ["sqlite"] }
 dunce = "1"
 anyhow = "1"
 thiserror = "2"
+# Phase 2 (02a) — locked dependency lockup for scan engine + metadata clients
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "json", "stream"] }
+walkdir = "2"
+regex = "1"
+governor = "0.6"
+tokio = { version = "1", features = ["full"] }
+image = { version = "0.25", default-features = false, features = ["jpeg", "png", "webp"] }
+tauri-plugin-dialog = "2"
+tauri-plugin-http = "2"
+once_cell = "1"
+futures-util = "0.3"
 
 # Release profile — size-optimized for single-exe distribution (RESEARCH § Architecture).
 # 01f will further tune (e.g. `incremental = false`); leave room for that here.
