@@ -59,6 +59,10 @@ import {
 import { Trash2 } from "lucide-react";
 import { useLibraryStore } from "@/store/library";
 import { useNavigate } from "react-router-dom";
+// 04f: Settings page polish — Tag CRUD + UI preferences sections appended
+// to the existing P2/P3 sections (扫描根目录 / Locale Emulator / 扫描操作).
+import { TagManager } from "@/components/settings/TagManager";
+import { UIPreferences } from "@/components/settings/UIPreferences";
 
 export function Settings() {
   const scanRoots = useLibraryStore((s) => s.scanRoots);
@@ -296,6 +300,12 @@ export function Settings() {
             </Button>
           </div>
         </section>
+
+        {/* ─── 04f: 标签管理 section ─────────────────────────────────── */}
+        <TagManager />
+
+        {/* ─── 04f: UI 偏好 section ──────────────────────────────────── */}
+        <UIPreferences />
       </div>
     </ScrollArea>
   );
