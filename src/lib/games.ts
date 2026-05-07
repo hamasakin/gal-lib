@@ -50,6 +50,25 @@ export interface Game {
   /** 0..=100; `null` until ingest runs. ≥80 = auto-bind, <80 = needs review. */
   match_confidence: number | null;
   last_scanned_at: string | null;
+  // ── Phase 4 / schema v4 fields ──
+  /**
+   * Brand / publisher / circle name from the metadata source. Filled by the
+   * Phase-4 metadata-fetch pipeline (META) and surfaced as a sidebar
+   * auto-category (`get_sidebar_categories().brands`).
+   */
+  brand: string | null;
+  /**
+   * Release year (4 digits, e.g. 2018). Bucketed into decade categories on
+   * the sidebar (`get_sidebar_categories().year_decades`).
+   */
+  release_year: number | null;
+  /**
+   * Favorite flag. SQLite stores as INTEGER 0/1; Rust `serde` serializes
+   * the Tauri command output as a real JS boolean (see `row_to_game` in
+   * `src-tauri/src/commands.rs` — `is_favorite = ... != 0`), so consumers
+   * can rely on `=== true` / `=== false`.
+   */
+  is_favorite: boolean;
   created_at: string;
   updated_at: string;
 }
@@ -64,4 +83,66 @@ export interface Game {
  */
 export async function listGames(): Promise<Game[]> {
   return invoke<Game[]>("list_games");
+}
+
+// ── Phase 4 / 04b: per-game property updates ─────────────────────────────────
+//
+// Each helper wraps a dedicated `update_game_*` Tauri command that issues a
+// single targeted UPDATE on the `games` row + bumps `updated_at`. Mutations
+// here are NOT optimistically applied to the Zustand store — callers should
+// re-fetch via `searchGames()` / `listGames()` (and `getSidebarCategories()`
+// when status/favorite/brand/year change, since those affect sidebar counts)
+// after a successful command, matching the source-of-truth rule documented
+// in `src/store/library.ts`.
+
+/**
+ * Set a game's status. Backend enforces the 4-value enum and returns a
+ * precise `String` error for invalid input (the games.status CHECK
+ * constraint is also a backstop).
+ */
+export async function updateGameStatus(
+  gameId: number,
+  status: "unplayed" | "playing" | "cleared" | "dropped",
+): Promise<void> {
+  await invoke("update_game_status", { gameId, status });
+}
+
+/**
+ * Toggle the favorite flag. Backend stores INTEGER 0/1; the wire arg is a
+ * real JS boolean (Rust `serde` deserializes it as `bool`).
+ */
+export async function updateGameFavorite(gameId: number, favorite: boolean): Promise<void> {
+  await invoke("update_game_favorite", { gameId, isFavorite: favorite });
+}
+
+/**
+ * Set or clear the rating. Backend enforces `1..=10` when `rating` is
+ * non-null; pass `null` to clear. The games.rating column allows NULL and
+ * has no CHECK on the value range — validation lives only in the command.
+ */
+export async function updateGameRating(gameId: number, rating: number | null): Promise<void> {
+  await invoke("update_game_rating", { gameId, rating });
+}
+
+/**
+ * Set or clear the free-form notes column. Pass `null` to clear; pass the
+ * empty string to keep an empty-but-present value (backend writes both
+ * faithfully — only `null` becomes SQL NULL).
+ */
+export async function updateGameNotes(gameId: number, notes: string | null): Promise<void> {
+  await invoke("update_game_notes", { gameId, notes });
+}
+
+/**
+ * Atomically update `brand` + `release_year` together. Each arg is
+ * independently nullable; passing `null` for either CLEARS that column
+ * (overwrite-with-NULL semantics — matches what the Phase-4 metadata
+ * refresh pipeline needs when the source returns no brand).
+ */
+export async function updateGameBrandYear(
+  gameId: number,
+  brand: string | null,
+  releaseYear: number | null,
+): Promise<void> {
+  await invoke("update_game_brand_year", { gameId, brand, releaseYear });
 }

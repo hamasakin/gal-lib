@@ -30,6 +30,23 @@ import { create } from "zustand";
 import type { ScanProgress, ScanRoot } from "@/lib/scan";
 import type { Game } from "@/lib/games";
 import type { ActiveSession, SessionRow } from "@/lib/launch";
+import type { SearchFilter, SidebarCategories, SortBy } from "@/lib/search";
+import type { Tag } from "@/lib/tags";
+
+/**
+ * Default sort key for the library grid. Matches the "show me what I played
+ * recently" mental model — the ORDER BY in the backend places NULLS LAST,
+ * so unplayed games still appear, just sorted to the bottom.
+ */
+const DEFAULT_SORT_BY: SortBy = "last_played";
+
+/**
+ * Empty-but-typed filter sentinel. We DO NOT use `null` for the filter slice
+ * because the UI binds individual fields (e.g. `filter.status`) and would
+ * have to null-guard every field access. Equivalent semantically: the
+ * backend treats an all-undefined filter as "no clauses applied".
+ */
+const EMPTY_FILTER: SearchFilter = {};
 
 interface LibraryState {
   /** Full list of scan_roots rows; refreshed after add/remove. */
@@ -63,11 +80,54 @@ interface LibraryState {
    */
   sessionsByGame: Record<number, SessionRow[]>;
 
+  // ── Phase 4 / 04c: search / sort / filter / tags / sidebar slices ─────────
+
+  /**
+   * Free-form search query. Empty string means "no LIKE clause" — the
+   * `searchGames(query, ...)` invoke wrapper still passes `null` in that
+   * case (it trims and converts empty → null), so the store uses `""` as
+   * the controlled-input sentinel for the search box.
+   */
+  searchQuery: string;
+  /**
+   * Active sort key for the library grid. Defaults to "last_played" so the
+   * boot view surfaces recent plays first. Mutating this triggers a
+   * `searchGames()` re-fetch in the consuming component (the store does
+   * NOT re-fetch automatically — keeps this layer purely state-holding).
+   */
+  sortBy: SortBy;
+  /**
+   * Active filter clauses. UI mutates individual fields (e.g.
+   * `setFilter({ ...filter, status: "playing" })`); pass `EMPTY_FILTER`
+   * sentinel via `setFilter({})` to clear. Empty filter is sent to the
+   * backend as-is (backend treats all-undefined as "no clauses").
+   */
+  filter: SearchFilter;
+  /**
+   * Cached tag list (read-through of `listTags()`). Refreshed after every
+   * tag CRUD mutation AND on app boot. Sorted by name (matches backend
+   * ORDER BY in `list_tags`).
+   */
+  tags: Tag[];
+  /**
+   * Cached sidebar aggregate counts (read-through of
+   * `getSidebarCategories()`). `null` until first fetch completes — the
+   * sidebar component should render skeleton/empty state on `null`. Refresh
+   * after any mutation that affects games or tags (status/favorite/brand/
+   * year/tag CRUD/scan completion).
+   */
+  sidebar: SidebarCategories | null;
+
   setScanRoots: (rs: ScanRoot[]) => void;
   setScanProgress: (p: ScanProgress | null) => void;
   setGames: (gs: Game[]) => void;
   setActiveSession: (s: ActiveSession | null) => void;
   setSessionsForGame: (gameId: number, sessions: SessionRow[]) => void;
+  setSearchQuery: (q: string) => void;
+  setSortBy: (s: SortBy) => void;
+  setFilter: (f: SearchFilter) => void;
+  setTags: (ts: Tag[]) => void;
+  setSidebar: (s: SidebarCategories | null) => void;
 }
 
 export const useLibraryStore = create<LibraryState>((set) => ({
@@ -76,6 +136,11 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   games: [],
   activeSession: null,
   sessionsByGame: {},
+  searchQuery: "",
+  sortBy: DEFAULT_SORT_BY,
+  filter: EMPTY_FILTER,
+  tags: [],
+  sidebar: null,
   setScanRoots: (rs) => set({ scanRoots: rs }),
   setScanProgress: (p) => set({ scanProgress: p }),
   setGames: (gs) => set({ games: gs }),
@@ -84,4 +149,9 @@ export const useLibraryStore = create<LibraryState>((set) => ({
     set((st) => ({
       sessionsByGame: { ...st.sessionsByGame, [gameId]: sessions },
     })),
+  setSearchQuery: (q) => set({ searchQuery: q }),
+  setSortBy: (s) => set({ sortBy: s }),
+  setFilter: (f) => set({ filter: f }),
+  setTags: (ts) => set({ tags: ts }),
+  setSidebar: (s) => set({ sidebar: s }),
 }));
