@@ -48,6 +48,10 @@ sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runti
 winreg = "0.52"
 sysinfo = "0.32"
 windows = { version = "0.58", features = ["Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"] }
+# 03c — RFC3339 timestamps for session lifecycle (started_at / ended_at) and
+# elapsed-second math in `launch::session`. Pinned to 0.4 (workspace-wide,
+# also matches sqlx's transitive expectations).
+chrono = { version = "0.4", features = ["serde"] }
 
 [dev-dependencies]
 # 03b — `set_le_path` unit test uses TempDir for an isolated config.json fixture.
