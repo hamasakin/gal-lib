@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-02f-PLAN.md (Phase 2 complete — Library route + virtualized GameGrid + ScanProgressBar + MetadataPicker)
-last_updated: "2026-05-07T14:00:21.834Z"
-last_activity: 2026-05-07 -- Phase 3 planning complete
+stopped_at: Completed 03-03a-PLAN.md (Phase 3 schema v3 + winreg/sysinfo/windows-rs lockup; ready for 03b LE detector)
+last_updated: "2026-05-07T14:07:32.000Z"
+last_activity: 2026-05-07 -- Phase 3 plan 03a executed (schema v3 migration + Phase 3 Rust crates locked)
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 12
-  percent: 67
+  completed_plans: 13
+  percent: 72
 ---
 
 # Project State
@@ -25,20 +25,20 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 
 ## Current Position
 
-Phase: 2 (library-ingest) — COMPLETE
-Plan: 6 of 6 complete — Phase 2 frontend pipeline end-to-end addressable; ready for Phase 3 (LE launch + playtime tracking)
-Status: Ready to execute
-Last activity: 2026-05-07 -- Phase 3 planning complete
+Phase: 3 (launch-playtime) — IN PROGRESS
+Plan: 1 of 6 complete (03a done — schema v3 + Rust crate lockup); next is 03b (LE detector)
+Status: Ready to execute 03b
+Last activity: 2026-05-07 -- Phase 3 plan 03a executed
 
-Progress: [██████████] 100% (Phase 2 complete; project at 12/12 planned plans through P2)
+Progress: [█████████░] 72% (13/18 plans complete; Phase 3 wave 1/6 done)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 12 (Phase 1: 6 + Phase 2: 02a, 02b, 02c, 02d, 02e, 02f)
+- Total plans completed: 13 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a)
 - Average duration: ~30min/plan
-- Total execution time: ~6.5 hours
+- Total execution time: ~6.6 hours
 
 **By Phase:**
 
@@ -46,16 +46,18 @@ Progress: [██████████] 100% (Phase 2 complete; project at 12
 |-------|-------|-------|----------|
 | 1. Foundation | 6 | ~3h | ~30min |
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
+| 3. Launch & Playtime | 1/6 | ~6min so far | ~6min |
 
 **Recent Trend:**
 
-- Last 6 plans: 02a → 02b → 02c → 02d → 02e → 02f
-- Trend: 02f delivered 4 components + route rewrite + Tauri command + 2 tailwind tokens in 3 atomic commits with 4 minor Rule-1/2 deviations (named-export mismatch matching 02e, error-handling expansion, DropdownMenu right-click forwarding, scan-progress auto-hide timer)
+- Last 6 plans: 02b → 02c → 02d → 02e → 02f → 03a
+- Trend: 03a was a fast foundation lockup (1 task, 1 atomic commit, 1 Rule-1 fix for over-strict ADD-COLUMN substring count, 1 Rule-1 fix for v2 test's len-equality assertion that would have flipped under v3)
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
 | Phase 02 P02e | 30min | 2 tasks | 4 files |
 | Phase 02 P02f | 35min | 3 tasks | 11 files (5 new + 6 modified) |
+| Phase 03 P03a | 6min | 1 task | 4 files (1 new + 3 modified) |
 
 ## Accumulated Context
 
@@ -94,6 +96,9 @@ Recent decisions affecting current work:
 - **02f**: ScanProgressBar 5s auto-hide timer for terminal states; status-aware summary line (扫描完成 / 扫描已取消 / 扫描失败) reuses UI-SPEC toast copy; sticky top-0 z-10 above main content
 - **02f**: MetadataPicker debounce 400ms via setTimeout in useEffect cleanup; direct-ID inputs take precedence over selected candidate at apply time; confidence Badge palette (≥80 emerald / 70-79 yellow / <70 destructive)
 - **02f**: Library.tsx kept NAMED export (mirrors Settings.tsx 02e fix); main.tsx adds module-scope `__scanProgressUnsub` guard before subscribing to Tauri scan-progress event into useLibraryStore.getState().setScanProgress
+- **03a**: schema v3 migration adds 3 launch-config cols on games (le_profile NOT NULL DEFAULT 'Japanese' / launch_args / cwd) + 2 status cols on sessions (status with locked CHECK('starting','running','completed','launch_failed','cancelled') DEFAULT 'completed' + exit_code); contract is asserted in db.rs unit test
+- **03a**: Phase 3 Rust crates locked once at foundation step — winreg 0.52 (registry, 03b), sysinfo 0.32 (process listing, 03c), windows 0.58 with [Win32_System_Threading, Win32_System_ProcessStatus, Win32_Foundation, Win32_System_Diagnostics_ToolHelp] features (OpenProcess + WaitForSingleObject + ToolHelp32, 03c); tray-icon Tauri feature deferred to 03e
+- **03a**: Migration test counts non-comment ADD-COLUMN lines (filter `!line.trim_start().starts_with("--")`) instead of raw substring matches — protects against future doc comments that mention "ADD COLUMN"
 
 ### Pending Todos
 
@@ -113,6 +118,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-07T14:30:00.000Z
-Stopped at: Completed 02-02f-PLAN.md (Phase 2 complete — Library route + virtualized GameGrid + ScanProgressBar + MetadataPicker)
+Last session: 2026-05-07T14:07:32.000Z
+Stopped at: Completed 03-03a-PLAN.md (Phase 3 wave 1/6 — schema v3 migration + winreg/sysinfo/windows-rs Cargo lockup)
 Resume file: None
