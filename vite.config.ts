@@ -2,7 +2,7 @@ import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import path from "node:path";
 
-// @ts-expect-error process is a nodejs global
+// @types/node provides `process` typing; no ts-expect-error needed.
 const host = process.env.TAURI_DEV_HOST;
 
 // https://vite.dev/config/
