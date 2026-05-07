@@ -1697,6 +1697,26 @@ pub async fn set_save_path(
     Ok(())
 }
 
+/// Read the current `games.save_path` for a game. Returns `None` (JSON `null`)
+/// when the user hasn't configured a save dir yet. Added in 05e so the Detail
+/// SavesTab can hydrate the read-only path Input on page mount without forcing
+/// the user to re-pick after restart. (Rule 2: missing critical functionality —
+/// `set_save_path` exists but no symmetric reader; the column lives in `games`
+/// but `row_to_game` doesn't surface it, keeping `Game` lean.)
+#[tauri::command]
+pub async fn get_save_path(
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<Option<String>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let row = sqlx::query("SELECT save_path FROM games WHERE id = ?")
+        .bind(game_id)
+        .fetch_one(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(row.try_get::<Option<String>, _>("save_path").unwrap_or(None))
+}
+
 #[tauri::command]
 pub async fn list_save_backups(
     game_id: i64,

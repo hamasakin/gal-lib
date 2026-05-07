@@ -169,6 +169,7 @@ pub fn run() {
             commands::set_screenshot_interval,
             commands::get_screenshot_settings,
             commands::set_save_path,
+            commands::get_save_path,
             commands::list_save_backups,
             commands::create_save_backup,
             commands::restore_save_backup,

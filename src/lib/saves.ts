@@ -56,6 +56,19 @@ export async function setSavePath(
 }
 
 /**
+ * Read the currently-configured `games.save_path` for a game. Returns `null`
+ * when the user hasn't yet picked a directory (or after they cleared it via
+ * `setSavePath(gameId, null)`).
+ *
+ * Added in 05e (companion reader for `setSavePath`) so the Detail SavesTab
+ * can show the user the absolute path they previously selected without
+ * forcing a re-pick on every restart.
+ */
+export async function getSavePath(gameId: number): Promise<string | null> {
+  return invoke<string | null>("get_save_path", { gameId });
+}
+
+/**
  * List save-backup rows for a game, newest first
  * (`ORDER BY created_at DESC`). Returns `[]` when the game has none.
  */

@@ -89,6 +89,8 @@ import {
 } from "@/components/ui/tabs";
 import { StarRating } from "@/components/library/StarRating";
 import { TagPicker } from "@/components/library/TagPicker";
+import { ScreenshotsTab } from "@/components/library/ScreenshotsTab";
+import { SavesTab } from "@/components/library/SavesTab";
 import {
   listGames,
   updateGameFavorite,
@@ -104,6 +106,10 @@ import {
   type SessionRow,
 } from "@/lib/launch";
 import { listGameTags, listTags, type Tag } from "@/lib/tags";
+import {
+  getScreenshotSettings,
+  setScreenshotInterval,
+} from "@/lib/screenshots";
 import { useLibraryStore } from "@/store/library";
 import { cn } from "@/lib/utils";
 
@@ -124,6 +130,23 @@ const STATUS_OPTIONS: Array<{
   { value: "playing", label: "游玩中" },
   { value: "cleared", label: "已通关" },
   { value: "dropped", label: "已弃" },
+];
+
+/**
+ * Locked Chinese labels for the per-game screenshot cadence select (设置 tab,
+ * Phase 5 / 05e). Backend stores the seconds value in
+ * `games.screenshot_interval_sec` (0 = disabled). 60s lower-bound is enforced
+ * by the orchestrator (silently clamped) so we never offer a value below it.
+ */
+const SCREENSHOT_INTERVAL_OPTIONS: Array<{
+  value: number;
+  label: string;
+}> = [
+  { value: 60, label: "60 秒" },
+  { value: 300, label: "5 分钟" },
+  { value: 600, label: "10 分钟" },
+  { value: 1800, label: "30 分钟" },
+  { value: 0, label: "关闭" },
 ];
 
 const STATUS_LABELS: Record<Game["status"], string> = {
@@ -221,6 +244,15 @@ export default function Detail() {
   const [allTags, setAllTags] = useState<Tag[]>([]);
   const [gameTags, setGameTags] = useState<Tag[]>([]);
 
+  // ── 截图间隔 state (05e / 设置 tab) ──────────────────────────────────────
+  // `null` while the initial fetch is in flight; once resolved we bind the
+  // Select to the integer (seconds). The Select's value is stringified for
+  // shadcn compatibility (Radix only takes string values), and converted
+  // back to number on change.
+  const [screenshotInterval, setScreenshotIntervalState] = useState<
+    number | null
+  >(null);
+
   // Track whether the notes textarea content was just hydrated from the DB
   // (vs. user-edited). Prevents the autosave effect from firing once on
   // mount with the freshly-loaded value.
@@ -279,6 +311,15 @@ export default function Detail() {
       .catch((e: unknown) => {
         // eslint-disable-next-line no-console
         console.error("[Detail] listGameTags failed:", e);
+      });
+
+    // Hydrate the screenshot-cadence select. Defaults to 300s on the backend
+    // when the row was created pre-05e (column has DEFAULT 300).
+    getScreenshotSettings(gameId)
+      .then(setScreenshotIntervalState)
+      .catch((e: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("[Detail] getScreenshotSettings failed:", e);
       });
   }, [gameId, setSessionsForGame, refreshGame]);
 
@@ -431,6 +472,22 @@ export default function Detail() {
     }
   }
 
+  /**
+   * Persist the per-game screenshot cadence (设置 tab → 截图间隔 select).
+   * Optimistically updates local state on success; backend handles the
+   * "0 = disable, < 60 silently clamps to 60" edge cases (see
+   * `set_screenshot_interval` in commands.rs).
+   */
+  async function onSetScreenshotInterval(next: number) {
+    try {
+      await setScreenshotInterval(gameId, next);
+      setScreenshotIntervalState(next);
+      toast.success("已设置截图间隔");
+    } catch (e: unknown) {
+      toast.error(`设置截图间隔失败 — ${String(e)}`);
+    }
+  }
+
   /** Save launch config without launching (设置 tab affordance). */
   async function onSaveLaunchConfig() {
     if (!game) return;
@@ -573,6 +630,8 @@ export default function Detail() {
             <TabsTrigger value="tags">标签</TabsTrigger>
             <TabsTrigger value="notes">笔记</TabsTrigger>
             <TabsTrigger value="sessions">会话历史</TabsTrigger>
+            <TabsTrigger value="screenshots">截图</TabsTrigger>
+            <TabsTrigger value="saves">存档</TabsTrigger>
             <TabsTrigger value="settings">设置</TabsTrigger>
           </TabsList>
 
@@ -666,6 +725,16 @@ export default function Detail() {
             )}
           </TabsContent>
 
+          {/* ── 截图 (05e) ───────────────────────────────────────────── */}
+          <TabsContent value="screenshots" className="pt-4">
+            <ScreenshotsTab gameId={gameId} dataDir={dataDir} />
+          </TabsContent>
+
+          {/* ── 存档 (05e) ───────────────────────────────────────────── */}
+          <TabsContent value="saves" className="pt-4">
+            <SavesTab game={game} dataDir={dataDir} />
+          </TabsContent>
+
           {/* ── 设置 (启动配置) ──────────────────────────────────────── */}
           <TabsContent value="settings" className="space-y-4 pt-4">
             <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
@@ -715,6 +784,26 @@ export default function Detail() {
                   onChange={(e) => setExePath(e.target.value)}
                   placeholder="留空 = 自动识别"
                 />
+              </label>
+              <label className="space-y-1">
+                <span className="text-label text-muted-foreground">
+                  截图间隔
+                </span>
+                <Select
+                  value={String(screenshotInterval ?? 300)}
+                  onValueChange={(v) => void onSetScreenshotInterval(Number(v))}
+                >
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SCREENSHOT_INTERVAL_OPTIONS.map((opt) => (
+                      <SelectItem key={opt.value} value={String(opt.value)}>
+                        {opt.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </label>
             </div>
             <div className="flex justify-end">
