@@ -30,7 +30,7 @@
 
 ### Launching（启动器与转区）
 
-- [ ] **LAUNCH-01**: 系统自动检测 Locale Emulator 安装路径（注册表 + 常见路径），允许用户手动指定
+- [x] **LAUNCH-01**: 系统自动检测 Locale Emulator 安装路径（注册表 + 常见路径），允许用户手动指定
 - [ ] **LAUNCH-02**: 用户可以点击启动按钮通过 LE 一键转区启动游戏
 - [ ] **LAUNCH-03**: 用户可以为每款游戏选择 LE profile（简体/繁体/日文/自定义）
 - [ ] **LAUNCH-04**: 用户可以为每款游戏自定义启动参数和工作目录（cwd）
@@ -148,7 +148,7 @@
 | META-07 | Phase 2 | Pending |
 | LIB-02 | Phase 2 | Complete |
 | LIB-06 | Phase 2 | Complete |
-| LAUNCH-01 | Phase 3 | Pending |
+| LAUNCH-01 | Phase 3 | Complete |
 | LAUNCH-02 | Phase 3 | Pending |
 | LAUNCH-03 | Phase 3 | Pending |
 | LAUNCH-04 | Phase 3 | Pending |

@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-03a-PLAN.md (Phase 3 schema v3 + winreg/sysinfo/windows-rs lockup; ready for 03b LE detector)
-last_updated: "2026-05-07T14:07:32.000Z"
-last_activity: 2026-05-07 -- Phase 3 plan 03a executed (schema v3 migration + Phase 3 Rust crates locked)
+stopped_at: Completed 03-03b-PLAN.md (LE detector + le_path resolver; ready for 03c process_track)
+last_updated: "2026-05-07T14:14:25.000Z"
+last_activity: 2026-05-07 -- Phase 3 plan 03b executed (Locale Emulator path detection + config.json persistence)
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 13
-  percent: 72
+  completed_plans: 14
+  percent: 78
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 3 (launch-playtime) — IN PROGRESS
-Plan: 1 of 6 complete (03a done — schema v3 + Rust crate lockup); next is 03b (LE detector)
-Status: Ready to execute 03b
-Last activity: 2026-05-07 -- Phase 3 plan 03a executed
+Plan: 2 of 6 complete (03b done — LE detector + le_path resolver); next is 03c (process_track)
+Status: Ready to execute 03c
+Last activity: 2026-05-07 -- Phase 3 plan 03b executed
 
-Progress: [█████████░] 72% (13/18 plans complete; Phase 3 wave 1/6 done)
+Progress: [██████████] 78% (14/18 plans complete; Phase 3 wave 2/6 done)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 13 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a)
+- Total plans completed: 14 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03b)
 - Average duration: ~30min/plan
-- Total execution time: ~6.6 hours
+- Total execution time: ~6.7 hours
 
 **By Phase:**
 
@@ -46,18 +46,19 @@ Progress: [█████████░] 72% (13/18 plans complete; Phase 3 wa
 |-------|-------|-------|----------|
 | 1. Foundation | 6 | ~3h | ~30min |
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
-| 3. Launch & Playtime | 1/6 | ~6min so far | ~6min |
+| 3. Launch & Playtime | 2/6 | ~9min so far | ~4.5min |
 
 **Recent Trend:**
 
-- Last 6 plans: 02b → 02c → 02d → 02e → 02f → 03a
-- Trend: 03a was a fast foundation lockup (1 task, 1 atomic commit, 1 Rule-1 fix for over-strict ADD-COLUMN substring count, 1 Rule-1 fix for v2 test's len-equality assertion that would have flipped under v3)
+- Last 6 plans: 02c → 02d → 02e → 02f → 03a → 03b
+- Trend: 03b was another fast pure-Rust addition (1 task, 1 atomic commit, 0 deviations, 2 unit tests green); foundation work continuing to be sub-10min per plan
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
 | Phase 02 P02e | 30min | 2 tasks | 4 files |
 | Phase 02 P02f | 35min | 3 tasks | 11 files (5 new + 6 modified) |
 | Phase 03 P03a | 6min | 1 task | 4 files (1 new + 3 modified) |
+| Phase 03 P03b | 3min | 1 task | 5 files (2 new + 3 modified) |
 
 ## Accumulated Context
 
@@ -99,6 +100,10 @@ Recent decisions affecting current work:
 - **03a**: schema v3 migration adds 3 launch-config cols on games (le_profile NOT NULL DEFAULT 'Japanese' / launch_args / cwd) + 2 status cols on sessions (status with locked CHECK('starting','running','completed','launch_failed','cancelled') DEFAULT 'completed' + exit_code); contract is asserted in db.rs unit test
 - **03a**: Phase 3 Rust crates locked once at foundation step — winreg 0.52 (registry, 03b), sysinfo 0.32 (process listing, 03c), windows 0.58 with [Win32_System_Threading, Win32_System_ProcessStatus, Win32_Foundation, Win32_System_Diagnostics_ToolHelp] features (OpenProcess + WaitForSingleObject + ToolHelp32, 03c); tray-icon Tauri feature deferred to 03e
 - **03a**: Migration test counts non-comment ADD-COLUMN lines (filter `!line.trim_start().starts_with("--")`) instead of raw substring matches — protects against future doc comments that mention "ADD COLUMN"
+- **03b**: LE detection 3-tier strategy (registry HKCU\Software\LocaleEmulator → 4 common paths incl. %LOCALAPPDATA%/Program Files{x64,x86}/D:\ → PATH scan); cache-first resolver in `data/config.json::le_path` with stale-path fallback to re-detect (resilient to LE uninstall/move between sessions)
+- **03b**: `launch/` is library-pure (no Tauri command registration here — that's 03d); keeps `cargo test --lib` green without dragging the Tauri runtime into unit tests; `tempfile = "3"` added to [dev-dependencies] only (release binary size unchanged)
+- **03b**: `expand_env` is intentionally minimal — substitutes only `%LOCALAPPDATA%` (the only token used in COMMON_PATHS); broader expansion would invite unintended substitutions in user-supplied paths
+- **03b**: `set_le_path` validates `path.exists()` before persisting → never write a path the launcher will fail on later (LeError::InvalidPath)
 
 ### Pending Todos
 
@@ -118,6 +123,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-07T14:07:32.000Z
-Stopped at: Completed 03-03a-PLAN.md (Phase 3 wave 1/6 — schema v3 migration + winreg/sysinfo/windows-rs Cargo lockup)
+Last session: 2026-05-07T14:14:25.000Z
+Stopped at: Completed 03-03b-PLAN.md (Phase 3 wave 2/6 — LE detector + le_path resolver in `launch::le`)
 Resume file: None
