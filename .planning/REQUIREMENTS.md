@@ -82,13 +82,13 @@
 ### Screenshots（截图管理）
 
 - [ ] **SHOT-01**: 游戏运行期间自动收集截图（监听全局 PrintScreen 或定时机制）到 `data/screenshots/<game_id>/`
-- [ ] **SHOT-02**: 用户可以在游戏详情页查看、导出、删除截图
+- [x] **SHOT-02**: 用户可以在游戏详情页查看、导出、删除截图
 
 ### Saves（存档管理）
 
-- [ ] **SAVE-01**: 用户可以为每款游戏配置存档目录路径
+- [x] **SAVE-01**: 用户可以为每款游戏配置存档目录路径
 - [ ] **SAVE-02**: 用户可以触发存档备份（带时间戳保存到 `data/saves/<game_id>/<timestamp>/`）
-- [ ] **SAVE-03**: 用户可以查看历史备份列表并恢复任意一份
+- [x] **SAVE-03**: 用户可以查看历史备份列表并恢复任意一份
 
 ### App / Distribution（应用形态与分发）
 
@@ -176,10 +176,10 @@
 | STATS-01 | Phase 5 | Complete (05d) |
 | STATS-02 | Phase 5 | Complete (05d) |
 | SHOT-01 | Phase 5 | Pending |
-| SHOT-02 | Phase 5 | Pending |
-| SAVE-01 | Phase 5 | Pending |
+| SHOT-02 | Phase 5 | Complete (05e) |
+| SAVE-01 | Phase 5 | Complete (05e) |
 | SAVE-02 | Phase 5 | Pending |
-| SAVE-03 | Phase 5 | Pending |
+| SAVE-03 | Phase 5 | Complete (05e) |
 
 **Coverage:**
 - v1 requirements: 53 total
@@ -188,4 +188,4 @@
 
 ---
 *Requirements defined: 2026-05-06*
-*Last updated: 2026-05-07 after 03d (LAUNCH-03/04/05 + TIME-04 backend complete)*
+*Last updated: 2026-05-08 after 05e (SHOT-02 + SAVE-01 + SAVE-03 complete; Phase 5 / v1 milestone complete)*

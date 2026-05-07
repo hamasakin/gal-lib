@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: executing
-stopped_at: "Completed 05-05d-PLAN.md (Phase 5 wave 4/5 — Stats route /stats + Sidebar 统计 nav; period select + trend AreaChart + top-N BarChart)."
+status: complete
+stopped_at: "Completed 05-05e-PLAN.md (Phase 5 wave 5/5 FINAL — Detail page extensions: ScreenshotsTab + SavesTab + 截图间隔 select). Phase 5 complete; v1 milestone complete."
 last_updated: "2026-05-08T00:00:00Z"
-last_activity: 2026-05-08 -- Phase 5 wave 4 (05d) complete
+last_activity: 2026-05-08 -- Phase 5 wave 5 (05e) complete; v1 milestone complete
 progress:
   total_phases: 5
-  completed_phases: 4
+  completed_phases: 5
   total_plans: 29
-  completed_plans: 28
-  percent: 97
+  completed_plans: 29
+  percent: 100
 ---
 
 # Project State
@@ -25,20 +25,20 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 
 ## Current Position
 
-Phase: 5 (stats-media) — IN PROGRESS
-Plan: 4 of 5 complete (05d done — /stats route + Sidebar 统计 nav; next: 05e — Detail tabs 截图/存档 wiring)
-Status: Ready to execute
-Last activity: 2026-05-08 -- Phase 5 wave 4 (05d) complete
+Phase: 5 (stats-media) — COMPLETE
+Plan: 5 of 5 complete (05e done — Detail page extensions: ScreenshotsTab + SavesTab + 截图间隔 select)
+Status: v1 milestone complete
+Last activity: 2026-05-08 -- Phase 5 wave 5 (05e) complete; v1 milestone complete
 
-Progress: [███████████████████░] 97% (28/29 plans complete; Phase 5 wave 4/5 complete)
+Progress: [████████████████████] 100% (29/29 plans complete; Phase 5 5/5 complete; v1 milestone done)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 28 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04f + Phase 5: 05a-05d)
+- Total plans completed: 29 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04f + Phase 5: 05a-05e)
 - Average duration: ~19min/plan
-- Total execution time: ~9 hours
+- Total execution time: ~9.5 hours
 
 **By Phase:**
 
@@ -48,12 +48,13 @@ Progress: [███████████████████░] 97% (28
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
 | 3. Launch & Playtime | 6/6 | ~41min | ~6.8min |
 | 4. Library Polish | 6/6 | ~68min | ~11.3min |
-| 5. Stats & Media | 4/5 | ~48min | ~12min |
+| 5. Stats & Media | 5/5 | ~70min | ~14min |
 
 **Recent Trend:**
 
-- Last 6 plans: 04e → 04f → 05a → 05b → 05c → 05d
-- Trend: Phase 5 wave-4 (05d) Stats route + Sidebar 统计 nav. New `src/routes/Stats.tsx` (~227 lines) — read-only stats page composing 05a/05b/05c pipeline: locked title `游玩统计` + shadcn `<Select>` period control (每日/每周/每月) + recharts `<AreaChart>` (X bucket key, Y hours, unit `h`, fillOpacity=0.25) + horizontal `<BarChart>` (Y category = name_cn ?? name, X numeric = total_playtime_sec/3600). Period→days resolver `daysForPeriod()` centralizes mapping (daily=30 / weekly=84 / monthly=365). Effect re-fetches `getPlaytimeTrend(period, days)` + `getTopGames(15)` on every period change; uses store slices (`trend`, `topGames`) as render source so re-mounts after sidebar nav round-trip paint instantly. Recharts color tokens locked: stroke/fill = `hsl(var(--ring))`, axes = `hsl(var(--muted-foreground))`, grid = `hsl(var(--border))` 3-3 dash, tooltip bg = `hsl(var(--card))` border + 6px radius. Empty fallbacks: `还没有游玩记录 — 启动游戏开始记录` + `还没有游戏 — 请到设置页扫描游戏库`. router.tsx (+3 lines) registers `/stats` child route under `<App />` layout (HashRouter). Sidebar.tsx (+~30 lines) imports `BarChart3` from lucide, adds `isStatsActive` flag, renders 统计 nav button above 设置 (per CONTEXT) with identical class composition + 2px bg-ring left bar + bg-accent active state — both render as sibling buttons (not NavLink) to mirror the existing 设置 button styling verbatim. Detail.tsx untouched (05e scope). pnpm typecheck + vite build green (built in 3.99s, 2793 modules transformed). 0 deviations — plan executed exactly as written. 1 commit (d3598f8).
+- Last 6 plans: 04f → 05a → 05b → 05c → 05d → 05e
+- Trend: Phase 5 wave-5 FINAL (05e) Detail page extensions — ScreenshotsTab + SavesTab tabs + 截图间隔 select in 设置 tab. New `src/components/library/ScreenshotsTab.tsx` (~280 lines): mount calls `getScreenshots(gameId)` → `useLibraryStore.screenshotsByGame[gameId]` cache; 3-col CSS Grid aspect-square tiles with `convertFileSrc(dataDir + '/' + path)` asset:// thumbnails + `<ImageOff>` fallback; hover overlay (group-hover:opacity-100, black/40 backdrop) reveals 2 icon "buttons" (`<span role="button">` to avoid nested-button warning since tile is a `<button>` for click-to-lightbox) — Download → `plugin-dialog.save({filters:[PNG]})` → `exportScreenshot(id, target)`, Trash2 → AlertDialog `确定删除这张截图？` → `deleteScreenshot(id)` + refetch + `已删除截图` toast; lightbox = shadcn `<Dialog>` `max-w-[80vw]` + `<img max-h-[85vh] object-contain>` + sr-only `<DialogTitle>`; loaded flag prevents empty-state flash during initial fetch. New `src/components/library/SavesTab.tsx` (~330 lines): mount fetches `getSavePath(gameId)` (Rule 2 reader) and `listSaveBackups(gameId)` in parallel; readonly Input + 选择... Button → `plugin-dialog.open({directory:true})` → `setSavePath(gameId, picked)` + `已设置存档目录` toast; `备份当前存档` Button (disabled when savePath empty) → AlertDialog `确定备份？将复制存档目录到 data/saves/{game_id}/{timestamp}/` → `createSaveBackup(gameId, null)` + refetch; 4-col table (时间/文件数/大小/操作) with locale timestamp + B/KB/MB/GB formatter; per-row 恢复 button → AlertDialog `确定恢复此备份？将覆盖当前存档目录` → `restoreSaveBackup(id)` + `已恢复存档` toast; per-row 删除 button → AlertDialog `确定删除此备份？此操作不可恢复` → `deleteSaveBackup(id)` + refetch; empty state `还没有存档备份 — 配置存档目录后点上方按钮开始备份`. Detail.tsx changes: TabsList 5→7 triggers (added 截图 + 存档), 2 new TabsContent rendering the components, 设置 tab gains a 截图间隔 Select (60s/5min/10min/30min/关闭=0) bound to screenshotInterval state — hydrated on mount via `getScreenshotSettings(gameId)`, onValueChange fires `setScreenshotInterval(gameId, Number(v))` + `已设置截图间隔` toast; SCREENSHOT_INTERVAL_OPTIONS const declared module-scope. Backend (Rule 2 deviation): added `get_save_path(game_id) -> Option<String>` command in commands.rs (~22 lines) + registered in lib.rs invoke_handler — symmetric reader for existing `set_save_path` writer; without it, SavesTab Input would render empty after every restart even though `games.save_path` is correctly persisted; alternative (extending row_to_game with save_path/screenshot_interval_sec) rejected because it would broaden public Game type unnecessarily. `src/lib/saves.ts` gains `getSavePath` wrapper. pnpm typecheck + vite build green; cargo check green (4 pre-existing dead-code warnings on unrelated modules). 1 deviation (Rule-2 get_save_path reader). 1 commit (1d172c1). **Phase 5 complete; v1 milestone complete.**
+- Trend (prev): Phase 5 wave-4 (05d) Stats route + Sidebar 统计 nav.
 - Trend (prev): Phase 5 wave-3 (05c) frontend invoke layer.
 - Trend (prev): Phase 5 wave-2 (05b) backend stats + screenshots + saves. New `src-tauri/src/screenshot.rs` with `capture_to_disk(data_dir, game_id)` — `Screen::all()` → primary monitor → `capture()` → raw RGBA bytes streamed via `png::Encoder` (BufWriter<File>) directly to `data/screenshots/<game_id>/<unix_ts>.png` (skips `image::write_to` because screenshots 0.8 internally re-exports image v0.24 vs project's v0.25 — incompatible RgbaImage types; encoding via `png` crate avoids the cross-version friction). New `src-tauri/src/save_backup.rs` with `create_backup` (walkdir recursive copy → `data/saves/<game_id>/<ts>/` → BackupResult{file_count, total_size_bytes}), `restore_backup`, `delete_backup_dir` + 3 unit tests (round-trip + 2 missing-source). `launch::orchestrator::launch_game` now reads `games.screenshot_interval_sec` and spawns a parallel `tokio::time::interval(period.max(60s))` task that calls capture_to_disk + INSERTs into screenshots table; the wait-for-exit task and screenshot task share an `Arc<AtomicBool>` cancel flag flipped at every terminal transition (end_session/mark_failed/launch-failed) — replaces the plan's "use existing flag" assumption (no flag existed prior). 12 new Tauri commands in `commands.rs`: `get_playtime_trend(period, days)` (strftime daily/weekly/monthly bucketing + `datetime('now', '-N days')` window over sessions in completed/cancelled status), `get_top_games(limit ∈ 1..=50)`, `get_screenshots/delete_screenshot/export_screenshot`, `set_screenshot_interval/get_screenshot_settings`, `set_save_path/list_save_backups/create_save_backup/restore_save_backup/delete_save_backup`. lib.rs registers all 12 in `generate_handler!` (43 commands total = 31 prior + 12 new + get_data_dir). cargo check + cargo test --lib green (41/41 = 38 prior + 3 new save_backup). 4 deviations: Rule-1 fix for `RgbaImage::to_png` API mismatch (plan's example called a method that doesn't exist on screenshots-0.8 RgbaImage — switched to png-crate streaming), Rule-2 fix to introduce the missing AtomicBool cancel flag, Rule-1 fix for SaveError::NotConfigured dead-code warning (added allow + reserved-future-use doc), and one note about plan's "44 entries" claim being off-by-one vs actual 43 (plan likely double-counted get_data_dir). 2 commits (a90eb88, 365051e).
 - Trend (prev): Phase 5 wave-1 (05a) lockup. schema v5 migration (games +screenshot_interval_sec/+save_path; new screenshots + save_backups tables w/ FK CASCADE + 2 indexes; bump schema_version → 5). Rust crates `screenshots = 0.8.10` (cross-platform desktop capture, Windows DXGI/GDI fallback) + `png = 0.17` (pure-Rust encoder; no libpng) for 05b SHOT-01. npm `recharts` pinned to ^2.12 → 2.15.4 (initial `pnpm add recharts` resolved to 3.8.1, re-ran with explicit ^2.12 to honor plan must_haves). db.rs registers V5 via 5th `Migration` entry; new unit test `migrations_v5_adds_screenshots_and_saves` (38/38 lib tests pass = 37 prior + 1 new). v4 test relaxed `len == 4` → `len >= 4` so v5 registration doesn't break it. Smoke: pnpm tauri dev triggered migration; `app_meta.schema_version=5` confirmed via sqlite3. Three Rule-1 deviations (test assertion bugs caught + fixed iteratively before commit). 1 commit (af7b91a).
@@ -79,6 +80,7 @@ Progress: [███████████████████░] 97% (28
 | Phase 05 P05b | 25min | 2 tasks | 5 files (2 new + 3 modified) |
 | Phase 05 P05c | 8min | 1 task | 4 files (3 new + 1 modified) |
 | Phase 05 P05d | 5min | 1 task | 3 files (1 new + 2 modified) |
+| Phase 05 P05e | 22min | 1 task | 6 files (2 new + 4 modified) |
 
 ## Accumulated Context
 
@@ -188,6 +190,7 @@ Recent decisions affecting current work:
 - **05b**: Tauri command count = 43 (31 prior + get_data_dir + 12 new in 05b). Plan's must_haves stated "44 (32 prior + 12 new)" — off-by-one in the prior count (likely included a non-handler `manage` registration). Functional correctness criterion (all 12 new commands wired) verified via grep; the count discrepancy is a plan-level artifact, not a functional gap
 - **05c**: Frontend invoke layer for Phase 5 = 3 new files (`src/lib/stats.ts` / `src/lib/screenshots.ts` / `src/lib/saves.ts`) wrapping all 12 backend commands as typed `invoke<T>` calls; TS shape mirrors Rust struct serialization (snake_case preserved, no `rename_all`); Zustand store extended with 4 new slices (trend / topGames / screenshotsByGame / saveBackupsByGame) + setters following existing `setSessionsForGame`-style per-game keyed Records; setters NOT auto-fetching (purely state-holding store, UI owns lifecycle — matches 03/04 conventions)
 - **05d**: Stats route at `/stats` is the FIRST consumer of the `trend` + `topGames` store slices wired in 05c; renders period select (每日/每周/每月) + AreaChart trend + horizontal BarChart top-15. Read-only page, only side-effect = the two stats invokes on period change. Period→days mapping locked: daily=30, weekly=84, monthly=365 (chosen so each bucket renders ~12-30 readable points). Recharts color tokens centralized via CSS vars (hsl(var(--ring)) for series + hsl(var(--muted-foreground)) for axes + hsl(var(--card)) for tooltip bg) — coherent with shell theme. Sidebar 统计 nav rendered as sibling button (NOT NavLink) above 设置 with identical class composition — keeps shadcn-free convention used elsewhere in Sidebar; order locked by 05-CONTEXT §Stats Page
+- **05e**: 7-tab Detail (rejected the 5-tab + sub-tab option from 05-CONTEXT; the 7 tabs all carry direct domain meaning, none are utility tabs that would benefit from grouping) — shadcn TabsList variant="line" renders 7 triggers cleanly within the existing 960px max-width. ScreenshotsTab uses `<span role="button">` for hover-overlay action buttons (NOT nested `<button>`) because the parent thumbnail tile is itself a `<button>` for click-to-lightbox — avoids React's "button cannot be a descendant of button" warning while preserving keyboard parity (tabIndex/aria-label/onKeyDown for Enter/Space). Lightbox is a single shadcn Dialog (no carousel / keyboard nav per 05-CONTEXT P5-simplified decision; carousel deferred to Phase 6+). Tauri plugin-dialog directional API: open({directory:true}) for save_path picker; save({filters:[PNG]}) for screenshot export — both return null on user-cancel and are null-checked before invoke. screenshot interval Select binds to STRINGIFIED seconds (Radix v1 Select only accepts string values); options 60/300/600/1800/0=关闭 with 0 mapping to backend's "disabled" sentinel handled inside set_screenshot_interval. Filesystem-derived metadata (file_count, total_size_bytes) NEVER recomputed in frontend — backend stores them at backup time and SavesTab reads from the row, so the table doesn't re-walk the dir on every render. **Rule-2 reader** `get_save_path(game_id)` added (~22 lines): plan said "no backend changes" but `set_save_path` had no symmetric reader — without it, SavesTab Input would render empty after every restart despite `games.save_path` being correctly persisted; the alternative (extending row_to_game with save_path/screenshot_interval_sec) was rejected to keep the public Game type lean and avoid downstream type changes. **Phase 5 / v1 milestone complete.**
 
 ### Pending Todos
 
@@ -208,5 +211,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-05-08T00:00:00Z
-Stopped at: Completed 05-05d-PLAN.md (Phase 5 wave 4/5 — Stats route /stats + Sidebar 统计 nav; period select + AreaChart trend + BarChart top-15); 28/29 plans done. Next: 05e (Detail tabs 截图/存档 wiring).
+Stopped at: Completed 05-05e-PLAN.md (Phase 5 wave 5/5 FINAL — Detail page extensions: ScreenshotsTab + SavesTab + 截图间隔 select in 设置 tab); 29/29 plans done. **v1 milestone complete.**
 Resume file: None
