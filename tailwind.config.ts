@@ -55,11 +55,17 @@ export default {
         ],
       },
       fontSize: {
-        // UI-SPEC §Typography — 4-tier scale locked
+        // UI-SPEC §Typography — 4-tier scale locked (P1)
         body: ["14px", { lineHeight: "1.5", fontWeight: "400" }],
         label: ["13px", { lineHeight: "1.4", fontWeight: "500" }],
         h2: ["18px", { lineHeight: "1.4", fontWeight: "600" }],
         display: ["13px", { lineHeight: "1.0", fontWeight: "500" }],
+        // 02-UI-SPEC §Typography — H3 added as 5th tier (P2)
+        h3: ["16px", { lineHeight: "1.4", fontWeight: "600" }],
+      },
+      // 02-UI-SPEC §Game Card — 3:4 cover aspect ratio token (P2)
+      aspectRatio: {
+        cover: "3 / 4",
       },
     },
   },

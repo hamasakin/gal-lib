@@ -108,7 +108,7 @@ pub fn run() {
             commands::search_metadata,
             commands::bind_metadata,
             commands::refresh_metadata,
-            // 02f appends list_games here
+            commands::list_games,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

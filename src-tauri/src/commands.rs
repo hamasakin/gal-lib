@@ -435,6 +435,84 @@ pub async fn refresh_metadata(
     Ok(())
 }
 
+// ── games read API (02f) ────────────────────────────────────────────────────
+
+/// JSON shape returned by `list_games`. Mirrors the `games` table 1:1 so the
+/// frontend `Game` interface in `src/lib/games.ts` lines up column-for-column.
+///
+/// All Option<T> columns deserialize to `null` over the wire (Tauri uses
+/// serde-json default Some/None handling).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Game {
+    pub id: i64,
+    pub path: String,
+    pub name: String,
+    pub name_cn: Option<String>,
+    pub executable_path: Option<String>,
+    pub cover_path: Option<String>,
+    pub cover_url: Option<String>,
+    pub bangumi_id: Option<String>,
+    pub vndb_id: Option<String>,
+    pub total_playtime_sec: i64,
+    pub last_played_at: Option<String>,
+    pub status: String,
+    pub rating: Option<i64>,
+    pub notes: Option<String>,
+    pub metadata_source: Option<String>,
+    pub match_confidence: Option<i64>,
+    pub last_scanned_at: Option<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// Read every row from `games`, ordered by `created_at DESC`.
+///
+/// Phase 2 has no filter / pagination surface — the Library grid renders the
+/// full rowset and virtualizes client-side. Phase 4 will likely introduce
+/// server-side filtering (status / tags / search) and paging.
+#[tauri::command]
+pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query(
+        "SELECT id, path, name, name_cn, executable_path, cover_path, cover_url, \
+                bangumi_id, vndb_id, total_playtime_sec, last_played_at, status, \
+                rating, notes, metadata_source, match_confidence, last_scanned_at, \
+                created_at, updated_at \
+         FROM games ORDER BY created_at DESC",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(Game {
+            id: row.try_get("id").map_err(err_str)?,
+            path: row.try_get("path").map_err(err_str)?,
+            name: row.try_get("name").map_err(err_str)?,
+            name_cn: row.try_get("name_cn").ok(),
+            executable_path: row.try_get("executable_path").ok(),
+            cover_path: row.try_get("cover_path").ok(),
+            cover_url: row.try_get("cover_url").ok(),
+            bangumi_id: row.try_get("bangumi_id").ok(),
+            vndb_id: row.try_get("vndb_id").ok(),
+            total_playtime_sec: row.try_get("total_playtime_sec").unwrap_or(0),
+            last_played_at: row.try_get("last_played_at").ok(),
+            status: row
+                .try_get("status")
+                .unwrap_or_else(|_| "unplayed".to_string()),
+            rating: row.try_get("rating").ok(),
+            notes: row.try_get("notes").ok(),
+            metadata_source: row.try_get("metadata_source").ok(),
+            match_confidence: row.try_get("match_confidence").ok(),
+            last_scanned_at: row.try_get("last_scanned_at").ok(),
+            created_at: row.try_get("created_at").map_err(err_str)?,
+            updated_at: row.try_get("updated_at").map_err(err_str)?,
+        });
+    }
+    Ok(out)
+}
+
 // Avoid a dangling `Manager` import warning when no command uses it directly;
 // keep it imported so future additions (e.g. window-handle access) compile.
 #[allow(dead_code)]
