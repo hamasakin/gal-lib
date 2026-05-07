@@ -9,8 +9,8 @@
 
 ### Scanning（目录扫描与游戏识别）
 
-- [ ] **SCAN-01**: 用户可以添加 1 个或多个游戏库根目录，并可单独移除
-- [ ] **SCAN-02**: 用户可以为每个根目录单独配置扫描深度（默认 1 层，可选 1/2/3）
+- [x] **SCAN-01**: 用户可以添加 1 个或多个游戏库根目录，并可单独移除
+- [x] **SCAN-02**: 用户可以为每个根目录单独配置扫描深度（默认 1 层，可选 1/2/3）
 - [ ] **SCAN-03**: 用户可以触发全量或增量扫描，看到实时进度（当前目录、已完成数、总数）
 - [ ] **SCAN-04**: 扫描时按"第 N 层子目录 = 一款游戏"识别游戏边界
 - [ ] **SCAN-05**: 扫描自动从游戏目录内识别启动 exe（递归扫描 + 启发式打分排除安装/卸载/启动器/补丁）
@@ -131,8 +131,8 @@
 | APP-02 | Phase 1 | Pending |
 | APP-03 | Phase 1 | Pending |
 | LIB-01 | Phase 1 | Pending |
-| SCAN-01 | Phase 2 | Pending |
-| SCAN-02 | Phase 2 | Pending |
+| SCAN-01 | Phase 2 | Complete |
+| SCAN-02 | Phase 2 | Complete |
 | SCAN-03 | Phase 2 | Pending |
 | SCAN-04 | Phase 2 | Pending |
 | SCAN-05 | Phase 2 | Pending |

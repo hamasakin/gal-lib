@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-02d-PLAN.md (cover_cache + ingest + 9 tauri commands + plugins)
-last_updated: "2026-05-07T13:23:46.511Z"
+stopped_at: Completed 02-02e-PLAN.md (frontend invoke layer + Settings page CRUD)
+last_updated: "2026-05-07T14:30:00.000Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 10
-  percent: 83
+  completed_plans: 11
+  percent: 92
 ---
 
 # Project State
@@ -26,34 +26,35 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 2 (library-ingest) — EXECUTING
-Plan: 4 of 6 complete (next: 02d Tauri command surface — scan-progress event + cancel_scan / run_full_scan / run_incremental_scan commands)
+Plan: 5 of 6 complete (next: 02f — Library route GameGrid + virtualized cover grid + ScanProgressBar + tailwind H3/aspect-cover tokens)
 Status: Ready to execute
 Last activity: 2026-05-07
 
-Progress: [████████░░] 75%
+Progress: [█████████░] 92%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 9 (Phase 1: 6 + Phase 2: 02a, 02b, 02c)
+- Total plans completed: 11 (Phase 1: 6 + Phase 2: 02a, 02b, 02c, 02d, 02e)
 - Average duration: ~30min/plan
-- Total execution time: ~4.5 hours
+- Total execution time: ~6 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1. Foundation | 6 | ~3h | ~30min |
-| 2. Library Ingest | 3 | ~1.5h | ~30min |
+| 2. Library Ingest | 5 | ~3h | ~36min |
 
 **Recent Trend:**
 
-- Last 5 plans: 01e → 01f → 02a → 02b → 02c
-- Trend: Steady ~30min/plan; 02c added 13 unit tests (4 exe_score + 5 walker + 4 run_scan), all green; 1 Rule-2 deviation (lib.rs `mod scan;` had to land in Task 1 not Task 2 due to Rust crate-level module hard requirement)
+- Last 5 plans: 02a → 02b → 02c → 02d → 02e
+- Trend: 02d/02e are larger (75min / 30min) due to plugin-registration + Tauri-state + 9-command surface in 02d; 02e was a clean frontend wrap with 5 minor Rule-1/2/3 deviations (named-export mismatch, text-h3 token deferred to 02f, error-handling expansion, empty-state row, commit-message forward-promise)
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
+| Phase 02 P02e | 30min | 2 tasks | 4 files |
 
 ## Accumulated Context
 
@@ -82,6 +83,10 @@ Recent decisions affecting current work:
 - [Phase ?]: Cover cache returns relative path covers/{game_id}.{ext}; URL gated to http(s) only; Content-Type → ext mapping (jpg/png/webp); other types rejected
 - [Phase ?]: Ingest pipeline: Bangumi → VNDB fallback at ≥80 confidence threshold (per 02-CONTEXT lock); UPSERT in start_scan to allow re-scanning; COALESCE in bind/refresh to preserve existing cover/IDs on partial refresh
 - [Phase ?]: Tauri commands count = 10 (1 inherited + 9 new); 02f appends list_games as 11th; ScanState wraps Mutex<Option<Arc<ScanContext>>> so cancel/skip can reach in-flight scan from a different command
+- **02e**: Frontend invoke layer = thin per-domain helper files (scan.ts / metadata.ts) — no class wrapper, no client object; just typed `invoke<T>` calls + literal-typed unions for Tauri arg shapes (camelCase JS → snake_case Rust auto-converted)
+- **02e**: Library Zustand store mirrors src/store/app.ts (single create() + setters; no actions/middleware) — keeps room for Phase 4 to add games/filters/sort slices the same way
+- **02e**: Settings page = source-of-truth refresh after every mutation (no optimistic updates) — DB is canonical; depth change implemented as remove+re-add (no UPDATE command needed in 02d)
+- **02e**: Settings.tsx keeps NAMED export to match router.tsx import; section heading uses `text-base font-semibold` (16/600) since `text-h3` token addition is deferred to 02f's tailwind.config.ts work
 
 ### Pending Todos
 
@@ -101,6 +106,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-07T13:23:46.508Z
-Stopped at: Completed 02-02d-PLAN.md (cover_cache + ingest + 9 tauri commands + plugins)
+Last session: 2026-05-07T14:30:00.000Z
+Stopped at: Completed 02-02e-PLAN.md (frontend invoke layer + Settings page CRUD)
 Resume file: None
