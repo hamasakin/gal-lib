@@ -5,7 +5,9 @@ mod db;
 mod ingest;
 mod launch;
 mod metadata;
+mod save_backup;
 mod scan;
+mod screenshot;
 mod title_clean;
 mod tray;
 
