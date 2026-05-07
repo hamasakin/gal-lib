@@ -32,6 +32,9 @@ import type { Game } from "@/lib/games";
 import type { ActiveSession, SessionRow } from "@/lib/launch";
 import type { SearchFilter, SidebarCategories, SortBy } from "@/lib/search";
 import type { Tag } from "@/lib/tags";
+import type { TopGame, TrendPoint } from "@/lib/stats";
+import type { Screenshot } from "@/lib/screenshots";
+import type { SaveBackup } from "@/lib/saves";
 
 /**
  * Default sort key for the library grid. Matches the "show me what I played
@@ -118,6 +121,46 @@ interface LibraryState {
    */
   sidebar: SidebarCategories | null;
 
+  // ── Phase 5 / 05c: stats / screenshots / saves slices ────────────────────
+
+  /**
+   * Cached playtime-trend chart series (read-through of `getPlaytimeTrend()`).
+   * Empty array means either "no fetch yet" OR "no terminal sessions in
+   * window" — the consumer disambiguates via a separate loaded flag if
+   * needed (we keep this slice purely state-holding, no auto-refresh).
+   *
+   * Re-fetched whenever the user changes period/days on the stats page; the
+   * cache is shared across remounts so navigation back to the page is instant.
+   */
+  trend: TrendPoint[];
+  /**
+   * Cached top-N games list (read-through of `getTopGames()`). Sorted by
+   * `total_playtime_sec DESC` (mirror of the backend ORDER BY). Refreshed
+   * after any session ends (since `total_playtime_sec` advances) and on
+   * stats-page mount.
+   */
+  topGames: TopGame[];
+
+  /**
+   * Per-game screenshot cache, keyed by `game.id`. Populated lazily by the
+   * Detail page / screenshots gallery on mount via `getScreenshots(gameId)`.
+   * Same eviction philosophy as `sessionsByGame`: not auto-evicted (typical
+   * libraries are 50-500 games × ≤a few hundred screenshots, bounded enough).
+   *
+   * Re-set after any screenshot mutation (delete/auto-capture event) by
+   * re-calling `getScreenshots(gameId)` and replacing the per-game array.
+   */
+  screenshotsByGame: Record<number, Screenshot[]>;
+
+  /**
+   * Per-game save-backup cache, keyed by `game.id`. Populated lazily by the
+   * Detail page's "存档备份" tab on mount via `listSaveBackups(gameId)`.
+   * Re-set after create/restore/delete by re-calling the list invoke; we
+   * deliberately don't optimistic-update so DB-derived fields like
+   * `file_count` / `total_size_bytes` are always backend-authoritative.
+   */
+  saveBackupsByGame: Record<number, SaveBackup[]>;
+
   setScanRoots: (rs: ScanRoot[]) => void;
   setScanProgress: (p: ScanProgress | null) => void;
   setGames: (gs: Game[]) => void;
@@ -128,6 +171,10 @@ interface LibraryState {
   setFilter: (f: SearchFilter) => void;
   setTags: (ts: Tag[]) => void;
   setSidebar: (s: SidebarCategories | null) => void;
+  setTrend: (t: TrendPoint[]) => void;
+  setTopGames: (gs: TopGame[]) => void;
+  setScreenshotsForGame: (gameId: number, screenshots: Screenshot[]) => void;
+  setSaveBackupsForGame: (gameId: number, backups: SaveBackup[]) => void;
 }
 
 export const useLibraryStore = create<LibraryState>((set) => ({
@@ -141,6 +188,10 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   filter: EMPTY_FILTER,
   tags: [],
   sidebar: null,
+  trend: [],
+  topGames: [],
+  screenshotsByGame: {},
+  saveBackupsByGame: {},
   setScanRoots: (rs) => set({ scanRoots: rs }),
   setScanProgress: (p) => set({ scanProgress: p }),
   setGames: (gs) => set({ games: gs }),
@@ -154,4 +205,14 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   setFilter: (f) => set({ filter: f }),
   setTags: (ts) => set({ tags: ts }),
   setSidebar: (s) => set({ sidebar: s }),
+  setTrend: (t) => set({ trend: t }),
+  setTopGames: (gs) => set({ topGames: gs }),
+  setScreenshotsForGame: (gameId, screenshots) =>
+    set((st) => ({
+      screenshotsByGame: { ...st.screenshotsByGame, [gameId]: screenshots },
+    })),
+  setSaveBackupsForGame: (gameId, backups) =>
+    set((st) => ({
+      saveBackupsByGame: { ...st.saveBackupsByGame, [gameId]: backups },
+    })),
 }));
