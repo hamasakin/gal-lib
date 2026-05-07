@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-04e-PLAN.md (Phase 4 wave 5/6 — Full Detail page: Tabs + Notes autosave + StarRating + TagPicker).
+stopped_at: Completed 04-04f-PLAN.md (Phase 4 wave 6/6 FINAL — Settings page polish: TagManager + UIPreferences). Phase 4 complete.
 last_updated: "2026-05-08T00:00:00Z"
-last_activity: 2026-05-08 -- Phase 4 wave 5 (04e) executed
+last_activity: 2026-05-08 -- Phase 4 wave 6 (04f) executed; Phase 4 complete
 progress:
   total_phases: 5
-  completed_phases: 3
+  completed_phases: 4
   total_plans: 24
-  completed_plans: 23
-  percent: 96
+  completed_plans: 24
+  percent: 100
 ---
 
 # Project State
@@ -25,20 +25,20 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 
 ## Current Position
 
-Phase: 4 (library-polish)
-Plan: 5 of 6 complete (04a + 04b + 04c + 04d + 04e done — schema v4 + shadcn lockup + 13 backend commands + frontend invoke layer / store extensions + Library top bar UI + Sidebar polish + GameCard right-click + Full Detail page; next: 04f Settings page polish)
-Status: In progress
-Last activity: 2026-05-08 -- Phase 4 wave 5 (04e) executed
+Phase: 4 (library-polish) — COMPLETE
+Plan: 6 of 6 complete (04a + 04b + 04c + 04d + 04e + 04f done — schema v4 + shadcn lockup + 13 backend commands + frontend invoke layer / store extensions + Library top bar UI + Sidebar polish + GameCard right-click + Full Detail page + Settings polish; next: Phase 5 — Stats & Media)
+Status: Phase 4 complete; ready for Phase 5
+Last activity: 2026-05-08 -- Phase 4 wave 6 (04f) executed; Phase 4 complete
 
-Progress: [███████████████████░] 96% (23/24 plans complete; Phase 4 wave 5/6 done)
+Progress: [████████████████████] 100% (24/24 plans complete; Phase 4 complete)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 23 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04e)
+- Total plans completed: 24 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04f)
 - Average duration: ~21min/plan
-- Total execution time: ~8.2 hours
+- Total execution time: ~8.4 hours
 
 **By Phase:**
 
@@ -47,12 +47,12 @@ Progress: [███████████████████░] 96% (23
 | 1. Foundation | 6 | ~3h | ~30min |
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
 | 3. Launch & Playtime | 6/6 | ~41min | ~6.8min |
-| 4. Library Polish | 5/6 | ~56min | ~11.2min |
+| 4. Library Polish | 6/6 | ~68min | ~11.3min |
 
 **Recent Trend:**
 
-- Last 6 plans: 03f → 04a → 04b → 04c → 04d → 04e
-- Trend: Phase 4 wave-5 (04e) full Detail page rewrite. Two new library components: <StarRating> (5-star half-precision, hover-preview via PointerEvent.clientX vs. boundingClientRect.width geometry; click on current value clears for inline undo; DB scale 1..=10) and <TagPicker> (shadcn Popover + cmdk Command combo with staged-selection model that commits the diff via setGameTags(gameId, ids) on popover close; "创建新标签 'X'" CommandItem appears when no exact name match, immediate persist so Esc-close doesn't lose new tag). Detail.tsx full rewrite replaces P3 minimal: hero gets status Select / 收藏 Heart toggle / StarRating / 启动 button on a single affordance row; 5-tab body (简介 / 标签 / 笔记 / 会话历史 / 设置) with locked Chinese copy. 简介 uses react-markdown + remark-gfm (synthesized markdown blurb from brand + release_year + cover_url since schema v4 has no summary column yet). 笔记 autosave via useEffect[notes] setTimeout 800ms cleanup; "保存中..." / "已保存 N 秒前" status driven by lastSavedAt timestamp + 1Hz tick interval; notesHydratedRef.current flag suppresses one-shot autosave after listGames hydrate. 会话历史 auto-refetches via prevActiveRef when activeSession→null for THIS game (post-launch UX dead-spot fix, Rule 2). 设置 tab gets explicit '保存' button (split out from launch flow). pnpm typecheck + vite build green. 2 commits (6332454 + f447b7b).
+- Last 6 plans: 04a → 04b → 04c → 04d → 04e → 04f
+- Trend: Phase 4 wave-6 FINAL (04f) Settings page polish. Two new components in src/components/settings/: <TagManager> (full tag CRUD — list rows with colored dot + inline-edit row [Input + 8-color preset swatch picker + 保存/取消] + delete with AlertDialog confirm "确定删除标签『{name}』？已打的游戏会保留，但失去此标签关联"; single editing-state slot prevents parallel-edit UX confusion; "添加标签" button opens dashed-border draft row with id:null sentinel reusing the same commit code path; mutation refetch via listTags()→useLibraryStore.setTags so sidebar reflects new state; 8 preset colors slate/blue/emerald/amber/rose/violet/orange/pink as Tailwind v3 *-500 hex stored in tags.color) and <UIPreferences> (default-sort Select with same 5 SortBy options as SortSelect, persisted to localStorage 'gal-lib:default-sort' via exported loadDefaultSort/saveDefaultSort helpers with whitelist validation against the SortBy enum; theme row rendered as opacity-60 hint span "暗色（深浅色切换将在 Phase 5 加入）" since shadcn Switch isn't installed and disabled Toggle would visually imply togglable surface). Settings.tsx appends both sections after existing P2/P3 sections (扫描根目录 / Locale Emulator / 扫描操作 untouched). pnpm typecheck + vite build green. 1 commit (e282e1a). Phase 4 complete.
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
@@ -69,6 +69,7 @@ Progress: [███████████████████░] 96% (23
 | Phase 04 P04c | 3min | 1 task | 4 files (2 new + 2 modified) |
 | Phase 04 P04d | 12min | 2 tasks | 8 files (3 new + 5 modified) |
 | Phase 04 P04e | 22min | 2 tasks | 3 files (2 new + 1 modified) |
+| Phase 04 P04f | 12min | 1 task | 3 files (2 new + 1 modified) |
 
 ## Accumulated Context
 
@@ -163,6 +164,10 @@ Recent decisions affecting current work:
 - **04e**: TagPicker staged-commit model — local `Set<number>` tracks selection while popover is open; closing the popover commits diff via `setGameTags(gameId, ids)` ONCE. Avoids one round-trip per checkbox toggle. "创建新标签" path immediately persists so Esc-close doesn't lose the new tag id even before the explicit popover-close commit
 - **04e**: Detail Tabs `defaultValue="summary"` with `variant="line"` indicator (5 triggers); status Select moved to hero (daily-use path), 设置 tab owns config-only saves with explicit '保存' button (split out from P3's bundled save+launch). 简介 markdown synthesizer (`buildSummaryMarkdown(game)`) is a placeholder — replace with `game.summary` when META phase adds the column to schema
 - **04e**: Notes autosave debounce 800ms via `useEffect [notes]` setTimeout cleanup; `notesHydratedRef` flag suppresses the autosave that would otherwise fire once after `listGames` hydrate (initial load isn't a user edit). "已保存 N 秒前" label driven by 1Hz `setInterval` ticking `nowTick: number` (not stored as a string per-second — keeps re-renders cheap). Sessions list auto-refetches via `prevActiveRef` when activeSession→null for THIS game so just-completed row appears without manual reload (Rule 2)
+- **04f**: TagManager single editing-state slot pattern (`editing: EditState | null`) — only one row enters edit mode at a time; "添加标签" button opens draft row with `id: null` sentinel that flows through the SAME commit code path (createTag if id===null else updateTag). Avoids two concurrent draft rows that would confuse cancel/save semantics
+- **04f**: 8 preset Tailwind-named hues stored as hex literal in tags.color: slate/blue/emerald/amber/rose/violet/orange/pink (v3 *-500 shades). ColorSwatchPicker is a stateless `role="radiogroup"` of round buttons with `aria-checked` + ring-on-active styling — matches the eventual sidebar dot rendering 1:1 (visual consistency between Settings → sidebar)
+- **04f**: Default-sort persistence via localStorage key `gal-lib:default-sort` with `loadDefaultSort()` exported helper that whitelist-validates against the SortBy enum (defends against corrupt writes / future schema changes). Plan permitted localStorage-OR-config.json; chose localStorage to avoid adding new Tauri commands for a UI-only preference. Theme row rendered as disabled hint span (`opacity-60`) rather than disabled Switch because shadcn install lacks Switch and a disabled Toggle would visually imply a togglable surface that misleads users about Phase-5 deferral
+- **04f**: All Phase 4 plans (04a–04f) green; full REQ-ID coverage LIB-03/04/05/07 + TAG-01..04 + STAT-01..04. Settings.tsx final layout: 4 sections (扫描根目录 / Locale Emulator / 扫描操作 / 标签管理 / UI 偏好) under shared `<ScrollArea>` + `max-w-[720px]` + `space-y-8` container. Existing P2/P3 sections untouched per plan guardrail
 
 ### Pending Todos
 
@@ -183,5 +188,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-05-08T00:00:00Z
-Stopped at: Completed 04-04e-PLAN.md (Phase 4 wave 5/6 — Full Detail page: Tabs + Notes autosave + StarRating + TagPicker).
+Stopped at: Completed 04-04f-PLAN.md (Phase 4 wave 6/6 FINAL — Settings page polish: TagManager + UIPreferences). Phase 4 complete; 24/24 plans done across Phases 1-4.
 Resume file: None

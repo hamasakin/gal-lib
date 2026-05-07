@@ -52,11 +52,11 @@
 - [x] **LIB-04**: 用户可以按多种方式排序（最近游玩、添加日期、字母、时长、评分）
 - [x] **LIB-05**: 用户点击卡片打开游戏详情页（封面、简介、CV、标签、笔记、操作）
 - [x] **LIB-06**: 网格视图虚拟化，支持上千游戏卡片流畅滚动
-- [ ] **LIB-07**: 设置页可配置库根目录、扫描深度、LE 路径、UI 偏好
+- [x] **LIB-07**: 设置页可配置库根目录、扫描深度、LE 路径、UI 偏好
 
 ### Categorization（标签与分类）
 
-- [ ] **TAG-01**: 用户可以创建、编辑、删除自定义标签
+- [x] **TAG-01**: 用户可以创建、编辑、删除自定义标签
 - [x] **TAG-02**: 用户可以给游戏打 0~N 个标签
 - [x] **TAG-03**: 侧边栏显示标签列表，点击筛选对应游戏
 - [x] **TAG-04**: 侧边栏显示自动派生的分类（品牌、年代、通关状态）
@@ -164,8 +164,8 @@
 | LIB-03 | Phase 4 | Complete (04d) |
 | LIB-04 | Phase 4 | Complete (04d) |
 | LIB-05 | Phase 4 | Complete (04e) |
-| LIB-07 | Phase 4 | Pending |
-| TAG-01 | Phase 4 | Backend Ready (04b) |
+| LIB-07 | Phase 4 | Complete (04f) |
+| TAG-01 | Phase 4 | Complete (04f) |
 | TAG-02 | Phase 4 | Complete (04e) |
 | TAG-03 | Phase 4 | Complete (04d) |
 | TAG-04 | Phase 4 | Complete (04d) |
