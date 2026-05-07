@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-04d-PLAN.md (Phase 4 wave 4/6 — Library top bar + Sidebar polish + GameCard right-click + Library route refactor).
-last_updated: "2026-05-07T15:51:13Z"
-last_activity: 2026-05-07 -- Phase 4 wave 4 (04d) executed
+stopped_at: Completed 04-04e-PLAN.md (Phase 4 wave 5/6 — Full Detail page: Tabs + Notes autosave + StarRating + TagPicker).
+last_updated: "2026-05-08T00:00:00Z"
+last_activity: 2026-05-08 -- Phase 4 wave 5 (04e) executed
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 24
-  completed_plans: 22
-  percent: 92
+  completed_plans: 23
+  percent: 96
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 4 (library-polish)
-Plan: 4 of 6 complete (04a + 04b + 04c + 04d done — schema v4 + shadcn lockup + 13 backend commands + frontend invoke layer / store extensions + Library top bar UI + Sidebar polish + GameCard right-click; next: 04e full Detail page)
+Plan: 5 of 6 complete (04a + 04b + 04c + 04d + 04e done — schema v4 + shadcn lockup + 13 backend commands + frontend invoke layer / store extensions + Library top bar UI + Sidebar polish + GameCard right-click + Full Detail page; next: 04f Settings page polish)
 Status: In progress
-Last activity: 2026-05-07 -- Phase 4 wave 4 (04d) executed
+Last activity: 2026-05-08 -- Phase 4 wave 5 (04e) executed
 
-Progress: [██████████████████░░] 92% (22/24 plans complete; Phase 4 wave 4/6 done)
+Progress: [███████████████████░] 96% (23/24 plans complete; Phase 4 wave 5/6 done)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 22 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04d)
+- Total plans completed: 23 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04e)
 - Average duration: ~21min/plan
-- Total execution time: ~7.85 hours
+- Total execution time: ~8.2 hours
 
 **By Phase:**
 
@@ -47,12 +47,12 @@ Progress: [██████████████████░░] 92% (22
 | 1. Foundation | 6 | ~3h | ~30min |
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
 | 3. Launch & Playtime | 6/6 | ~41min | ~6.8min |
-| 4. Library Polish | 4/6 | ~34min | ~8.5min |
+| 4. Library Polish | 5/6 | ~56min | ~11.2min |
 
 **Recent Trend:**
 
-- Last 6 plans: 03e → 03f → 04a → 04b → 04c → 04d
-- Trend: Phase 4 wave-4 (04d) builds the Library top bar (SearchBar 200ms-debounced + SortSelect locked-copy 5-option + FilterChip per-slice ×), fully rewrites Sidebar.tsx (auto-derived categories: 全部 / 收藏 / 通关状态 / 标签 / 品牌 / 年代; collapsible groups via native <details>; single-axis activation with 2px bg-ring + bg-accent), extends GameCard with 收藏 toggle + 通关状态 4-option submenu, and refactors Library.tsx so a single useEffect re-runs searchGames(query, sort, filter) on store change. Mutation refetch path: GameCard.onMutated → GameGrid.onChildMutation → Library.refetchGrid + refreshSidebar. Two Rule-1 fixes for 04d-induced regressions: MetadataPicker.onApply + GameGrid.onRefreshCover both switched from listGames to searchGames-with-current-store-snapshot so active filter view survives mutations. New empty-state "无匹配结果" + "清除筛选" CTA when filter narrows to zero rows. pnpm typecheck + vite build green. 2 commits (5d56a1f + 52a73c5).
+- Last 6 plans: 03f → 04a → 04b → 04c → 04d → 04e
+- Trend: Phase 4 wave-5 (04e) full Detail page rewrite. Two new library components: <StarRating> (5-star half-precision, hover-preview via PointerEvent.clientX vs. boundingClientRect.width geometry; click on current value clears for inline undo; DB scale 1..=10) and <TagPicker> (shadcn Popover + cmdk Command combo with staged-selection model that commits the diff via setGameTags(gameId, ids) on popover close; "创建新标签 'X'" CommandItem appears when no exact name match, immediate persist so Esc-close doesn't lose new tag). Detail.tsx full rewrite replaces P3 minimal: hero gets status Select / 收藏 Heart toggle / StarRating / 启动 button on a single affordance row; 5-tab body (简介 / 标签 / 笔记 / 会话历史 / 设置) with locked Chinese copy. 简介 uses react-markdown + remark-gfm (synthesized markdown blurb from brand + release_year + cover_url since schema v4 has no summary column yet). 笔记 autosave via useEffect[notes] setTimeout 800ms cleanup; "保存中..." / "已保存 N 秒前" status driven by lastSavedAt timestamp + 1Hz tick interval; notesHydratedRef.current flag suppresses one-shot autosave after listGames hydrate. 会话历史 auto-refetches via prevActiveRef when activeSession→null for THIS game (post-launch UX dead-spot fix, Rule 2). 设置 tab gets explicit '保存' button (split out from launch flow). pnpm typecheck + vite build green. 2 commits (6332454 + f447b7b).
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
@@ -68,6 +68,7 @@ Progress: [██████████████████░░] 92% (22
 | Phase 04 P04b | 4min | 1 task | 2 files (0 new + 2 modified) |
 | Phase 04 P04c | 3min | 1 task | 4 files (2 new + 2 modified) |
 | Phase 04 P04d | 12min | 2 tasks | 8 files (3 new + 5 modified) |
+| Phase 04 P04e | 22min | 2 tasks | 3 files (2 new + 1 modified) |
 
 ## Accumulated Context
 
@@ -158,6 +159,10 @@ Recent decisions affecting current work:
 - **04d**: GameCard right-click menu extended with 收藏 toggle (label flips on game.is_favorite) + 通关状态 submenu (4 items, current status disabled as visual cue); new optional onMutated callback flows up to GameGrid → Library so the post-mutation refetch knows the active search/sort/filter triple. STATUS_SUBMENU array at module scope keeps locked Chinese copy auditable
 - **04d**: MetadataPicker.onApply + GameGrid.onRefreshCover migrated from listGames to searchGames-with-current-store-snapshot (Rule 1 — 04d-induced regression fix); without this, applying metadata or refreshing cover while a filter was active would silently replace the grid with the unfiltered set. MetadataPicker also now refreshes getSidebarCategories() because new metadata can introduce previously unseen brand / release_year buckets
 - **04d**: New "无匹配结果" empty state for filter-narrowed-to-zero (Rule 2 — missing critical UX); existing empty states (noScanYet / scanFinishedZeroResults) gated on `!hasActiveSearch && !hasActiveFilter` so they only fire in their genuine case
+- **04e**: StarRating half-precision via pure pointer geometry (`(starIndex * 2) + (clientX < rect.width/2 ? 1 : 2)` → 1..=10) — no precomputed half-zones; readonly when `onChange` omitted; click on current value clears for inline undo (idempotent UX without forcing × button click)
+- **04e**: TagPicker staged-commit model — local `Set<number>` tracks selection while popover is open; closing the popover commits diff via `setGameTags(gameId, ids)` ONCE. Avoids one round-trip per checkbox toggle. "创建新标签" path immediately persists so Esc-close doesn't lose the new tag id even before the explicit popover-close commit
+- **04e**: Detail Tabs `defaultValue="summary"` with `variant="line"` indicator (5 triggers); status Select moved to hero (daily-use path), 设置 tab owns config-only saves with explicit '保存' button (split out from P3's bundled save+launch). 简介 markdown synthesizer (`buildSummaryMarkdown(game)`) is a placeholder — replace with `game.summary` when META phase adds the column to schema
+- **04e**: Notes autosave debounce 800ms via `useEffect [notes]` setTimeout cleanup; `notesHydratedRef` flag suppresses the autosave that would otherwise fire once after `listGames` hydrate (initial load isn't a user edit). "已保存 N 秒前" label driven by 1Hz `setInterval` ticking `nowTick: number` (not stored as a string per-second — keeps re-renders cheap). Sessions list auto-refetches via `prevActiveRef` when activeSession→null for THIS game so just-completed row appears without manual reload (Rule 2)
 
 ### Pending Todos
 
@@ -177,6 +182,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-07T15:51:13Z
-Stopped at: Completed 04-04d-PLAN.md (Phase 4 wave 4/6 — Library top bar + Sidebar polish + GameCard right-click + Library route refactor).
+Last session: 2026-05-08T00:00:00Z
+Stopped at: Completed 04-04e-PLAN.md (Phase 4 wave 5/6 — Full Detail page: Tabs + Notes autosave + StarRating + TagPicker).
 Resume file: None
