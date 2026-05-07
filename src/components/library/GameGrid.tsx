@@ -33,6 +33,7 @@ import { GameCard } from "./GameCard";
 import { refreshMetadata } from "@/lib/metadata";
 import { listGames, type Game } from "@/lib/games";
 import { useLibraryStore } from "@/store/library";
+import { searchGames } from "@/lib/search";
 
 const CARD_MIN_WIDTH = 200; // px — UI-SPEC §Cover Grid minmax(200px,1fr)
 const GAP = 16; // px — Tailwind gap-4
@@ -42,9 +43,22 @@ const PADDING = 24; // px — Tailwind p-6
 interface GameGridProps {
   games: Game[];
   onPickMetadata: (game: Game) => void;
+  /**
+   * Phase 4 / 04d: a child mutation (favorite toggle / status change) just
+   * landed — refresh the grid + sidebar. Owner (Library route) decides how
+   * to refresh (searchGames vs listGames depending on whether search/sort/
+   * filter is active). Optional — falls back to a local listGames() refetch
+   * when not provided (preserves backwards compat with any callers from
+   * earlier phases).
+   */
+  onChildMutation?: () => void;
 }
 
-export function GameGrid({ games, onPickMetadata }: GameGridProps) {
+export function GameGrid({
+  games,
+  onPickMetadata,
+  onChildMutation,
+}: GameGridProps) {
   const setGames = useLibraryStore((s) => s.setGames);
 
   // ── Resolve data_dir once for cover-URL composition ────────────────────
@@ -103,19 +117,68 @@ export function GameGrid({ games, onPickMetadata }: GameGridProps) {
   }, [dataDir]);
 
   // ── Refresh-cover handler (delegates to refresh_metadata then refetches list) ──
+  // 04d: prefer the parent's onChildMutation (it knows the active
+  // search/sort/filter triple). Fall back to searchGames with the current
+  // store state — this preserves the user's filter view across cover
+  // refreshes (pre-04d listGames() would have replaced the grid with the
+  // unfiltered set).
   const onRefreshCover = useCallback(
     async (game: Game) => {
       try {
         await refreshMetadata(game.id);
-        const fresh = await listGames();
-        setGames(fresh);
+        if (onChildMutation) {
+          onChildMutation();
+        } else {
+          // No parent hook (legacy callers): re-issue searchGames using the
+          // current store snapshot. Reading the store imperatively avoids
+          // the useCallback dep churn that would otherwise re-recreate
+          // this callback on every keystroke.
+          const st = useLibraryStore.getState();
+          const trimmed = st.searchQuery.trim();
+          const queryArg = trimmed === "" ? null : trimmed;
+          const filterArg =
+            st.filter.tag_id == null &&
+            st.filter.status == null &&
+            !st.filter.favorite &&
+            st.filter.brand == null &&
+            st.filter.year_decade == null
+              ? null
+              : st.filter;
+          try {
+            const fresh = await searchGames(queryArg, st.sortBy, filterArg);
+            setGames(fresh);
+          } catch {
+            // Last-resort fallback so the grid doesn't get stuck on stale data.
+            const fresh = await listGames();
+            setGames(fresh);
+          }
+        }
         toast.success("已刷新封面");
       } catch (e: unknown) {
         toast.error(`刷新封面失败 — ${String(e)}`);
       }
     },
-    [setGames],
+    [setGames, onChildMutation],
   );
+
+  // ── Child-mutation handler (favorite / status). Defer to the parent
+  //    (Library route) when it provided onChildMutation — that's the only
+  //    place that knows the current search/sort/filter triple. When the
+  //    parent doesn't wire it, fall back to a plain listGames() refetch so
+  //    any earlier (P2/P3) caller still works.
+  const onChildMutated = useCallback(async () => {
+    if (onChildMutation) {
+      onChildMutation();
+      return;
+    }
+    try {
+      const fresh = await listGames();
+      setGames(fresh);
+    } catch (e: unknown) {
+      // eslint-disable-next-line no-console
+      console.error("[GameGrid] post-mutation refetch failed:", e);
+    }
+  }, [onChildMutation, setGames]);
 
   // ── Render ────────────────────────────────────────────────────────────
   const totalHeight = rowVirtualizer.getTotalSize();
@@ -155,6 +218,7 @@ export function GameGrid({ games, onPickMetadata }: GameGridProps) {
                     coverDataUrl={resolveCover(g)}
                     onPickMetadata={onPickMetadata}
                     onRefreshCover={onRefreshCover}
+                    onMutated={onChildMutated}
                   />
                 ))}
               </div>

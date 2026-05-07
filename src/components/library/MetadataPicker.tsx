@@ -46,8 +46,9 @@ import {
   searchMetadata,
   type Candidate,
 } from "@/lib/metadata";
-import { listGames, type Game } from "@/lib/games";
+import { type Game } from "@/lib/games";
 import { useLibraryStore } from "@/store/library";
+import { getSidebarCategories, searchGames } from "@/lib/search";
 
 interface MetadataPickerProps {
   /** When non-null the dialog is open; null closes. */
@@ -59,6 +60,10 @@ type Source = "bangumi" | "vndb";
 
 export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
   const setGames = useLibraryStore((s) => s.setGames);
+  const setSidebar = useLibraryStore((s) => s.setSidebar);
+  const searchQuery = useLibraryStore((s) => s.searchQuery);
+  const sortBy = useLibraryStore((s) => s.sortBy);
+  const filter = useLibraryStore((s) => s.filter);
 
   // Form state — reset when a different game opens the dialog.
   const [query, setQuery] = useState("");
@@ -144,8 +149,31 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
     setApplying(true);
     try {
       await bindMetadata(game.id, toApply.source, toApply.sourceId);
-      const fresh = await listGames();
+      // 04d: refetch via searchGames so the active search/sort/filter
+      // triple is preserved (pre-04d this used listGames which would
+      // bypass any filter the user had set). Sidebar counts may shift
+      // because the new metadata can introduce a brand / release_year
+      // not previously seen — refresh those too.
+      const trimmed = searchQuery.trim();
+      const queryArg = trimmed === "" ? null : trimmed;
+      const filterArg =
+        filter.tag_id == null &&
+        filter.status == null &&
+        !filter.favorite &&
+        filter.brand == null &&
+        filter.year_decade == null
+          ? null
+          : filter;
+      const fresh = await searchGames(queryArg, sortBy, filterArg);
       setGames(fresh);
+      try {
+        const cats = await getSidebarCategories();
+        setSidebar(cats);
+      } catch (e: unknown) {
+        // Sidebar refresh is best-effort; don't fail the rebind on this.
+        // eslint-disable-next-line no-console
+        console.error("[MetadataPicker] sidebar refresh failed:", e);
+      }
       toast.success("已应用元数据");
       onClose();
     } catch (e: unknown) {

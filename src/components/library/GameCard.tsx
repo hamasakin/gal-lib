@@ -44,12 +44,17 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuPortal,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Game } from "@/lib/games";
+import { updateGameFavorite, updateGameStatus } from "@/lib/games";
 import { endActiveSession, launchGame } from "@/lib/launch";
 import { useLibraryStore } from "@/store/library";
 
@@ -61,6 +66,15 @@ interface GameCardProps {
   onPickMetadata: (game: Game) => void;
   /** Trigger refresh-cover-only flow (re-runs metadata pipeline keeping current bind). */
   onRefreshCover: (game: Game) => void;
+  /**
+   * Notify parent that a row mutation (favorite toggle / status update)
+   * succeeded; parent should re-fetch the games list AND sidebar counts so
+   * the grid + sidebar reflect the new state.
+   *
+   * Called with no args (the change is global in scope — affects both grid
+   * filtering AND sidebar aggregation, neither cares which game changed).
+   */
+  onMutated?: () => void;
 }
 
 /**
@@ -104,11 +118,26 @@ function getMetadataState(game: Game): "ok" | "pending" | "failed" {
   return game.last_scanned_at == null ? "pending" : "failed";
 }
 
+/**
+ * Status-submenu options (Phase 4 / 04d). Order matches the locked
+ * 04d execution-context list: 未游玩 / 游玩中 / 已通关 / 已弃.
+ */
+const STATUS_SUBMENU: Array<{
+  value: "unplayed" | "playing" | "cleared" | "dropped";
+  label: string;
+}> = [
+  { value: "unplayed", label: "未游玩" },
+  { value: "playing", label: "游玩中" },
+  { value: "cleared", label: "已通关" },
+  { value: "dropped", label: "已弃" },
+];
+
 export function GameCard({
   game,
   coverDataUrl,
   onPickMetadata,
   onRefreshCover,
+  onMutated,
 }: GameCardProps) {
   const navigate = useNavigate();
   const activeSession = useLibraryStore((s) => s.activeSession);
@@ -156,6 +185,38 @@ export function GameCard({
       toast.info("已结束游戏会话");
     } catch (err: unknown) {
       toast.error(`结束失败 — ${String(err)}`);
+    }
+  }
+
+  /**
+   * Toggle the is_favorite flag. Backend persists the new value, then we
+   * notify the parent (GameGrid) to refetch the grid + sidebar — keeps
+   * sidebar 收藏 count + grid star icon in sync.
+   */
+  async function onToggleFavorite() {
+    const next = !game.is_favorite;
+    try {
+      await updateGameFavorite(game.id, next);
+      onMutated?.();
+      toast.success(next ? "已收藏" : "已取消收藏");
+    } catch (err: unknown) {
+      toast.error(`操作失败 — ${String(err)}`);
+    }
+  }
+
+  /**
+   * Set status to one of the 4 enum values. No-op when picking the current
+   * status (avoids issuing an unnecessary UPDATE + parent refetch).
+   */
+  async function onSetStatus(
+    next: "unplayed" | "playing" | "cleared" | "dropped",
+  ) {
+    if (next === game.status) return;
+    try {
+      await updateGameStatus(game.id, next);
+      onMutated?.();
+    } catch (err: unknown) {
+      toast.error(`状态更新失败 — ${String(err)}`);
     }
   }
 
@@ -296,6 +357,30 @@ export function GameCard({
           </DropdownMenuItem>
         )}
         {(!activeSession || isActive) && <DropdownMenuSeparator />}
+        {/* 收藏 toggle (Phase 4 / 04d). Label flips based on current state. */}
+        <DropdownMenuItem onClick={() => void onToggleFavorite()}>
+          {game.is_favorite ? "取消收藏" : "收藏"}
+        </DropdownMenuItem>
+        {/* 通关状态 — submenu with 4 status options. The current status is
+            disabled (it's a no-op anyway) so the user gets a visual cue of
+            what the row is set to without the menu acting like a toggle. */}
+        <DropdownMenuSub>
+          <DropdownMenuSubTrigger>通关状态</DropdownMenuSubTrigger>
+          <DropdownMenuPortal>
+            <DropdownMenuSubContent>
+              {STATUS_SUBMENU.map(({ value, label }) => (
+                <DropdownMenuItem
+                  key={value}
+                  disabled={value === game.status}
+                  onClick={() => void onSetStatus(value)}
+                >
+                  {label}
+                </DropdownMenuItem>
+              ))}
+            </DropdownMenuSubContent>
+          </DropdownMenuPortal>
+        </DropdownMenuSub>
+        <DropdownMenuSeparator />
         <DropdownMenuItem onClick={() => onPickMetadata(game)}>
           重新匹配元数据
         </DropdownMenuItem>
