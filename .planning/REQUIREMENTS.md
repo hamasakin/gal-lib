@@ -48,8 +48,8 @@
 
 - [ ] **LIB-01**: 主界面采用双栏布局（左侧边栏 + 右侧主区）
 - [x] **LIB-02**: 主区显示封面网格，每张卡片显示封面、标题、状态、时长
-- [ ] **LIB-03**: 用户可以全文搜索游戏（标题 / 罗马音 / 别名 / 品牌 / 标签）
-- [ ] **LIB-04**: 用户可以按多种方式排序（最近游玩、添加日期、字母、时长、评分）
+- [x] **LIB-03**: 用户可以全文搜索游戏（标题 / 罗马音 / 别名 / 品牌 / 标签）
+- [x] **LIB-04**: 用户可以按多种方式排序（最近游玩、添加日期、字母、时长、评分）
 - [ ] **LIB-05**: 用户点击卡片打开游戏详情页（封面、简介、CV、标签、笔记、操作）
 - [x] **LIB-06**: 网格视图虚拟化，支持上千游戏卡片流畅滚动
 - [ ] **LIB-07**: 设置页可配置库根目录、扫描深度、LE 路径、UI 偏好
@@ -58,13 +58,13 @@
 
 - [ ] **TAG-01**: 用户可以创建、编辑、删除自定义标签
 - [ ] **TAG-02**: 用户可以给游戏打 0~N 个标签
-- [ ] **TAG-03**: 侧边栏显示标签列表，点击筛选对应游戏
-- [ ] **TAG-04**: 侧边栏显示自动派生的分类（品牌、年代、通关状态）
+- [x] **TAG-03**: 侧边栏显示标签列表，点击筛选对应游戏
+- [x] **TAG-04**: 侧边栏显示自动派生的分类（品牌、年代、通关状态）
 
 ### Status / Notes（通关状态、收藏、评分、笔记）
 
 - [ ] **STAT-01**: 用户可以标记游戏通关状态（未开始 / 游玩中 / 已通关 / 弃坑）
-- [ ] **STAT-02**: 用户可以收藏 / 取消收藏游戏
+- [x] **STAT-02**: 用户可以收藏 / 取消收藏游戏
 - [ ] **STAT-03**: 用户可以给游戏打分（1-10 或 5 星）
 - [ ] **STAT-04**: 用户可以为每款游戏写多行笔记/备注
 
@@ -161,16 +161,16 @@
 | TRAY-01 | Phase 3 | Pending |
 | TRAY-02 | Phase 3 | Pending |
 | TRAY-03 | Phase 3 | Pending |
-| LIB-03 | Phase 4 | Frontend Invoke Ready (04c) |
-| LIB-04 | Phase 4 | Frontend Invoke Ready (04c) |
+| LIB-03 | Phase 4 | Complete (04d) |
+| LIB-04 | Phase 4 | Complete (04d) |
 | LIB-05 | Phase 4 | Pending |
 | LIB-07 | Phase 4 | Pending |
 | TAG-01 | Phase 4 | Backend Ready (04b) |
 | TAG-02 | Phase 4 | Frontend Invoke Ready (04c) |
-| TAG-03 | Phase 4 | Backend Ready (04b) |
-| TAG-04 | Phase 4 | Pending |
+| TAG-03 | Phase 4 | Complete (04d) |
+| TAG-04 | Phase 4 | Complete (04d) |
 | STAT-01 | Phase 4 | Backend Ready (04b) |
-| STAT-02 | Phase 4 | Backend Ready (04b) |
+| STAT-02 | Phase 4 | Complete (04d) |
 | STAT-03 | Phase 4 | Backend Ready (04b) |
 | STAT-04 | Phase 4 | Backend Ready (04b) |
 | STATS-01 | Phase 5 | Pending |

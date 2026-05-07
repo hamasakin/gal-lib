@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 04-04c-PLAN.md (Phase 4 wave 3/6 — frontend invoke layer + library store extensions).
-last_updated: "2026-05-07T15:37:00Z"
-last_activity: 2026-05-07 -- Phase 4 wave 3 (04c) executed
+stopped_at: Completed 04-04d-PLAN.md (Phase 4 wave 4/6 — Library top bar + Sidebar polish + GameCard right-click + Library route refactor).
+last_updated: "2026-05-07T15:51:13Z"
+last_activity: 2026-05-07 -- Phase 4 wave 4 (04d) executed
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 24
-  completed_plans: 21
-  percent: 88
+  completed_plans: 22
+  percent: 92
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 4 (library-polish)
-Plan: 3 of 6 complete (04a + 04b + 04c done — schema v4 + shadcn lockup + 13 backend commands + frontend invoke layer / store extensions; next: 04d Library UI search/sort/filter wiring)
+Plan: 4 of 6 complete (04a + 04b + 04c + 04d done — schema v4 + shadcn lockup + 13 backend commands + frontend invoke layer / store extensions + Library top bar UI + Sidebar polish + GameCard right-click; next: 04e full Detail page)
 Status: In progress
-Last activity: 2026-05-07 -- Phase 4 wave 3 (04c) executed
+Last activity: 2026-05-07 -- Phase 4 wave 4 (04d) executed
 
-Progress: [█████████████████░░░] 88% (21/24 plans complete; Phase 4 wave 3/6 done)
+Progress: [██████████████████░░] 92% (22/24 plans complete; Phase 4 wave 4/6 done)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 21 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04c)
-- Average duration: ~22min/plan
-- Total execution time: ~7.65 hours
+- Total plans completed: 22 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04d)
+- Average duration: ~21min/plan
+- Total execution time: ~7.85 hours
 
 **By Phase:**
 
@@ -47,12 +47,12 @@ Progress: [█████████████████░░░] 88% (21
 | 1. Foundation | 6 | ~3h | ~30min |
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
 | 3. Launch & Playtime | 6/6 | ~41min | ~6.8min |
-| 4. Library Polish | 3/6 | ~22min | ~7.3min |
+| 4. Library Polish | 4/6 | ~34min | ~8.5min |
 
 **Recent Trend:**
 
-- Last 6 plans: 03d → 03e → 03f → 04a → 04b → 04c
-- Trend: Phase 4 wave-3 (04c) wires the 04b backend commands into the TS-side invoke layer. Two new files: `src/lib/search.ts` (SearchFilter / SortBy / SidebarCategories types + searchGames + getSidebarCategories) and `src/lib/tags.ts` (Tag interface + 6 tag CRUD invoke wrappers). `src/lib/games.ts` extended: Game type gains v4 fields (brand: string|null, release_year: number|null, is_favorite: boolean — bool over the wire because row_to_game converts i64 0/1 → bool BEFORE serde), plus 5 update helpers (updateGameStatus / updateGameFavorite / updateGameRating / updateGameNotes / updateGameBrandYear). `src/store/library.ts` extended with 5 new slices (searchQuery / sortBy / filter / tags / sidebar) + 5 paired setters; defaults sortBy="last_played" and filter={} (sentinel for "no clauses"). No UI components touched — 04d/04e/04f own UI. pnpm typecheck clean. Single feat commit, no deviations.
+- Last 6 plans: 03e → 03f → 04a → 04b → 04c → 04d
+- Trend: Phase 4 wave-4 (04d) builds the Library top bar (SearchBar 200ms-debounced + SortSelect locked-copy 5-option + FilterChip per-slice ×), fully rewrites Sidebar.tsx (auto-derived categories: 全部 / 收藏 / 通关状态 / 标签 / 品牌 / 年代; collapsible groups via native <details>; single-axis activation with 2px bg-ring + bg-accent), extends GameCard with 收藏 toggle + 通关状态 4-option submenu, and refactors Library.tsx so a single useEffect re-runs searchGames(query, sort, filter) on store change. Mutation refetch path: GameCard.onMutated → GameGrid.onChildMutation → Library.refetchGrid + refreshSidebar. Two Rule-1 fixes for 04d-induced regressions: MetadataPicker.onApply + GameGrid.onRefreshCover both switched from listGames to searchGames-with-current-store-snapshot so active filter view survives mutations. New empty-state "无匹配结果" + "清除筛选" CTA when filter narrows to zero rows. pnpm typecheck + vite build green. 2 commits (5d56a1f + 52a73c5).
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
@@ -67,6 +67,7 @@ Progress: [█████████████████░░░] 88% (21
 | Phase 04 P04a | 15min | 2 tasks | 9 files (6 new + 3 modified) |
 | Phase 04 P04b | 4min | 1 task | 2 files (0 new + 2 modified) |
 | Phase 04 P04c | 3min | 1 task | 4 files (2 new + 2 modified) |
+| Phase 04 P04d | 12min | 2 tasks | 8 files (3 new + 5 modified) |
 
 ## Accumulated Context
 
@@ -151,6 +152,12 @@ Recent decisions affecting current work:
 - **04c**: Game type extended with v4 fields (brand: string|null, release_year: number|null, is_favorite: boolean — JS-side boolean because row_to_game converts i64 0/1 → bool before serde); 5 update helpers added (updateGameStatus / updateGameFavorite / updateGameRating / updateGameNotes / updateGameBrandYear); store mutations remain non-optimistic (callers re-fetch via searchGames + getSidebarCategories — same source-of-truth rule already in store/library.ts)
 - **04c**: 5 new store slices (searchQuery default "", sortBy default "last_played", filter default {} via EMPTY_FILTER sentinel, tags default [], sidebar default null) + 5 paired setters; sidebar=null = "render skeleton/empty"; filter={} chosen over null so UI can access individual fields without null-guards (backend treats all-undefined as no clauses)
 - **04c**: updateGameFavorite(gameId, favorite) function arg uses terse `favorite` name; the Tauri invoke arg renames to `isFavorite` at the call site (`{ gameId, isFavorite: favorite }`) to match Rust's snake_case `is_favorite` via Tauri auto-conversion — clean JS API, single rename touch point
+- **04d**: SearchBar 200ms debounced commit pattern — local useState mirrors store.searchQuery; only the debounced setTimeout commits to the store. Avoids per-keystroke grid re-render (Zustand subscribers fire synchronously); store stays the single source of truth for the (query, sort, filter) triple consumed by Library.tsx's useEffect
+- **04d**: Library.tsx is the SINGLE caller of searchGames. Sidebar / FilterChip / SearchBar only mutate the store; one useEffect subscribes to (searchQuery, sortBy, filter) and re-issues the invoke. Mutation refetch flows: GameCard.onMutated → GameGrid.onChildMutation → Library.refetchGrid + refreshSidebar. Source-of-truth-is-DB rule from 04c preserved (no optimistic updates anywhere)
+- **04d**: Sidebar single-axis activation rule — clicking a leaf REPLACES store.filter with one slice (clearing the others); FilterChip × is the per-slice clear affordance for multi-axis composition. "全部" leaf resets BOTH filter AND searchQuery. Collapsible groups use native <details>/<summary> + Tailwind group-open: variants (no shadcn Accordion dependency)
+- **04d**: GameCard right-click menu extended with 收藏 toggle (label flips on game.is_favorite) + 通关状态 submenu (4 items, current status disabled as visual cue); new optional onMutated callback flows up to GameGrid → Library so the post-mutation refetch knows the active search/sort/filter triple. STATUS_SUBMENU array at module scope keeps locked Chinese copy auditable
+- **04d**: MetadataPicker.onApply + GameGrid.onRefreshCover migrated from listGames to searchGames-with-current-store-snapshot (Rule 1 — 04d-induced regression fix); without this, applying metadata or refreshing cover while a filter was active would silently replace the grid with the unfiltered set. MetadataPicker also now refreshes getSidebarCategories() because new metadata can introduce previously unseen brand / release_year buckets
+- **04d**: New "无匹配结果" empty state for filter-narrowed-to-zero (Rule 2 — missing critical UX); existing empty states (noScanYet / scanFinishedZeroResults) gated on `!hasActiveSearch && !hasActiveFilter` so they only fire in their genuine case
 
 ### Pending Todos
 
@@ -170,6 +177,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-07T15:37:00Z
-Stopped at: Completed 04-04c-PLAN.md (Phase 4 wave 3/6 — frontend invoke layer + library store extensions).
+Last session: 2026-05-07T15:51:13Z
+Stopped at: Completed 04-04d-PLAN.md (Phase 4 wave 4/6 — Library top bar + Sidebar polish + GameCard right-click + Library route refactor).
 Resume file: None
