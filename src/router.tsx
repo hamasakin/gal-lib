@@ -1,0 +1,29 @@
+import { createHashRouter } from "react-router-dom";
+import App from "./App";
+import { Library } from "./routes/Library";
+import { Settings } from "./routes/Settings";
+
+/**
+ * Application router.
+ *
+ * Layout-route pattern: `<App />` is the parent (Layout: TitlebarSlot +
+ * Sidebar + Main with <Outlet />); children are rendered into <Outlet />.
+ *
+ * HashRouter is locked by CONTEXT.md (Tauri tauri:// protocol path issues
+ * make path-based routers unreliable). Do not switch to history-mode or
+ * in-memory routers in this project.
+ *
+ * Phase 1 routes — exactly two:
+ *   /          → <Library />   (empty-state)
+ *   /settings  → <Settings />  (placeholder)
+ */
+export const router = createHashRouter([
+  {
+    path: "/",
+    element: <App />,
+    children: [
+      { index: true, element: <Library /> },
+      { path: "settings", element: <Settings /> },
+    ],
+  },
+]);
