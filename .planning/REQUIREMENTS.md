@@ -76,8 +76,8 @@
 
 ### Statistics（统计图表）
 
-- [ ] **STATS-01**: 用户可以查看每日 / 每周 / 每月游玩时长趋势图
-- [ ] **STATS-02**: 用户可以查看按游戏的总时长分布（Top N 排行）
+- [x] **STATS-01**: 用户可以查看每日 / 每周 / 每月游玩时长趋势图
+- [x] **STATS-02**: 用户可以查看按游戏的总时长分布（Top N 排行）
 
 ### Screenshots（截图管理）
 
@@ -173,8 +173,8 @@
 | STAT-02 | Phase 4 | Complete (04d) |
 | STAT-03 | Phase 4 | Complete (04e) |
 | STAT-04 | Phase 4 | Complete (04e) |
-| STATS-01 | Phase 5 | Pending |
-| STATS-02 | Phase 5 | Pending |
+| STATS-01 | Phase 5 | Complete (05d) |
+| STATS-02 | Phase 5 | Complete (05d) |
 | SHOT-01 | Phase 5 | Pending |
 | SHOT-02 | Phase 5 | Pending |
 | SAVE-01 | Phase 5 | Pending |
