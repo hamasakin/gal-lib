@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-02b (title_clean + metadata module)
-last_updated: "2026-05-07T12:52:41Z"
-last_activity: 2026-05-07 -- Phase 2 02b complete (title_clean + bangumi/vndb clients + rate limiter)
+stopped_at: Completed 02-02c (scan engine — types/walker/exe_score/run_scan)
+last_updated: "2026-05-07T13:30:00Z"
+last_activity: 2026-05-07 -- Phase 2 02c complete (filesystem scan engine: types + walker + exe_score + run_scan orchestrator)
 progress:
   total_phases: 5
   completed_phases: 1
   total_plans: 12
-  completed_plans: 8
-  percent: 67
+  completed_plans: 9
+  percent: 75
 ---
 
 # Project State
@@ -26,31 +26,31 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 2 (library-ingest) — EXECUTING
-Plan: 2 of 6 complete (next: 02c filesystem scan engine)
+Plan: 3 of 6 complete (next: 02d Tauri command surface — scan-progress event + cancel_scan / run_full_scan / run_incremental_scan commands)
 Status: Ready to execute next wave
-Last activity: 2026-05-07 -- Phase 2 02b complete (title_clean + bangumi/vndb clients + rate limiter)
+Last activity: 2026-05-07 -- Phase 2 02c complete (scan engine — pure Rust backend; zero Tauri/frontend changes)
 
-Progress: [██████░░░░] 67%
+Progress: [████████░░] 75%
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 8 (Phase 1: 6 + Phase 2: 02a, 02b)
+- Total plans completed: 9 (Phase 1: 6 + Phase 2: 02a, 02b, 02c)
 - Average duration: ~30min/plan
-- Total execution time: ~4 hours
+- Total execution time: ~4.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1. Foundation | 6 | ~3h | ~30min |
-| 2. Library Ingest | 2 | ~1h | ~30min |
+| 2. Library Ingest | 3 | ~1.5h | ~30min |
 
 **Recent Trend:**
 
-- Last 5 plans: 01d → 01e → 01f → 02a → 02b
-- Trend: Steady ~30min/plan; 02b included Rule 1 fixes for plan-text Rust syntax + match_score algorithm gap
+- Last 5 plans: 01e → 01f → 02a → 02b → 02c
+- Trend: Steady ~30min/plan; 02c added 13 unit tests (4 exe_score + 5 walker + 4 run_scan), all green; 1 Rule-2 deviation (lib.rs `mod scan;` had to land in Task 1 not Task 2 due to Rust crate-level module hard requirement)
 
 *Updated after each plan completion*
 
@@ -72,6 +72,11 @@ Recent decisions affecting current work:
 - **02b**: Rate limiters = governor token-bucket per-source singleton (Bangumi 1 req/s, VNDB 100 req/min)
 - **02b**: Retry strategy = exp-backoff [1s, 2s, 4s] x 3 for 5xx/429/network; 4xx (except 429) immediate fail
 - **02b**: Confidence score = exact (100) > containment (70-99 by short/long ratio) > Levenshtein normalized (sim>=0.8 → 70-99 ; sim<0.8 → 0-69 cap)
+- **02c**: Game-boundary via `walkdir::min_depth==max_depth==N` — single iterator pass, no manual depth tracking
+- **02c**: `pick_best_exe` rejects all-negative-score candidates → returns `None` so UI can render "无可识别 exe" badge per SCAN-05
+- **02c**: Tie-break on mtime (newest wins); per-entry walkdir errors swallowed via `filter_map(Result::ok)` — single permission-denied dir doesn't abort the scan
+- **02c**: `run_scan` takes `Fn(ScanProgress)+Send+Sync+'static` callback — module is unit-testable without Tauri AppHandle; 02d wires `app.emit("scan-progress", ...)`
+- **02c**: `ScanContext` bundles cancel (`Arc<AtomicBool>`) + skip (`Arc<Mutex<HashSet<PathBuf>>>`) — single shared handle for all scan-related Tauri State
 
 ### Pending Todos
 
@@ -92,5 +97,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-05-07
-Stopped at: Completed 02-02b (title_clean + bangumi/vndb clients + rate limiter + match_score)
-Resume file: .planning/phases/02-library-ingest/02c-PLAN.md
+Stopped at: Completed 02-02c (scan engine — types + walker + exe_score + run_scan orchestrator)
+Resume file: .planning/phases/02-library-ingest/02d-PLAN.md
