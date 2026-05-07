@@ -1,6 +1,7 @@
 mod data_dir;
 mod db;
 mod metadata;
+mod scan;
 mod title_clean;
 
 use std::path::PathBuf;
