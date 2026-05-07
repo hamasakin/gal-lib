@@ -803,3 +803,30 @@ pub fn set_le_path(path: String, state: State<'_, AppPaths>) -> Result<(), Strin
 fn _retain_process_track_import() {
     let _ = process_track::kill_pid;
 }
+
+// ── 03e tray helper: synchronous pool accessor ──────────────────────────────
+
+use sqlx::SqlitePool;
+
+/// Synchronous accessor for the shared sqlx pool. Used by the tray quit path
+/// (`tray::quit_with_session_cleanup`) which runs on the main thread and
+/// cannot `.await` the async `AppPaths::pool()` initializer.
+///
+/// Returns `Err` if either:
+///   - `AppPaths` is not in app state (shouldn't happen post-setup), OR
+///   - the pool's `OnceCell` has not yet been initialised (no command has
+///     touched the DB yet — meaning there can't be an active session anyway,
+///     so the tray quit-cleanup path degrades to a plain `app.exit(0)`).
+///
+/// Intentionally does NOT trigger pool init: doing so would require an async
+/// runtime context we don't want to claim from a tray callback.
+pub fn get_pool_blocking(app: &AppHandle) -> Result<Arc<SqlitePool>, String> {
+    let state = app
+        .try_state::<AppPaths>()
+        .ok_or_else(|| "AppPaths not in state".to_string())?;
+    state
+        .pool
+        .get()
+        .cloned()
+        .ok_or_else(|| "pool not initialised".to_string())
+}

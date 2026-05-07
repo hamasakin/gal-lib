@@ -7,12 +7,14 @@ mod launch;
 mod metadata;
 mod scan;
 mod title_clean;
+mod tray;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 
 use sqlx::sqlite::SqlitePoolOptions;
 use sqlx::SqlitePool;
+use tauri::{Emitter, Manager};
 use tokio::sync::OnceCell;
 
 /// State managed by Tauri; exposed to commands and (for `data_dir`) the
@@ -32,7 +34,7 @@ use tokio::sync::OnceCell;
 pub struct AppPaths {
     pub data_dir: PathBuf,
     pub db_url: String,
-    pool: OnceCell<Arc<SqlitePool>>,
+    pub(crate) pool: OnceCell<Arc<SqlitePool>>,
 }
 
 impl AppPaths {
@@ -99,6 +101,29 @@ pub fn run() {
         })
         .manage(commands::ScanState::new())
         .manage(commands::ActiveSessionState(std::sync::Mutex::new(None)))
+        .setup(|app| {
+            // 03e — system tray (icon + 「显示主窗口」/「退出应用」 menu + tooltip).
+            tray::setup_tray(&app.handle())?;
+
+            // 03e — close-to-tray: intercept main window close, hide instead of exit.
+            // The session orchestrator + tokio tasks live independently of the
+            // webview window, so timing continues unaffected after hide().
+            let main_window = app
+                .get_webview_window("main")
+                .expect("main window must exist (declared in tauri.conf.json)");
+            let app_handle = app.handle().clone();
+            let main_for_handler = main_window.clone();
+            main_window.on_window_event(move |event| {
+                if let tauri::WindowEvent::CloseRequested { api, .. } = event {
+                    api.prevent_close();
+                    let _ = main_for_handler.hide();
+                    // Frontend listens for this and shows a one-shot toast
+                    // ("已最小化到系统托盘") on the first close-to-tray event.
+                    let _ = app_handle.emit("close-to-tray", ());
+                }
+            });
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             get_data_dir,
             commands::add_scan_root,
