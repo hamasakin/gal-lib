@@ -462,6 +462,10 @@ pub struct Game {
     pub metadata_source: Option<String>,
     pub match_confidence: Option<i64>,
     pub last_scanned_at: Option<String>,
+    // ── Phase 4 / schema v4 fields ──
+    pub brand: Option<String>,
+    pub release_year: Option<i64>,
+    pub is_favorite: bool,
     pub created_at: String,
     pub updated_at: String,
 }
@@ -469,8 +473,12 @@ pub struct Game {
 /// Read every row from `games`, ordered by `created_at DESC`.
 ///
 /// Phase 2 has no filter / pagination surface — the Library grid renders the
-/// full rowset and virtualizes client-side. Phase 4 will likely introduce
-/// server-side filtering (status / tags / search) and paging.
+/// full rowset and virtualizes client-side. Phase 4 server-side filtering /
+/// search lives in `search_games` (04b).
+///
+/// Phase-4 04b extension: also serializes `brand`, `release_year`, and
+/// `is_favorite` (added by schema v4 / migration 0004), so the frontend can
+/// surface sidebar auto-categories without an extra query.
 #[tauri::command]
 pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String> {
     let pool = state.pool().await.map_err(err_str)?;
@@ -478,6 +486,7 @@ pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String>
         "SELECT id, path, name, name_cn, executable_path, cover_path, cover_url, \
                 bangumi_id, vndb_id, total_playtime_sec, last_played_at, status, \
                 rating, notes, metadata_source, match_confidence, last_scanned_at, \
+                brand, release_year, is_favorite, \
                 created_at, updated_at \
          FROM games ORDER BY created_at DESC",
     )
@@ -487,31 +496,40 @@ pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String>
 
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
-        out.push(Game {
-            id: row.try_get("id").map_err(err_str)?,
-            path: row.try_get("path").map_err(err_str)?,
-            name: row.try_get("name").map_err(err_str)?,
-            name_cn: row.try_get("name_cn").ok(),
-            executable_path: row.try_get("executable_path").ok(),
-            cover_path: row.try_get("cover_path").ok(),
-            cover_url: row.try_get("cover_url").ok(),
-            bangumi_id: row.try_get("bangumi_id").ok(),
-            vndb_id: row.try_get("vndb_id").ok(),
-            total_playtime_sec: row.try_get("total_playtime_sec").unwrap_or(0),
-            last_played_at: row.try_get("last_played_at").ok(),
-            status: row
-                .try_get("status")
-                .unwrap_or_else(|_| "unplayed".to_string()),
-            rating: row.try_get("rating").ok(),
-            notes: row.try_get("notes").ok(),
-            metadata_source: row.try_get("metadata_source").ok(),
-            match_confidence: row.try_get("match_confidence").ok(),
-            last_scanned_at: row.try_get("last_scanned_at").ok(),
-            created_at: row.try_get("created_at").map_err(err_str)?,
-            updated_at: row.try_get("updated_at").map_err(err_str)?,
-        });
+        out.push(row_to_game(&row)?);
     }
     Ok(out)
+}
+
+/// Map a sqlx row to a `Game` struct. Shared by `list_games` and
+/// `search_games` to keep field-by-field column wiring consistent.
+fn row_to_game(row: &sqlx::sqlite::SqliteRow) -> Result<Game, String> {
+    Ok(Game {
+        id: row.try_get("id").map_err(err_str)?,
+        path: row.try_get("path").map_err(err_str)?,
+        name: row.try_get("name").map_err(err_str)?,
+        name_cn: row.try_get("name_cn").ok(),
+        executable_path: row.try_get("executable_path").ok(),
+        cover_path: row.try_get("cover_path").ok(),
+        cover_url: row.try_get("cover_url").ok(),
+        bangumi_id: row.try_get("bangumi_id").ok(),
+        vndb_id: row.try_get("vndb_id").ok(),
+        total_playtime_sec: row.try_get("total_playtime_sec").unwrap_or(0),
+        last_played_at: row.try_get("last_played_at").ok(),
+        status: row
+            .try_get("status")
+            .unwrap_or_else(|_| "unplayed".to_string()),
+        rating: row.try_get("rating").ok(),
+        notes: row.try_get("notes").ok(),
+        metadata_source: row.try_get("metadata_source").ok(),
+        match_confidence: row.try_get("match_confidence").ok(),
+        last_scanned_at: row.try_get("last_scanned_at").ok(),
+        brand: row.try_get("brand").ok(),
+        release_year: row.try_get("release_year").ok(),
+        is_favorite: row.try_get::<i64, _>("is_favorite").unwrap_or(0) != 0,
+        created_at: row.try_get("created_at").map_err(err_str)?,
+        updated_at: row.try_get("updated_at").map_err(err_str)?,
+    })
 }
 
 // Avoid a dangling `Manager` import warning when no command uses it directly;
@@ -829,4 +847,558 @@ pub fn get_pool_blocking(app: &AppHandle) -> Result<Arc<SqlitePool>, String> {
         .get()
         .cloned()
         .ok_or_else(|| "pool not initialised".to_string())
+}
+
+// ── Phase 4 / 04b: search/sort/filter + tag CRUD + game property updates ────
+//
+// 13 new commands wired into the frontend's library/sidebar/detail flows. All
+// follow the existing `Result<T, String>` Tauri convention and lean on the
+// shared `AppPaths`-managed sqlx pool. Schema reference (post-v4):
+//   games:     adds brand, release_year, is_favorite (v4) on top of v1/v2/v3.
+//   tags:      (id, name UNIQUE, color)                — v1
+//   game_tags: (game_id, tag_id)                       — v1, FK CASCADE both ways
+//
+// Sort + filter SQL is built dynamically; sort_by uses a hard-coded whitelist
+// (no user string ever interpolated into the ORDER BY clause), filter clauses
+// are bound parameters. The query LIKE clause covers name + name_cn + path
+// basename + tags.name (via subquery).
+
+/// Tag row 1:1 mirror.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct Tag {
+    pub id: i64,
+    pub name: String,
+    pub color: Option<String>,
+}
+
+/// Filter clauses for `search_games`. All fields are optional and ANDed.
+///
+/// - `tag_id`: only games tagged with this tag id (via `game_tags` join).
+/// - `status`: one of {unplayed, playing, cleared, dropped} (CHECK enforced
+///   by the games table; we whitelist here defensively too).
+/// - `favorite`: when Some(true), only `is_favorite = 1` rows.
+/// - `brand`: exact match against `games.brand` (Phase 4 metadata-fetch fills
+///   this). NULL brands never match.
+/// - `year_decade`: e.g. 2020 → matches release_year in [2020, 2029].
+#[derive(Debug, Deserialize, Clone, Default)]
+pub struct SearchFilter {
+    pub tag_id: Option<i64>,
+    pub status: Option<String>,
+    pub favorite: Option<bool>,
+    pub brand: Option<String>,
+    pub year_decade: Option<i32>,
+}
+
+/// Search + sort + filter the `games` table.
+///
+/// - `query` LIKE-matches against `name`, `name_cn`, the basename of `path`,
+///   and any tag name attached via `game_tags`. Empty / whitespace-only query
+///   means "no LIKE clause".
+/// - `sort_by`: one of `last_played | created_at | name | playtime | rating`.
+///   Unknown values → `Err`. NULL-handling matches CONTEXT.md (NULLS LAST for
+///   last_played/rating).
+/// - `filter`: optional bag of clauses ANDed onto the WHERE.
+#[tauri::command]
+pub async fn search_games(
+    query: Option<String>,
+    sort_by: String,
+    filter: Option<SearchFilter>,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<Game>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+
+    // Whitelist sort_by → ORDER BY clause (defensive: never interpolate user
+    // input). NULLS LAST on optional columns to keep "no value" rows at the
+    // end of ascending-meaning sorts.
+    let order_by: &str = match sort_by.as_str() {
+        "last_played" => "last_played_at IS NULL, last_played_at DESC",
+        "created_at" => "created_at DESC",
+        "name" => "name COLLATE NOCASE ASC",
+        "playtime" => "total_playtime_sec DESC",
+        "rating" => "rating IS NULL, rating DESC",
+        other => {
+            return Err(format!(
+                "sort_by must be one of last_played|created_at|name|playtime|rating (got '{}')",
+                other
+            ))
+        }
+    };
+
+    // Build dynamic WHERE clause + bind list. We bind in the same order we
+    // append placeholders; bind_args tracks each (kind, value) pair.
+    let q = query
+        .as_deref()
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(str::to_string);
+    let f = filter.unwrap_or_default();
+
+    let mut where_clauses: Vec<String> = Vec::new();
+    // The query argument has 4 placeholders (name, name_cn, path-basename,
+    // tag-subquery). We build the sub-SQL and rely on .bind() being called
+    // 4 times with the same %q% string.
+    if q.is_some() {
+        where_clauses.push(
+            "(g.name LIKE ? \
+              OR g.name_cn LIKE ? \
+              OR g.path LIKE ? \
+              OR g.id IN ( \
+                  SELECT gt.game_id FROM game_tags gt \
+                  JOIN tags t ON t.id = gt.tag_id \
+                  WHERE t.name LIKE ? \
+              ))"
+            .to_string(),
+        );
+    }
+    if let Some(tag_id) = f.tag_id {
+        where_clauses.push(format!(
+            "g.id IN (SELECT game_id FROM game_tags WHERE tag_id = {})",
+            tag_id
+        ));
+    }
+    if let Some(status) = f.status.as_deref() {
+        // Defensive whitelist (games.status CHECK already enforces this, but
+        // bad input here would just return zero rows — surface a clear error).
+        match status {
+            "unplayed" | "playing" | "cleared" | "dropped" => {}
+            other => {
+                return Err(format!(
+                    "filter.status must be unplayed|playing|cleared|dropped (got '{}')",
+                    other
+                ))
+            }
+        }
+        where_clauses.push(format!("g.status = '{}'", status));
+    }
+    if let Some(true) = f.favorite {
+        where_clauses.push("g.is_favorite = 1".to_string());
+    }
+    if f.brand.is_some() {
+        where_clauses.push("g.brand = ?".to_string());
+    }
+    if let Some(decade) = f.year_decade {
+        // 2020 → [2020, 2029]; treat decade as anchor. NULL release_year
+        // never matches.
+        let lo = decade;
+        let hi = decade + 9;
+        where_clauses.push(format!(
+            "g.release_year IS NOT NULL AND g.release_year BETWEEN {} AND {}",
+            lo, hi
+        ));
+    }
+
+    let where_sql = if where_clauses.is_empty() {
+        String::new()
+    } else {
+        format!(" WHERE {}", where_clauses.join(" AND "))
+    };
+
+    let sql = format!(
+        "SELECT g.id, g.path, g.name, g.name_cn, g.executable_path, g.cover_path, g.cover_url, \
+                g.bangumi_id, g.vndb_id, g.total_playtime_sec, g.last_played_at, g.status, \
+                g.rating, g.notes, g.metadata_source, g.match_confidence, g.last_scanned_at, \
+                g.brand, g.release_year, g.is_favorite, \
+                g.created_at, g.updated_at \
+         FROM games g{}\
+         ORDER BY {}",
+        where_sql, order_by
+    );
+
+    let mut qb = sqlx::query(&sql);
+    if let Some(qstr) = &q {
+        let like = format!("%{}%", qstr);
+        qb = qb.bind(like.clone()).bind(like.clone()).bind(like.clone()).bind(like);
+    }
+    if let Some(brand) = &f.brand {
+        qb = qb.bind(brand);
+    }
+
+    let rows = qb.fetch_all(&*pool).await.map_err(err_str)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(row_to_game(&row)?);
+    }
+    Ok(out)
+}
+
+// ── Sidebar auto-categories (TAG-04) ─────────────────────────────────────────
+
+#[derive(Debug, Serialize, Clone)]
+pub struct TagWithCount {
+    pub tag: Tag,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct StatusCount {
+    pub status: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct BrandCount {
+    pub brand: String,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct DecadeCount {
+    pub decade: i32,
+    pub count: i64,
+}
+
+#[derive(Debug, Serialize, Clone)]
+pub struct SidebarCategories {
+    pub tags: Vec<TagWithCount>,
+    pub statuses: Vec<StatusCount>,
+    pub brands: Vec<BrandCount>,
+    pub year_decades: Vec<DecadeCount>,
+    pub favorite_count: i64,
+}
+
+/// Aggregate counts for the sidebar's auto-derived sections. 4 SELECTs:
+///  - tags + per-tag count via LEFT JOIN game_tags (tags with 0 games still
+///    appear → users can see "empty" categories they created).
+///  - status counts (only the 4 enum values that actually exist in games).
+///  - distinct brands + counts (NULL brand excluded).
+///  - decade buckets (2020s / 2010s / etc.) — NULL release_year excluded.
+/// Plus a single scalar: favorite_count.
+#[tauri::command]
+pub async fn get_sidebar_categories(
+    state: State<'_, AppPaths>,
+) -> Result<SidebarCategories, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+
+    // Tags + per-tag game count.
+    let tag_rows = sqlx::query(
+        "SELECT t.id, t.name, t.color, COUNT(gt.game_id) AS cnt \
+         FROM tags t LEFT JOIN game_tags gt ON gt.tag_id = t.id \
+         GROUP BY t.id, t.name, t.color \
+         ORDER BY t.name COLLATE NOCASE ASC",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut tags = Vec::with_capacity(tag_rows.len());
+    for row in tag_rows {
+        tags.push(TagWithCount {
+            tag: Tag {
+                id: row.try_get("id").map_err(err_str)?,
+                name: row.try_get("name").map_err(err_str)?,
+                color: row.try_get("color").ok(),
+            },
+            count: row.try_get("cnt").unwrap_or(0),
+        });
+    }
+
+    // Status counts.
+    let status_rows = sqlx::query(
+        "SELECT status, COUNT(*) AS cnt FROM games GROUP BY status ORDER BY status",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut statuses = Vec::with_capacity(status_rows.len());
+    for row in status_rows {
+        statuses.push(StatusCount {
+            status: row.try_get("status").map_err(err_str)?,
+            count: row.try_get("cnt").unwrap_or(0),
+        });
+    }
+
+    // Brands (exclude NULL).
+    let brand_rows = sqlx::query(
+        "SELECT brand, COUNT(*) AS cnt FROM games \
+         WHERE brand IS NOT NULL AND brand <> '' \
+         GROUP BY brand ORDER BY cnt DESC, brand COLLATE NOCASE ASC",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut brands = Vec::with_capacity(brand_rows.len());
+    for row in brand_rows {
+        brands.push(BrandCount {
+            brand: row.try_get("brand").map_err(err_str)?,
+            count: row.try_get("cnt").unwrap_or(0),
+        });
+    }
+
+    // Year decades. Group by `(release_year / 10) * 10`. NULL excluded.
+    let decade_rows = sqlx::query(
+        "SELECT (release_year / 10) * 10 AS decade, COUNT(*) AS cnt FROM games \
+         WHERE release_year IS NOT NULL \
+         GROUP BY decade ORDER BY decade DESC",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut year_decades = Vec::with_capacity(decade_rows.len());
+    for row in decade_rows {
+        let decade_i64: i64 = row.try_get("decade").unwrap_or(0);
+        year_decades.push(DecadeCount {
+            decade: decade_i64 as i32,
+            count: row.try_get("cnt").unwrap_or(0),
+        });
+    }
+
+    // Favorite count (single scalar).
+    let fav_row = sqlx::query("SELECT COUNT(*) AS cnt FROM games WHERE is_favorite = 1")
+        .fetch_one(&*pool)
+        .await
+        .map_err(err_str)?;
+    let favorite_count: i64 = fav_row.try_get("cnt").unwrap_or(0);
+
+    Ok(SidebarCategories {
+        tags,
+        statuses,
+        brands,
+        year_decades,
+        favorite_count,
+    })
+}
+
+// ── Tag CRUD (TAG-01..03) ────────────────────────────────────────────────────
+
+#[tauri::command]
+pub async fn list_tags(state: State<'_, AppPaths>) -> Result<Vec<Tag>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query("SELECT id, name, color FROM tags ORDER BY name COLLATE NOCASE ASC")
+        .fetch_all(&*pool)
+        .await
+        .map_err(err_str)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(Tag {
+            id: row.try_get("id").map_err(err_str)?,
+            name: row.try_get("name").map_err(err_str)?,
+            color: row.try_get("color").ok(),
+        });
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn create_tag(
+    name: String,
+    color: Option<String>,
+    state: State<'_, AppPaths>,
+) -> Result<i64, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("tag name must not be empty".to_string());
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    let res = sqlx::query("INSERT INTO tags (name, color) VALUES (?, ?)")
+        .bind(trimmed)
+        .bind(&color)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(res.last_insert_rowid())
+}
+
+#[tauri::command]
+pub async fn update_tag(
+    id: i64,
+    name: String,
+    color: Option<String>,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("tag name must not be empty".to_string());
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    sqlx::query("UPDATE tags SET name = ?, color = ? WHERE id = ?")
+        .bind(trimmed)
+        .bind(&color)
+        .bind(id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_tag(id: i64, state: State<'_, AppPaths>) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    // ON DELETE CASCADE on game_tags.tag_id (Phase 1 schema) → game_tags rows
+    // for this tag are auto-removed by SQLite. PRAGMA foreign_keys = ON is set
+    // by 0001_init.sql so the cascade actually fires.
+    sqlx::query("DELETE FROM tags WHERE id = ?")
+        .bind(id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
+}
+
+/// Replace the full tag set for `game_id` with `tag_ids` (transactional).
+/// Empty `tag_ids` simply clears the tag set. Existing rows for absent tags
+/// are deleted, then INSERT for each desired tag — within a single
+/// `BEGIN ... COMMIT` so partial writes never linger after an error.
+#[tauri::command]
+pub async fn set_game_tags(
+    game_id: i64,
+    tag_ids: Vec<i64>,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let mut tx = pool.begin().await.map_err(err_str)?;
+
+    sqlx::query("DELETE FROM game_tags WHERE game_id = ?")
+        .bind(game_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(err_str)?;
+
+    for tid in tag_ids {
+        sqlx::query("INSERT OR IGNORE INTO game_tags (game_id, tag_id) VALUES (?, ?)")
+            .bind(game_id)
+            .bind(tid)
+            .execute(&mut *tx)
+            .await
+            .map_err(err_str)?;
+    }
+
+    tx.commit().await.map_err(err_str)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_game_tags(
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<Tag>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query(
+        "SELECT t.id, t.name, t.color FROM tags t \
+         JOIN game_tags gt ON gt.tag_id = t.id \
+         WHERE gt.game_id = ? \
+         ORDER BY t.name COLLATE NOCASE ASC",
+    )
+    .bind(game_id)
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(Tag {
+            id: row.try_get("id").map_err(err_str)?,
+            name: row.try_get("name").map_err(err_str)?,
+            color: row.try_get("color").ok(),
+        });
+    }
+    Ok(out)
+}
+
+// ── Game property updates (STAT-01..04) ─────────────────────────────────────
+
+#[tauri::command]
+pub async fn update_game_status(
+    game_id: i64,
+    status: String,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    // CHECK constraint already enforces this on the DB side, but a precise
+    // String error is nicer than sqlx's generic constraint-failed surface.
+    match status.as_str() {
+        "unplayed" | "playing" | "cleared" | "dropped" => {}
+        other => {
+            return Err(format!(
+                "status must be unplayed|playing|cleared|dropped (got '{}')",
+                other
+            ))
+        }
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    sqlx::query("UPDATE games SET status = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(&status)
+        .bind(game_id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_game_favorite(
+    game_id: i64,
+    is_favorite: bool,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let val: i64 = if is_favorite { 1 } else { 0 };
+    sqlx::query("UPDATE games SET is_favorite = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(val)
+        .bind(game_id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_game_rating(
+    game_id: i64,
+    rating: Option<i32>,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    if let Some(r) = rating {
+        if !(1..=10).contains(&r) {
+            return Err(format!("rating must be 1..=10 or null (got {})", r));
+        }
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    let val: Option<i64> = rating.map(|r| r as i64);
+    sqlx::query("UPDATE games SET rating = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(val)
+        .bind(game_id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn update_game_notes(
+    game_id: i64,
+    notes: Option<String>,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    sqlx::query("UPDATE games SET notes = ?, updated_at = datetime('now') WHERE id = ?")
+        .bind(&notes)
+        .bind(game_id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
+}
+
+/// Update both `brand` and `release_year` together — used by the metadata
+/// re-fetch pipeline (Phase-4 META) when binding/refreshing a game pulls in
+/// brand and release-date metadata that 04a's schema-v4 migration added
+/// columns for. Both args are independently nullable; passing None for either
+/// CLEARS that column (overwrite-with-NULL semantics, matching what the
+/// metadata pipeline needs when a refresh returns no brand).
+#[tauri::command]
+pub async fn update_game_brand_year(
+    game_id: i64,
+    brand: Option<String>,
+    release_year: Option<i32>,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let year_i64: Option<i64> = release_year.map(|y| y as i64);
+    sqlx::query(
+        "UPDATE games SET brand = ?, release_year = ?, updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(&brand)
+    .bind(year_i64)
+    .bind(game_id)
+    .execute(&*pool)
+    .await
+    .map_err(err_str)?;
+    Ok(())
 }

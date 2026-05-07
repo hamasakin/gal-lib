@@ -144,6 +144,20 @@ pub fn run() {
             commands::update_game_launch_config,
             commands::get_le_path,
             commands::set_le_path,
+            // 04b — search/sort/filter + tag CRUD + game property updates
+            commands::search_games,
+            commands::get_sidebar_categories,
+            commands::list_tags,
+            commands::create_tag,
+            commands::update_tag,
+            commands::delete_tag,
+            commands::set_game_tags,
+            commands::list_game_tags,
+            commands::update_game_status,
+            commands::update_game_favorite,
+            commands::update_game_rating,
+            commands::update_game_notes,
+            commands::update_game_brand_year,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
