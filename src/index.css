@@ -68,3 +68,5 @@
     border-color: hsl(var(--border));
   }
 }
+
+@import './styles/titlebar.css';
