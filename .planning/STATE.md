@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: "Completed 05-05a-PLAN.md (Phase 5 wave 1/5 — Schema v5 + Cargo crates screenshots/png + recharts npm)."
+stopped_at: "Completed 05-05b-PLAN.md (Phase 5 wave 2/5 — backend stats + screenshots + save backups; 12 new Tauri commands + orchestrator interval task)."
 last_updated: "2026-05-08T00:00:00Z"
-last_activity: 2026-05-08 -- Phase 5 wave 1 (05a) complete
+last_activity: 2026-05-08 -- Phase 5 wave 2 (05b) complete
 progress:
   total_phases: 5
   completed_phases: 4
   total_plans: 29
-  completed_plans: 25
-  percent: 86
+  completed_plans: 26
+  percent: 90
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 5 (stats-media) — IN PROGRESS
-Plan: 1 of 5 complete (05a done — schema v5 + crates screenshots/png + recharts; next: 05b — backend stats queries + screenshot capture orchestrator + save backup commands)
+Plan: 2 of 5 complete (05b done — screenshot::capture_to_disk + save_backup module + orchestrator interval task + 12 Tauri commands; next: 05c — frontend Stats page + ScreenshotsTab + SavesTab)
 Status: Ready to execute
-Last activity: 2026-05-08 -- Phase 5 wave 1 (05a) complete
+Last activity: 2026-05-08 -- Phase 5 wave 2 (05b) complete
 
-Progress: [█████████████████░░░] 86% (25/29 plans complete; Phase 5 wave 1/5 complete)
+Progress: [██████████████████░░] 90% (26/29 plans complete; Phase 5 wave 2/5 complete)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 25 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04f + Phase 5: 05a)
+- Total plans completed: 26 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a-04f + Phase 5: 05a-05b)
 - Average duration: ~20min/plan
-- Total execution time: ~8.6 hours
+- Total execution time: ~9 hours
 
 **By Phase:**
 
@@ -48,12 +48,13 @@ Progress: [█████████████████░░░] 86% (25
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
 | 3. Launch & Playtime | 6/6 | ~41min | ~6.8min |
 | 4. Library Polish | 6/6 | ~68min | ~11.3min |
-| 5. Stats & Media | 1/5 | ~10min | ~10min |
+| 5. Stats & Media | 2/5 | ~35min | ~17.5min |
 
 **Recent Trend:**
 
-- Last 6 plans: 04b → 04c → 04d → 04e → 04f → 05a
-- Trend: Phase 5 wave-1 (05a) lockup. schema v5 migration (games +screenshot_interval_sec/+save_path; new screenshots + save_backups tables w/ FK CASCADE + 2 indexes; bump schema_version → 5). Rust crates `screenshots = 0.8.10` (cross-platform desktop capture, Windows DXGI/GDI fallback) + `png = 0.17` (pure-Rust encoder; no libpng) for 05b SHOT-01. npm `recharts` pinned to ^2.12 → 2.15.4 (initial `pnpm add recharts` resolved to 3.8.1, re-ran with explicit ^2.12 to honor plan must_haves). db.rs registers V5 via 5th `Migration` entry; new unit test `migrations_v5_adds_screenshots_and_saves` (38/38 lib tests pass = 37 prior + 1 new). v4 test relaxed `len == 4` → `len >= 4` so v5 registration doesn't break it. Smoke: pnpm tauri dev triggered migration; `app_meta.schema_version=5` confirmed via sqlite3. Three Rule-1 deviations (test assertion bugs caught + fixed iteratively before commit). 1 commit (af7b91a).
+- Last 6 plans: 04c → 04d → 04e → 04f → 05a → 05b
+- Trend: Phase 5 wave-2 (05b) backend stats + screenshots + saves. New `src-tauri/src/screenshot.rs` with `capture_to_disk(data_dir, game_id)` — `Screen::all()` → primary monitor → `capture()` → raw RGBA bytes streamed via `png::Encoder` (BufWriter<File>) directly to `data/screenshots/<game_id>/<unix_ts>.png` (skips `image::write_to` because screenshots 0.8 internally re-exports image v0.24 vs project's v0.25 — incompatible RgbaImage types; encoding via `png` crate avoids the cross-version friction). New `src-tauri/src/save_backup.rs` with `create_backup` (walkdir recursive copy → `data/saves/<game_id>/<ts>/` → BackupResult{file_count, total_size_bytes}), `restore_backup`, `delete_backup_dir` + 3 unit tests (round-trip + 2 missing-source). `launch::orchestrator::launch_game` now reads `games.screenshot_interval_sec` and spawns a parallel `tokio::time::interval(period.max(60s))` task that calls capture_to_disk + INSERTs into screenshots table; the wait-for-exit task and screenshot task share an `Arc<AtomicBool>` cancel flag flipped at every terminal transition (end_session/mark_failed/launch-failed) — replaces the plan's "use existing flag" assumption (no flag existed prior). 12 new Tauri commands in `commands.rs`: `get_playtime_trend(period, days)` (strftime daily/weekly/monthly bucketing + `datetime('now', '-N days')` window over sessions in completed/cancelled status), `get_top_games(limit ∈ 1..=50)`, `get_screenshots/delete_screenshot/export_screenshot`, `set_screenshot_interval/get_screenshot_settings`, `set_save_path/list_save_backups/create_save_backup/restore_save_backup/delete_save_backup`. lib.rs registers all 12 in `generate_handler!` (43 commands total = 31 prior + 12 new + get_data_dir). cargo check + cargo test --lib green (41/41 = 38 prior + 3 new save_backup). 4 deviations: Rule-1 fix for `RgbaImage::to_png` API mismatch (plan's example called a method that doesn't exist on screenshots-0.8 RgbaImage — switched to png-crate streaming), Rule-2 fix to introduce the missing AtomicBool cancel flag, Rule-1 fix for SaveError::NotConfigured dead-code warning (added allow + reserved-future-use doc), and one note about plan's "44 entries" claim being off-by-one vs actual 43 (plan likely double-counted get_data_dir). 2 commits (a90eb88, 365051e).
+- Trend (prev): Phase 5 wave-1 (05a) lockup. schema v5 migration (games +screenshot_interval_sec/+save_path; new screenshots + save_backups tables w/ FK CASCADE + 2 indexes; bump schema_version → 5). Rust crates `screenshots = 0.8.10` (cross-platform desktop capture, Windows DXGI/GDI fallback) + `png = 0.17` (pure-Rust encoder; no libpng) for 05b SHOT-01. npm `recharts` pinned to ^2.12 → 2.15.4 (initial `pnpm add recharts` resolved to 3.8.1, re-ran with explicit ^2.12 to honor plan must_haves). db.rs registers V5 via 5th `Migration` entry; new unit test `migrations_v5_adds_screenshots_and_saves` (38/38 lib tests pass = 37 prior + 1 new). v4 test relaxed `len == 4` → `len >= 4` so v5 registration doesn't break it. Smoke: pnpm tauri dev triggered migration; `app_meta.schema_version=5` confirmed via sqlite3. Three Rule-1 deviations (test assertion bugs caught + fixed iteratively before commit). 1 commit (af7b91a).
 - Trend (prev): Phase 4 wave-6 FINAL (04f) Settings page polish. Two new components in src/components/settings/: <TagManager> (full tag CRUD — list rows with colored dot + inline-edit row [Input + 8-color preset swatch picker + 保存/取消] + delete with AlertDialog confirm "确定删除标签『{name}』？已打的游戏会保留，但失去此标签关联"; single editing-state slot prevents parallel-edit UX confusion; "添加标签" button opens dashed-border draft row with id:null sentinel reusing the same commit code path; mutation refetch via listTags()→useLibraryStore.setTags so sidebar reflects new state; 8 preset colors slate/blue/emerald/amber/rose/violet/orange/pink as Tailwind v3 *-500 hex stored in tags.color) and <UIPreferences> (default-sort Select with same 5 SortBy options as SortSelect, persisted to localStorage 'gal-lib:default-sort' via exported loadDefaultSort/saveDefaultSort helpers with whitelist validation against the SortBy enum; theme row rendered as opacity-60 hint span "暗色（深浅色切换将在 Phase 5 加入）" since shadcn Switch isn't installed and disabled Toggle would visually imply togglable surface). Settings.tsx appends both sections after existing P2/P3 sections (扫描根目录 / Locale Emulator / 扫描操作 untouched). pnpm typecheck + vite build green. 1 commit (e282e1a). Phase 4 complete.
 
 *Updated after each plan completion*
@@ -73,6 +74,7 @@ Progress: [█████████████████░░░] 86% (25
 | Phase 04 P04e | 22min | 2 tasks | 3 files (2 new + 1 modified) |
 | Phase 04 P04f | 12min | 1 task | 3 files (2 new + 1 modified) |
 | Phase 05 P05a | 10min | 1 task | 6 files (1 new + 5 modified) |
+| Phase 05 P05b | 25min | 2 tasks | 5 files (2 new + 3 modified) |
 
 ## Accumulated Context
 
@@ -174,6 +176,12 @@ Recent decisions affecting current work:
 - **05a**: Schema v5 = 2 ALTER TABLE games ADD COLUMN (screenshot_interval_sec INTEGER NOT NULL DEFAULT 300 / save_path TEXT) + 2 CREATE TABLE (screenshots / save_backups, both with FK ON DELETE CASCADE on game_id) + 2 CREATE INDEX on game_id + UPDATE app_meta schema_version='5'; v5 migration test counts non-comment ADD-COLUMN/CASCADE lines (mirroring v3/v4 pattern) — protects against the migration's own header doc-comment polluting substring counts
 - **05a**: Phase 5 dep lockup once at foundation step — Rust `screenshots = 0.8` (Windows DXGI/GDI fallback for desktop capture, 05b SHOT-01) + `png = 0.17` (pure-Rust encoder, no external libpng, 05b frame encode) + npm `recharts ^2.12` (resolved 2.15.4 — explicit pin to ^2.12 because default `pnpm add recharts` pulled v3.8.1, plan must_haves spec wins, 05d STATS-01/02 charts)
 - **05a**: schema-bump test pattern lock-in — `m{N}.sql.contains("schema_version") && m{N}.sql.contains("'{N}'")` (split-grep) NOT `contains("schema_version = '{N}'")` because actual SQL is `UPDATE app_meta SET value = '{N}' WHERE key = 'schema_version';` (key/value on opposite sides of clause). v4 test was using the equivalent split form; v5 test now mirrors it. Three Rule-1 test-assertion bugs caught & fixed iteratively before final commit (cascade count off-by-one, schema_version assertion form, prior-version `len == N` exact-equal blocking growth)
+- **05b**: PNG encoding via `png` crate directly (NOT `image::ImageBuffer::write_to`) — `screenshots = 0.8.10` re-exports `image = 0.24` internally, project root pulls `image = 0.25`; the two image versions ship distinct `RgbaImage` types so cross-version method calls don't compile. Streaming `raw RGBA → BufWriter<File> → png::Encoder` (Rgba color, Eight bit-depth) avoids the conversion entirely and is more memory-efficient (4K frame: ~32MB raw → ~5MB encoded; no intermediate Vec<u8> for either)
+- **05b**: Shared `Arc<AtomicBool>` cancel flag between paired tokio tasks (wait-for-exit + screenshot-interval). Flag flips ONCE per session at every terminal transition (end_session/mark_failed/launch-failed); screenshot loop checks via Relaxed-load at each interval tick and breaks out. AtomicBool over watch::channel/Notify because: flip-once gate, no async surface required at the read side, single-instruction load on the consumer. Documented trade-off: `JoinHandle::abort()` from end_active_session may leave one stale capture before the screenshot task notices (worst case 5min for default settings) — accepted; alternative cost is +50 bytes per session and serial-mutex contention
+- **05b**: Screenshot interval lower-bound clamp (60s) lives in orchestrator (`interval_sec.max(60)`), NOT in the `set_screenshot_interval` validator. Rationale: keep the user-facing setting freely settable; clamp at the consumer so future per-game UI doesn't have to know about the floor. 0 still means 'disabled' and skips the task spawn entirely (no wasted runtime)
+- **05b**: `get_playtime_trend(period, days)` whitelists strftime format string (daily=`%Y-%m-%d`, weekly=`%Y-W%W` ISO-ish, monthly=`%Y-%m`) — never interpolates user input. SQL window via `datetime('now', '-N days')` modifier (parameter-bound). Filters `status IN ('completed','cancelled')` (the only states with non-zero duration_sec); skips 'starting' and 'launch_failed' to keep GROUP BY result smaller on big libraries
+- **05b**: Filesystem+DB dual-write protocol — DELETE (screenshot/backup): row first, then best-effort fs::remove_file/fs::remove_dir_all (orphan files preferred to orphan rows; DB is source of truth). CREATE (backup): filesystem first, then INSERT (so half-written tree never gets a row). Restore: overwrites live save dir without auto-backup-first (frontend confirm dialog is the consent gate; CONTEXT § Save Backup explicitly OK'd 'warn 用户' approach)
+- **05b**: Tauri command count = 43 (31 prior + get_data_dir + 12 new in 05b). Plan's must_haves stated "44 (32 prior + 12 new)" — off-by-one in the prior count (likely included a non-handler `manage` registration). Functional correctness criterion (all 12 new commands wired) verified via grep; the count discrepancy is a plan-level artifact, not a functional gap
 
 ### Pending Todos
 
@@ -194,5 +202,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-05-08T00:00:00Z
-Stopped at: Completed 05-05a-PLAN.md (Phase 5 wave 1/5 — Schema v5 + Cargo crates screenshots/png + recharts npm); 25/29 plans done.
+Stopped at: Completed 05-05b-PLAN.md (Phase 5 wave 2/5 — backend stats + screenshots + save backups; 12 new Tauri commands + orchestrator screenshot interval task); 26/29 plans done.
 Resume file: None

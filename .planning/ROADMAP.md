@@ -88,4 +88,4 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 | 2. Library Ingest | 6/6 | Complete | 2026-05-07 |
 | 3. Launch & Playtime | 6/6 | Complete | 2026-05-07 |
 | 4. Library Polish | 6/6 | Complete | 2026-05-08 |
-| 5. Stats & Media | 1/5 | In progress | - |
+| 5. Stats & Media | 2/5 | In progress | - |
