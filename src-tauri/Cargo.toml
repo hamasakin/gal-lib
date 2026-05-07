@@ -41,6 +41,13 @@ futures-util = "0.3"
 # the workspace resolves a single sqlx; features mirror the plugin
 # (`sqlite + runtime-tokio`) so we share its compiled artifact.
 sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runtime-tokio", "macros"] }
+# Phase 3 (03a) — locked dependency lockup for launch + playtime.
+# winreg: read HKEY_CURRENT_USER\Software\LocaleEmulator (LE detection, 03b).
+# sysinfo: enumerate processes (LE-spawned game tracking, 03c).
+# windows: OpenProcess / WaitForSingleObject for low-overhead exit watcher (03c).
+winreg = "0.52"
+sysinfo = "0.32"
+windows = { version = "0.58", features = ["Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_Foundation", "Win32_System_Diagnostics_ToolHelp"] }
 
 # Release profile — size-optimized for single-exe distribution (RESEARCH § Architecture).
 # 01f will further tune (e.g. `incremental = false`); leave room for that here.
