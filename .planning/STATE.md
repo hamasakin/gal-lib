@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
-status: complete
-stopped_at: "Completed 05-05e-PLAN.md (Phase 5 wave 5/5 FINAL — Detail page extensions: ScreenshotsTab + SavesTab + 截图间隔 select). Phase 5 complete; v1 milestone complete."
-last_updated: "2026-05-08T00:00:00Z"
-last_activity: 2026-05-08 -- Phase 5 wave 5 (05e) complete; v1 milestone complete
+status: completed
+stopped_at: "Completed 05-05e-PLAN.md (Phase 5 wave 5/5 FINAL — Detail page extensions: ScreenshotsTab + SavesTab + 截图间隔 select in 设置 tab); 29/29 plans done. **v1 milestone complete.**"
+last_updated: "2026-05-07T20:15:53.982Z"
+last_activity: 2026-05-07
 progress:
   total_phases: 5
   completed_phases: 5
@@ -15,6 +15,20 @@ progress:
 ---
 
 # Project State
+
+## Deferred Items
+
+Items acknowledged and deferred at v1.0 milestone close on 2026-05-08:
+
+| Category | Item | Status |
+|----------|------|--------|
+| verification | Phase 01 GUI/interaction items (drag/buttons/tooltip) | human_needed |
+| verification | Phase 02 GUI/network items (real Bangumi/VNDB, virtualization perf) | human_needed |
+| verification | Phase 03 LE-integration items (real LE install + galgame) | human_needed |
+| verification | Phase 04 GUI items (search/sort/filter/tags interactions) | human_needed |
+| verification | Phase 05 GUI/integration items (live charts, screenshots, save backup) | human_needed |
+
+**Resolution path:** These deferrals are by design per autonomous-mode policy — they require a human-driven QA pass on a clean Win10/Win11 environment with Locale Emulator + a real galgame library installed. Each phase's `*-VERIFICATION.md` lists the specific manual checklist items.
 
 ## Project Reference
 
@@ -28,7 +42,7 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 Phase: 5 (stats-media) — COMPLETE
 Plan: 5 of 5 complete (05e done — Detail page extensions: ScreenshotsTab + SavesTab + 截图间隔 select)
 Status: v1 milestone complete
-Last activity: 2026-05-08 -- Phase 5 wave 5 (05e) complete; v1 milestone complete
+Last activity: 2026-05-07
 
 Progress: [████████████████████] 100% (29/29 plans complete; Phase 5 5/5 complete; v1 milestone done)
 
