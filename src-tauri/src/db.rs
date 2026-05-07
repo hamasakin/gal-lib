@@ -7,12 +7,15 @@
 //! Schema v2 (Phase 2) adds `scan_roots` + 4 metadata columns on `games`.
 //! Schema v3 (Phase 3) adds 3 launch-config columns on `games` and 2
 //! session-status columns on `sessions` (status + exit_code).
+//! Schema v4 (Phase 4) adds 3 metadata/state columns on `games`
+//! (brand + release_year + is_favorite).
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
 const INIT_SQL: &str = include_str!("../migrations/0001_init.sql");
 const V2_SQL: &str = include_str!("../migrations/0002_add_scan_and_metadata.sql");
 const V3_SQL: &str = include_str!("../migrations/0003_add_launch_and_session_status.sql");
+const V4_SQL: &str = include_str!("../migrations/0004_add_brand_year_favorite.sql");
 
 /// All migrations to register with tauri-plugin-sql, in version order.
 /// Add future migrations as additional entries with monotonically increasing
@@ -35,6 +38,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 3,
             description: "add_launch_and_session_status",
             sql: V3_SQL,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 4,
+            description: "add_brand_year_favorite",
+            sql: V4_SQL,
             kind: MigrationKind::Up,
         },
     ]
@@ -79,7 +88,7 @@ mod tests {
     #[test]
     fn migrations_v3_adds_launch_columns_and_session_status() {
         let m = migrations();
-        assert_eq!(m.len(), 3, "v3: exactly three migrations registered");
+        assert!(m.len() >= 3, "at least three migrations registered");
         let m3 = m.iter().find(|x| x.version == 3).expect("v3 present");
         assert_eq!(m3.description, "add_launch_and_session_status");
 
@@ -112,6 +121,46 @@ mod tests {
         assert!(
             m3.sql.contains("schema_version") && m3.sql.contains("'3'"),
             "v3 sql bumps schema_version to '3'"
+        );
+    }
+
+    #[test]
+    fn migrations_v4_adds_brand_year_favorite() {
+        let m = migrations();
+        assert_eq!(m.len(), 4, "v4: exactly four migrations registered");
+        let m4 = m.iter().find(|x| x.version == 4).expect("v4 present");
+        assert_eq!(m4.description, "add_brand_year_favorite");
+
+        // Phase 4 adds 3 metadata/state columns on games.
+        // Count actual ALTER ... ADD COLUMN statements (skip SQL comments).
+        let add_column_count = m4
+            .sql
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("--") && t.contains("ADD COLUMN")
+            })
+            .count();
+        assert_eq!(add_column_count, 3, "v4: exactly 3 ADD COLUMN statements");
+
+        // games: brand + release_year + is_favorite (with exact type signatures).
+        assert!(
+            m4.sql.contains("brand TEXT"),
+            "v4 sql contains brand TEXT"
+        );
+        assert!(
+            m4.sql.contains("release_year INTEGER"),
+            "v4 sql contains release_year INTEGER"
+        );
+        assert!(
+            m4.sql.contains("is_favorite INTEGER NOT NULL DEFAULT 0"),
+            "v4 sql contains is_favorite INTEGER NOT NULL DEFAULT 0"
+        );
+
+        // schema_version bumped to 4.
+        assert!(
+            m4.sql.contains("schema_version") && m4.sql.contains("'4'"),
+            "v4 sql bumps schema_version to '4'"
         );
     }
 }
