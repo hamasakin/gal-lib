@@ -3,6 +3,7 @@ import App from "./App";
 import { Library } from "./routes/Library";
 import { Settings } from "./routes/Settings";
 import Detail from "./routes/Detail";
+import Stats from "./routes/Stats";
 
 /**
  * Application router.
@@ -21,6 +22,10 @@ import Detail from "./routes/Detail";
  * Phase 3 (03f) addition:
  *   /games/:id → <Detail />   (minimal: cover + name + total time +
  *                              LE config form + sessions list)
+ *
+ * Phase 5 (05d) addition:
+ *   /stats     → <Stats />    (playtime trend AreaChart + top-N BarChart;
+ *                              fed by 05a/05b/05c stats invokes)
  */
 export const router = createHashRouter([
   {
@@ -29,6 +34,7 @@ export const router = createHashRouter([
     children: [
       { index: true, element: <Library /> },
       { path: "settings", element: <Settings /> },
+      { path: "stats", element: <Stats /> },
       { path: "games/:id", element: <Detail /> },
     ],
   },

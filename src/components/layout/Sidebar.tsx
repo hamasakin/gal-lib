@@ -40,7 +40,11 @@
  */
 
 import { useEffect } from "react";
-import { ChevronDown, Settings as SettingsIcon } from "lucide-react";
+import {
+  BarChart3,
+  ChevronDown,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { useLocation, useNavigate } from "react-router-dom";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -68,6 +72,7 @@ export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
   const isSettingsActive = location.pathname === "/settings";
+  const isStatsActive = location.pathname === "/stats";
 
   const sidebar = useLibraryStore((s) => s.sidebar);
   const setSidebar = useLibraryStore((s) => s.setSidebar);
@@ -281,9 +286,34 @@ export function Sidebar() {
         </div>
       </ScrollArea>
 
-      {/* Bottom: Separator + 设置 nav */}
+      {/* Bottom: Separator + 统计 nav (above) + 设置 nav (below).
+          Order is locked by 05-CONTEXT.md §Stats Page — 统计 sits above 设置
+          so the stats entry-point is more prominent than the catch-all
+          settings page. Both share the same active-state visual (2px bg-ring
+          left bar + bg-accent) so they feel like a coherent nav group. */}
       <div className="flex flex-col">
         <Separator />
+        <button
+          type="button"
+          onClick={() => navigate("/stats")}
+          aria-current={isStatsActive ? "page" : undefined}
+          className={cn(
+            "relative flex items-center gap-2 px-4 py-2 text-body text-foreground",
+            "transition-colors duration-150",
+            "hover:bg-accent",
+            "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2",
+            isStatsActive && "bg-accent"
+          )}
+        >
+          {isStatsActive && (
+            <span
+              aria-hidden="true"
+              className="absolute left-0 top-0 h-full w-[2px] bg-ring"
+            />
+          )}
+          <BarChart3 size={16} />
+          <span>统计</span>
+        </button>
         <button
           type="button"
           onClick={() => navigate("/settings")}
