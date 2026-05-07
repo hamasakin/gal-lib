@@ -98,6 +98,7 @@ pub fn run() {
             pool: OnceCell::new(),
         })
         .manage(commands::ScanState::new())
+        .manage(commands::ActiveSessionState(std::sync::Mutex::new(None)))
         .invoke_handler(tauri::generate_handler![
             get_data_dir,
             commands::add_scan_root,
@@ -110,6 +111,14 @@ pub fn run() {
             commands::bind_metadata,
             commands::refresh_metadata,
             commands::list_games,
+            // 03d — launch + sessions + LE path
+            commands::launch_game,
+            commands::get_active_session,
+            commands::end_active_session,
+            commands::list_sessions,
+            commands::update_game_launch_config,
+            commands::get_le_path,
+            commands::set_le_path,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

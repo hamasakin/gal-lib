@@ -20,11 +20,12 @@
 //! Errors returned to JS as `Result<T, String>` (Tauri requires
 //! Serialize-able errors; we render with `{:#}` to capture context chains).
 
+use crate::launch::{le, orchestrator, process_track, session};
 use crate::{ingest, metadata, scan, AppPaths};
 use serde::{Deserialize, Serialize};
 use sqlx::Row;
 use std::collections::HashSet;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 
@@ -518,4 +519,287 @@ pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String>
 #[allow(dead_code)]
 fn _retain_manager_import(app: &AppHandle) {
     let _ = app.app_handle();
+}
+
+// ── Phase 3 / 03d: launch + sessions + LE-path commands ─────────────────────
+
+/// Held in Tauri-managed state for the lifetime of the app. Wraps the active
+/// (running) game session — `None` when nothing is playing.
+///
+/// `std::sync::Mutex` (not `tokio::sync::Mutex`) is intentional: every lock
+/// in this file is short-lived and never held across an `await`. The
+/// lock → clone-or-take → unlock pattern is enforced by inspection in each
+/// command; do NOT add a `.await` between `lock()` and the matching drop.
+pub struct ActiveSessionState(pub Mutex<Option<ActiveSessionEntry>>);
+
+/// Per-session bookkeeping. The `task` AbortHandle (NOT the JoinHandle) is
+/// what `end_active_session` needs — we only ever cancel, never join here.
+/// The JoinHandle is owned by the secondary watcher spawned in `launch_game`,
+/// which awaits it and then clears this state + emits the `null` event.
+pub struct ActiveSessionEntry {
+    pub session: orchestrator::ActiveSession,
+    pub task: tokio::task::AbortHandle,
+}
+
+/// Tauri event name for active-session lifecycle changes. Payload is
+/// `Option<ActiveSession>` (None / null = no active session).
+pub const ACTIVE_SESSION_EVENT: &str = "active-session-changed";
+
+/// Start a new game session. End-to-end:
+///   1. Validate no other session is active.
+///   2. Resolve pool, call `orchestrator::launch_game`.
+///   3. Spawn a watcher task that awaits the orchestrator's JoinHandle,
+///      then clears `ActiveSessionState` and emits the null event.
+///   4. Store the AbortHandle + ActiveSession in state.
+///   5. Emit `active-session-changed` with the session payload.
+#[tauri::command]
+pub async fn launch_game(
+    game_id: i64,
+    app: AppHandle,
+    state: State<'_, AppPaths>,
+    active_state: State<'_, ActiveSessionState>,
+) -> Result<orchestrator::ActiveSession, String> {
+    // Pre-check: refuse if a session is already running. Hold the lock for
+    // the minimum span — only to read the Option discriminant.
+    {
+        let g = active_state
+            .0
+            .lock()
+            .map_err(|_| "active session mutex poisoned".to_string())?;
+        if g.is_some() {
+            return Err("session already active".to_string());
+        }
+    }
+
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+
+    let (_session_id, active, join) = orchestrator::launch_game(orchestrator::LaunchInputs {
+        data_dir,
+        pool: (*pool).clone(),
+        game_id,
+    })
+    .await
+    .map_err(err_str)?;
+
+    let abort = join.abort_handle();
+
+    // Store the active session BEFORE spawning the watcher: the watcher must
+    // see the same entry it will later clear, and we want the UI emission to
+    // race-free reflect the just-stored state.
+    {
+        let mut g = active_state
+            .0
+            .lock()
+            .map_err(|_| "active session mutex poisoned".to_string())?;
+        *g = Some(ActiveSessionEntry {
+            session: active.clone(),
+            task: abort,
+        });
+    }
+
+    // Emit "session started" — payload is Option<ActiveSession> (Some).
+    let _ = app.emit(ACTIVE_SESSION_EVENT, Some(active.clone()));
+
+    // Watcher: when the orchestrator's join completes (natural exit OR abort),
+    // clear state + emit null. ManagedState (`State<'_, ActiveSessionState>`)
+    // can't be moved across threads, so we capture the AppHandle and look up
+    // the state via `app.state()` from inside the spawned task.
+    let app_for_watch = app.clone();
+    tokio::spawn(async move {
+        // Awaiting an aborted JoinHandle returns Err(JoinError::is_cancelled).
+        // We don't care which path got us here — either way, finalize state.
+        let _ = join.await;
+        if let Some(state) = app_for_watch.try_state::<ActiveSessionState>() {
+            if let Ok(mut g) = state.0.lock() {
+                *g = None;
+            }
+        }
+        let _ = app_for_watch.emit(ACTIVE_SESSION_EVENT, None::<orchestrator::ActiveSession>);
+    });
+
+    Ok(active)
+}
+
+/// Read the currently-active session, if any. Returns None when nothing is
+/// playing. Used by the frontend on app boot to rehydrate the active-session
+/// bar after a reload.
+#[tauri::command]
+pub fn get_active_session(
+    active_state: State<'_, ActiveSessionState>,
+) -> Result<Option<orchestrator::ActiveSession>, String> {
+    let g = active_state
+        .0
+        .lock()
+        .map_err(|_| "active session mutex poisoned".to_string())?;
+    Ok(g.as_ref().map(|e| e.session.clone()))
+}
+
+/// User-initiated "强制结束". Aborts the wait-for-exit task, marks the DB
+/// session as 'cancelled' (which credits playtime to the games row), and
+/// emits the null event.
+///
+/// We do NOT call `kill_pid` here: by the time the user clicks "force end",
+/// the game may have crashed / closed itself. `kill_pid` is best-effort —
+/// the session_id is the source of truth for DB cleanup.
+#[tauri::command]
+pub async fn end_active_session(
+    app: AppHandle,
+    state: State<'_, AppPaths>,
+    active_state: State<'_, ActiveSessionState>,
+) -> Result<(), String> {
+    // Take the entry (don't just peek) — the watcher will also try to clear
+    // state, and `take()` is idempotent. Hold the lock only long enough to
+    // extract the session_id and abort handle.
+    let entry_opt = {
+        let mut g = active_state
+            .0
+            .lock()
+            .map_err(|_| "active session mutex poisoned".to_string())?;
+        g.take()
+    };
+
+    let entry = match entry_opt {
+        Some(e) => e,
+        None => return Ok(()), // already ended — idempotent no-op
+    };
+
+    let session_id = entry.session.session_id;
+
+    // Abort the wait-for-exit task FIRST so it can't race with our
+    // cancel_session UPDATE. AbortHandle::abort returns immediately; the
+    // watcher task will observe `JoinError::is_cancelled` and emit null.
+    entry.task.abort();
+
+    // Mark cancelled in DB — credits elapsed time to games.total_playtime_sec.
+    let pool = state.pool().await.map_err(err_str)?;
+    session::cancel_session(&*pool, session_id)
+        .await
+        .map_err(err_str)?;
+
+    // Belt-and-braces: explicitly emit null in case the watcher hasn't fired
+    // yet (its emit is also null, so a duplicate is harmless on the frontend).
+    let _ = app.emit(ACTIVE_SESSION_EVENT, None::<orchestrator::ActiveSession>);
+    Ok(())
+}
+
+/// JSON shape for `list_sessions`. Fields mirror the `sessions` table after
+/// the schema-v3 migration (status + exit_code added in 03a). `rename_all =
+/// "snake_case"` keeps the wire format aligned with the column names so the
+/// frontend can use the same field names without translation.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+#[serde(rename_all = "snake_case")]
+pub struct SessionRow {
+    pub id: i64,
+    pub game_id: i64,
+    pub started_at: String,
+    pub ended_at: Option<String>,
+    pub duration_sec: i64,
+    pub status: String,
+    pub exit_code: Option<i64>,
+}
+
+/// Read the most recent 100 sessions for `game_id`, newest first. Used by
+/// the detail-page session-history list.
+#[tauri::command]
+pub async fn list_sessions(
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<SessionRow>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query(
+        "SELECT id, game_id, started_at, ended_at, duration_sec, status, exit_code \
+         FROM sessions WHERE game_id = ? \
+         ORDER BY started_at DESC LIMIT 100",
+    )
+    .bind(game_id)
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(SessionRow {
+            id: row.try_get("id").map_err(err_str)?,
+            game_id: row.try_get("game_id").map_err(err_str)?,
+            started_at: row.try_get("started_at").map_err(err_str)?,
+            ended_at: row.try_get("ended_at").ok(),
+            duration_sec: row.try_get("duration_sec").unwrap_or(0),
+            status: row
+                .try_get("status")
+                .unwrap_or_else(|_| "completed".to_string()),
+            exit_code: row.try_get("exit_code").ok(),
+        });
+    }
+    Ok(out)
+}
+
+/// COALESCE-style update for `games` launch-config columns. Each parameter is
+/// optional — `None` means "leave unchanged"; `Some(value)` overwrites. Note
+/// that `Some("")` will overwrite with empty string (intentional — lets the
+/// user clear `launch_args` to "no args").
+///
+/// Uses sqlx's bind-NULL = SQL NULL semantics combined with `COALESCE(?, col)`
+/// to express "use new value if provided, otherwise keep current".
+#[tauri::command]
+pub async fn update_game_launch_config(
+    game_id: i64,
+    le_profile: Option<String>,
+    launch_args: Option<String>,
+    cwd: Option<String>,
+    executable_path: Option<String>,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    sqlx::query(
+        "UPDATE games SET \
+            le_profile      = COALESCE(?, le_profile), \
+            launch_args     = COALESCE(?, launch_args), \
+            cwd             = COALESCE(?, cwd), \
+            executable_path = COALESCE(?, executable_path) \
+         WHERE id = ?",
+    )
+    .bind(&le_profile)
+    .bind(&launch_args)
+    .bind(&cwd)
+    .bind(&executable_path)
+    .bind(game_id)
+    .execute(&*pool)
+    .await
+    .map_err(err_str)?;
+    Ok(())
+}
+
+/// Read the persisted LE path from `data/config.json`. Does NOT trigger
+/// detection — that's `launch_game`'s responsibility (via `resolve_le_path`).
+/// Returns None when the field is missing or the persisted path no longer
+/// exists, so the Settings page can prompt for manual override.
+#[tauri::command]
+pub fn get_le_path(state: State<'_, AppPaths>) -> Result<Option<String>, String> {
+    let cfg_path = state.data_dir.join("config.json");
+    let cfg_str = std::fs::read_to_string(&cfg_path).unwrap_or_else(|_| "{}".into());
+    let cfg: serde_json::Value =
+        serde_json::from_str(&cfg_str).unwrap_or_else(|_| serde_json::Value::Object(Default::default()));
+    let p = cfg
+        .get("le_path")
+        .and_then(|v| v.as_str())
+        .map(|s| s.to_string());
+    // Filter out stale paths so the frontend doesn't display a non-existent
+    // location as "configured".
+    Ok(p.filter(|s| Path::new(s).exists()))
+}
+
+/// Manual override: persist `path` as the LE path. Validates existence (via
+/// `le::set_le_path`) and surfaces InvalidPath as a String error so the
+/// frontend can render a precise message.
+#[tauri::command]
+pub fn set_le_path(path: String, state: State<'_, AppPaths>) -> Result<(), String> {
+    le::set_le_path(&state.data_dir, Path::new(&path)).map_err(err_str)
+}
+
+// Retain process_track import in dead-code-aware modules (kill_pid etc. are
+// referenced from end_active_session-adjacent flows in 03e tray cleanup).
+#[allow(dead_code)]
+fn _retain_process_track_import() {
+    let _ = process_track::kill_pid;
 }
