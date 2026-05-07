@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-03f-PLAN.md (Phase 3 wave 6/6 — frontend launch UI + Detail page + Settings LE + tray toast). PHASE 3 COMPLETE.
-last_updated: "2026-05-07T15:06:27.227Z"
-last_activity: 2026-05-07 -- Phase 4 planning complete
+stopped_at: Completed 04-04a-PLAN.md (Phase 4 wave 1/6 — schema v4 + 4 shadcn blocks + react-markdown lockup).
+last_updated: "2026-05-07T15:15:14Z"
+last_activity: 2026-05-07 -- Phase 4 wave 1 (04a) executed
 progress:
   total_phases: 5
   completed_phases: 3
   total_plans: 24
-  completed_plans: 18
-  percent: 75
+  completed_plans: 19
+  percent: 79
 ---
 
 # Project State
@@ -25,20 +25,20 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 
 ## Current Position
 
-Phase: 3 (launch-playtime) — COMPLETE
-Plan: 6 of 6 complete (03f done — launch UI + Detail page + Settings LE + tray toast)
-Status: Ready to execute
-Last activity: 2026-05-07 -- Phase 4 planning complete
+Phase: 4 (library-polish)
+Plan: 1 of 6 complete (04a done — schema v4 + shadcn lockup; next: 04b backend search/CRUD/status commands)
+Status: In progress
+Last activity: 2026-05-07 -- Phase 4 wave 1 (04a) executed
 
-Progress: [████████████████████] 100% (18/18 plans complete; Phase 3 fully wrapped)
+Progress: [███████████████░░░░░] 79% (19/24 plans complete; Phase 4 wave 1/6 done)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 18 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f) — ALL plans through Phase 3 done
-- Average duration: ~25min/plan
-- Total execution time: ~7.25 hours
+- Total plans completed: 19 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03f + Phase 4: 04a)
+- Average duration: ~24min/plan
+- Total execution time: ~7.5 hours
 
 **By Phase:**
 
@@ -47,11 +47,12 @@ Progress: [████████████████████] 100% (1
 | 1. Foundation | 6 | ~3h | ~30min |
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
 | 3. Launch & Playtime | 6/6 | ~41min | ~6.8min |
+| 4. Library Polish | 1/6 | ~15min | ~15min |
 
 **Recent Trend:**
 
-- Last 6 plans: 03a → 03b → 03c → 03d → 03e → 03f
-- Trend: Phase 3 closed in 41min cumulative wall time (smallest plan velocity in project) — backend (03a-03e) was tightly scoped, 03f frontend wired everything via existing typed invoke + Zustand patterns. 03f added 7 invoke helpers + 2 event subs + ActiveSessionBar + Detail page + GameCard launch overlay + Settings LE section + first-time tray toast with localStorage gate. 5 Rule 2/3 auto-fixes (boot-time hydration, no-exe inline callout, single-session UI lock, no-exe badge reposition, unused import). pnpm typecheck + vite build + cargo check all exit 0.
+- Last 6 plans: 03b → 03c → 03d → 03e → 03f → 04a
+- Trend: Phase 4 wave-1 (04a) opened the polish phase as a single 15min lockup — schema v4 migration (3 ALTER TABLE on `games`: brand/release_year/is_favorite) + 4 shadcn blocks (textarea/tabs/popover/command, plus input-group transitively from command) + react-markdown 10.1 + remark-gfm 4.0 npm deps. cargo test --lib stayed green at 37 (prior 36 + 1 new v4 migration test). 1 Rule-1 deviation (PLAN test assertion `schema_version = '4'` literal-string mismatched OUTLINE SQL form — fixed to v2/v3 split-contains pattern). 1 invocation-strategy fix for shadcn CLI overwrite-prompt (fed `n\\n` via stdin since `--yes` doesn't gate overwrites). Live `tauri dev` smoke confirmed schema_version=4 on existing dev db.
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
@@ -63,6 +64,7 @@ Progress: [████████████████████] 100% (1
 | Phase 03 P03d | 3min | 2 tasks | 4 files (1 new + 3 modified) |
 | Phase 03 P03e | 12min | 1 task | 4 files (1 new + 3 modified) |
 | Phase 03 P03f | 12min | 2 tasks | 9 files (3 new + 6 modified) |
+| Phase 04 P04a | 15min | 2 tasks | 9 files (6 new + 3 modified) |
 
 ## Accumulated Context
 
@@ -135,6 +137,9 @@ Recent decisions affecting current work:
 - **03f**: Settings LE path section uses aliased import `setLePath as applyLePath` to avoid name clash with React local state setter `setLePath` (TS would reject the shadowing inside the same function scope)
 - **03f**: Close-to-tray toast uses localStorage flag `gal-lib:tray-toast-dismissed` (purely UI affordance, doesn't need to survive uninstall, sync writes from action handler) — backend continues to emit on every close, frontend filters
 - **03f**: ActiveSessionBar 1Hz tick via setInterval driven by useEffect dep on activeSession — interval auto-cleans when activeSession→null (component returns null and effect cleanup fires); no separate auto-hide timer like ScanProgressBar (session lifecycle is binary in store)
+- **04a**: Schema v4 = 3 ALTER TABLE games ADD COLUMN (brand TEXT / release_year INTEGER / is_favorite INTEGER NOT NULL DEFAULT 0) + UPDATE app_meta schema_version='4'; v4 test loosened v3 `len == 3` to `len >= 3` for forward growth, pins exact `len == 4` and `ADD COLUMN count == 3`
+- **04a**: shadcn `command` block now ships as composite with `input-group` (treated as vendored asset, committed alongside command.tsx); CLI overwrite prompts must be answered via stdin pipe (`printf 'n\n…'`) since `--yes` doesn't auto-default the per-file overwrite prompt
+- **04a**: Plan-script `<verify>` `grep -q "schema_version = '4'"` literal-form does not match OUTLINE SQL `WHERE key = 'schema_version' … value = '4'` — verified equivalently with split-grep (`grep schema_version` AND `grep "'4'"`); future schema-bump plans should use the same split assertion
 
 ### Pending Todos
 
@@ -150,10 +155,10 @@ Items acknowledged and carried forward from previous milestone close:
 
 | Category | Item | Status | Deferred At |
 |----------|------|--------|-------------|
-| *(none)* | | | |
+| CSS warning | D-04a-1: vite/postcss `@import './styles/titlebar.css'` order warning in `src/index.css:72` (pre-existing P1/P3 carryover; full notes in `.planning/phases/04-library-polish/deferred-items.md`) | Open | 04a |
 
 ## Session Continuity
 
-Last session: 2026-05-07T15:00:00.000Z
-Stopped at: Completed 03-03f-PLAN.md (Phase 3 wave 6/6 — frontend launch UI + Detail page + Settings LE + tray toast). PHASE 3 COMPLETE.
+Last session: 2026-05-07T15:15:14Z
+Stopped at: Completed 04-04a-PLAN.md (Phase 4 wave 1/6 — schema v4 + 4 shadcn blocks + react-markdown lockup).
 Resume file: None

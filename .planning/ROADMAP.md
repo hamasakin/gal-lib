@@ -14,7 +14,7 @@ Decimal phases appear between their surrounding integers in numeric order.
 
 - [x] **Phase 1: Foundation** - Tauri 应用骨架、Portable 数据层、SQLite migrations、双栏 App Shell
 - [x] **Phase 2: Library Ingest** - 多目录扫描、exe 识别、Bangumi/VNDB 元数据抓取、封面网格渲染
-- [ ] **Phase 3: Launch & Playtime** - LE 转区启动、进程计时、会话记录、托盘后台
+- [x] **Phase 3: Launch & Playtime** - LE 转区启动、进程计时、会话记录、托盘后台
 - [ ] **Phase 4: Library Polish** - 搜索/排序/筛选、详情页、自定义标签、通关状态/评分/笔记、设置页
 - [ ] **Phase 5: Stats & Media** - 统计图表、截图管理、存档备份恢复
 
@@ -86,6 +86,6 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 |-------|----------------|--------|-----------|
 | 1. Foundation | 6/6 | Complete | 2026-05-07 |
 | 2. Library Ingest | 6/6 | Complete | 2026-05-07 |
-| 3. Launch & Playtime | 4/6 | In progress | - |
-| 4. Library Polish | 0/TBD | Not started | - |
+| 3. Launch & Playtime | 6/6 | Complete | 2026-05-07 |
+| 4. Library Polish | 1/6 | In progress | - |
 | 5. Stats & Media | 0/TBD | Not started | - |
