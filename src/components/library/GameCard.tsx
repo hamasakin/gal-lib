@@ -7,8 +7,22 @@
  *   - 4×4 dot + label status indicator using semantic palette extension
  *     (text-blue-400 / text-emerald-400 / text-red-400 / text-muted-foreground)
  *   - Hover: cover scales 1.02 + ring-1 border outline
- *   - Click on card body: toast.info "详情页 — 即将上线" (Phase 4 will route to /games/:id)
- *   - Right-click: shadcn DropdownMenu with "重新匹配元数据" / "重新抓取封面"
+ *   - Click on card body → navigate to `/games/:id` (Phase 3 — was a
+ *     Phase-2 toast placeholder)
+ *   - Right-click: shadcn DropdownMenu with "启动" / "强制结束" /
+ *     "重新匹配元数据" / "重新抓取封面"
+ *
+ * Phase 3 (03f) additions:
+ *   - Launch button: cover bottom-right, opacity-0 group-hover:opacity-100,
+ *     `Play` icon. Only rendered when no other session is active OR when
+ *     this card is the active game (in which case it renders a "强制结束"
+ *     stop variant). When some OTHER game is active, the button is
+ *     entirely hidden — single-session-at-a-time enforcement is mirrored
+ *     in the UI so the user doesn't get a backend rejection toast.
+ *   - Dropdown items: "启动" appears when no active session; "强制结束"
+ *     appears only on the active game's card.
+ *   - Card click: `useNavigate()(`/games/${game.id}`)` replaces the P2
+ *     `toast.info("详情页 — 即将上线")` placeholder.
  *
  * Three optional badge states overlaying the card:
  *   - `metadata-pending`  → badge "元数据获取中" (clickable → opens MetadataPicker)
@@ -23,16 +37,21 @@
  *     surface.
  */
 
-import { ImageOff } from "lucide-react";
+import { ImageOff, Play, Square } from "lucide-react";
 import { toast } from "sonner";
+import { useNavigate } from "react-router-dom";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import type { Game } from "@/lib/games";
+import { endActiveSession, launchGame } from "@/lib/launch";
+import { useLibraryStore } from "@/store/library";
 
 interface GameCardProps {
   game: Game;
@@ -91,20 +110,53 @@ export function GameCard({
   onPickMetadata,
   onRefreshCover,
 }: GameCardProps) {
+  const navigate = useNavigate();
+  const activeSession = useLibraryStore((s) => s.activeSession);
   const status = getStatusLabel(game.status);
   const metaState = getMetadataState(game);
   const displayName = game.name_cn ?? game.name;
   const noExe = game.executable_path == null;
 
+  const isActive = activeSession?.game_id === game.id;
+  const otherActive = activeSession != null && !isActive;
+  // Disable launching when:
+  //   - we have no exe to launch, OR
+  //   - another game is currently running (single-session lock)
+  const launchDisabled = noExe || otherActive;
+
   function onCardClick() {
-    // Phase 2 placeholder — Phase 4 will navigate to `/games/:id`.
-    toast.info("详情页 — 即将上线");
+    // Phase 3: replaces P2's toast.info("详情页 — 即将上线") placeholder.
+    navigate(`/games/${game.id}`);
   }
 
   function onMetaBadgeClick(e: React.MouseEvent) {
-    // Stop bubbling so the placeholder toast doesn't also fire.
+    // Stop bubbling so the card-click navigation doesn't also fire.
     e.stopPropagation();
     onPickMetadata(game);
+  }
+
+  async function onLaunch(e?: React.MouseEvent) {
+    e?.stopPropagation();
+    if (otherActive) {
+      toast.error("已有活动游戏 — 请先结束当前会话");
+      return;
+    }
+    try {
+      await launchGame(game.id);
+      toast.info(`正在启动 — ${displayName}`);
+    } catch (err: unknown) {
+      toast.error(`启动失败 — ${String(err)}`);
+    }
+  }
+
+  async function onForceEnd(e?: React.MouseEvent) {
+    e?.stopPropagation();
+    try {
+      await endActiveSession();
+      toast.info("已结束游戏会话");
+    } catch (err: unknown) {
+      toast.error(`结束失败 — ${String(err)}`);
+    }
   }
 
   return (
@@ -171,14 +223,47 @@ export function GameCard({
               </Badge>
             )}
 
-            {/* No-exe informational badge (bottom-right) */}
+            {/* No-exe informational badge (bottom-left so it doesn't
+                collide with the launch button at bottom-right) */}
             {noExe && (
               <Badge
                 variant="outline"
-                className="absolute bottom-2 right-2 bg-background/80 backdrop-blur text-muted-foreground"
+                className="absolute bottom-2 left-2 bg-background/80 backdrop-blur text-muted-foreground"
               >
                 未识别可执行文件
               </Badge>
+            )}
+
+            {/* Launch / Force-end button overlay (cover bottom-right).
+                Show as "强制结束" when this card is the active game; show
+                as "启动" otherwise IF launching is permitted. Hidden when
+                some other game is active (avoid an enabled button that
+                would just emit a backend rejection toast). */}
+            {isActive ? (
+              <Button
+                size="icon"
+                variant="destructive"
+                className="absolute bottom-2 right-2 opacity-100 shadow"
+                onClick={(e) => void onForceEnd(e)}
+                aria-label="强制结束"
+                title="强制结束"
+              >
+                <Square className="size-4" />
+              </Button>
+            ) : (
+              !otherActive && (
+                <Button
+                  size="icon"
+                  variant="default"
+                  disabled={launchDisabled}
+                  className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity shadow"
+                  onClick={(e) => void onLaunch(e)}
+                  aria-label="启动"
+                  title="启动"
+                >
+                  <Play className="size-4" />
+                </Button>
+              )
             )}
           </div>
 
@@ -199,6 +284,18 @@ export function GameCard({
       </DropdownMenuTrigger>
 
       <DropdownMenuContent align="start" className="w-44">
+        {!activeSession && !noExe && (
+          <DropdownMenuItem onClick={() => void onLaunch()}>启动</DropdownMenuItem>
+        )}
+        {isActive && (
+          <DropdownMenuItem
+            onClick={() => void onForceEnd()}
+            className="text-destructive focus:text-destructive"
+          >
+            强制结束
+          </DropdownMenuItem>
+        )}
+        {(!activeSession || isActive) && <DropdownMenuSeparator />}
         <DropdownMenuItem onClick={() => onPickMetadata(game)}>
           重新匹配元数据
         </DropdownMenuItem>

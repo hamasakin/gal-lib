@@ -29,6 +29,7 @@ import { useLibraryStore } from "@/store/library";
 import { listGames, type Game } from "@/lib/games";
 import { GameGrid } from "@/components/library/GameGrid";
 import { ScanProgressBar } from "@/components/library/ScanProgressBar";
+import { ActiveSessionBar } from "@/components/library/ActiveSessionBar";
 import { MetadataPicker } from "@/components/library/MetadataPicker";
 
 export function Library() {
@@ -68,6 +69,12 @@ export function Library() {
   return (
     <div className="flex h-full w-full flex-col">
       <ScanProgressBar />
+      {/* 03f: ActiveSessionBar renders below ScanProgressBar; both are
+          sticky top-0 inside the same flex column, so when both are visible
+          simultaneously (rare) ScanProgressBar wins the top slot and
+          ActiveSessionBar stacks below it. ActiveSessionBar self-hides
+          when activeSession is null. */}
+      <ActiveSessionBar />
       <div className="flex-1 overflow-hidden">
         {noScanYet && (
           <ScrollArea className="h-full w-full">
