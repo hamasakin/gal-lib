@@ -10,5 +10,6 @@
 //! `cargo test --lib` cheap and avoids dragging the Tauri runtime into
 //! unit tests.
 pub mod le;
+pub mod orchestrator;
 pub mod process_track;
 pub mod session;
