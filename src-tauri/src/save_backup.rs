@@ -35,6 +35,10 @@ pub enum SaveError {
     Io(#[from] std::io::Error),
     #[error("walk: {0}")]
     Walk(#[from] walkdir::Error),
+    /// Reserved for future callers that pass the SaveError type up directly
+    /// (the v1 commands hand-render this case as a String error before even
+    /// invoking save_backup::*, so this variant currently has no constructor).
+    #[allow(dead_code)]
     #[error("save path not configured")]
     NotConfigured,
     #[error("source not found: {0}")]

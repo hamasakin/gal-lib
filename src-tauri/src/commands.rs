@@ -1402,3 +1402,448 @@ pub async fn update_game_brand_year(
     .map_err(err_str)?;
     Ok(())
 }
+
+// ── Phase 5 / 05b: stats + screenshots + save backups (12 commands) ──────────
+//
+// Stats (2): get_playtime_trend / get_top_games
+// Screenshots (5): get_screenshots / delete_screenshot / export_screenshot /
+//                  set_screenshot_interval / get_screenshot_settings
+// Save backups (5): set_save_path / list_save_backups / create_save_backup /
+//                   restore_save_backup / delete_save_backup
+//
+// All Tauri commands return `Result<T, String>` per project convention. SQL is
+// parameter-bound; the only string interpolation is on the whitelisted
+// `period` discriminator in `get_playtime_trend` (one of 3 hard-coded SQL
+// fragments — never user input verbatim).
+
+// ── Stats (STATS-01, STATS-02) ──────────────────────────────────────────────
+
+/// One bucket on the trend chart. `bucket` is an ISO-style string suitable for
+/// the recharts X-axis without further parsing on the frontend:
+///   - daily   → "YYYY-MM-DD"
+///   - weekly  → "YYYY-Www"  (ISO 8601 week, e.g. "2026-W19")
+///   - monthly → "YYYY-MM"
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TrendPoint {
+    pub bucket: String,
+    pub hours: f64,
+}
+
+/// Aggregate `sessions.duration_sec` into a per-period chart series.
+///
+/// Only sessions in terminal status `completed` or `cancelled` count — the
+/// pre-`mark_running` ones (status='starting') and `launch_failed` ones have
+/// zero playtime and would just contribute zero rows anyway, but excluding
+/// them keeps the GROUP BY result smaller on big libraries.
+///
+/// `days` bounds the window: we look back `days` days from `datetime('now')`.
+/// The frontend can pass 30/90/365 from a select. We do NOT clamp `days` here —
+/// negative values would simply return no rows, which is harmless.
+#[tauri::command]
+pub async fn get_playtime_trend(
+    period: String,
+    days: i32,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<TrendPoint>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+
+    // Whitelist the SQLite strftime format for each period. Never interpolate
+    // user input — always pick from this hard-coded set.
+    let bucket_expr: &str = match period.as_str() {
+        "daily" => "strftime('%Y-%m-%d', started_at)",
+        // SQLite's %W = week-of-year (Mon-start, 00..53). Combined with %Y
+        // we get a sortable string close to ISO 8601 (e.g. "2026-W19").
+        "weekly" => "strftime('%Y-W%W', started_at)",
+        "monthly" => "strftime('%Y-%m', started_at)",
+        other => {
+            return Err(format!(
+                "period must be daily|weekly|monthly (got '{}')",
+                other
+            ))
+        }
+    };
+
+    let sql = format!(
+        "SELECT {bucket} AS bucket, SUM(duration_sec) / 3600.0 AS hours \
+         FROM sessions \
+         WHERE status IN ('completed', 'cancelled') \
+           AND started_at >= datetime('now', ?) \
+         GROUP BY bucket \
+         ORDER BY bucket ASC",
+        bucket = bucket_expr
+    );
+
+    // SQLite expects modifier strings like "-30 days".
+    let modifier = format!("-{} days", days);
+
+    let rows = sqlx::query(&sql)
+        .bind(&modifier)
+        .fetch_all(&*pool)
+        .await
+        .map_err(err_str)?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(TrendPoint {
+            bucket: row.try_get("bucket").map_err(err_str)?,
+            hours: row.try_get::<f64, _>("hours").unwrap_or(0.0),
+        });
+    }
+    Ok(out)
+}
+
+/// Top-N games by total playtime. Skips zero-playtime games so empty libraries
+/// don't render meaningless rows. `limit` is whitelisted at sane bounds (1..=50).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TopGame {
+    pub id: i64,
+    pub name: String,
+    pub name_cn: Option<String>,
+    pub total_playtime_sec: i64,
+}
+
+#[tauri::command]
+pub async fn get_top_games(
+    limit: i32,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<TopGame>, String> {
+    if !(1..=50).contains(&limit) {
+        return Err(format!("limit must be 1..=50 (got {})", limit));
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query(
+        "SELECT id, name, name_cn, total_playtime_sec FROM games \
+         WHERE total_playtime_sec > 0 \
+         ORDER BY total_playtime_sec DESC LIMIT ?",
+    )
+    .bind(limit as i64)
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(TopGame {
+            id: row.try_get("id").map_err(err_str)?,
+            name: row.try_get("name").map_err(err_str)?,
+            name_cn: row.try_get("name_cn").ok(),
+            total_playtime_sec: row.try_get("total_playtime_sec").unwrap_or(0),
+        });
+    }
+    Ok(out)
+}
+
+// ── Screenshots (SHOT-01, SHOT-02) ──────────────────────────────────────────
+
+/// 1:1 mirror of the `screenshots` table. `path` is RELATIVE to `data_dir`
+/// (matches how `screenshot::capture_to_disk` writes); the frontend prepends
+/// the result of `get_data_dir` when building `<img src>`.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScreenshotRow {
+    pub id: i64,
+    pub game_id: i64,
+    pub path: String,
+    pub captured_at: String,
+}
+
+#[tauri::command]
+pub async fn get_screenshots(
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<ScreenshotRow>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query(
+        "SELECT id, game_id, path, captured_at FROM screenshots \
+         WHERE game_id = ? ORDER BY captured_at DESC",
+    )
+    .bind(game_id)
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(ScreenshotRow {
+            id: row.try_get("id").map_err(err_str)?,
+            game_id: row.try_get("game_id").map_err(err_str)?,
+            path: row.try_get("path").map_err(err_str)?,
+            captured_at: row.try_get("captured_at").map_err(err_str)?,
+        });
+    }
+    Ok(out)
+}
+
+/// Delete one screenshot — DB row + on-disk PNG. The disk side is best-effort
+/// (a missing file is a no-op `Err` we swallow); the DB side is the source of
+/// truth, so a stale orphan PNG is preferred to a stale orphan row.
+#[tauri::command]
+pub async fn delete_screenshot(
+    id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+
+    // 1. Read path BEFORE deleting (we need it to remove the file).
+    let row = sqlx::query("SELECT path FROM screenshots WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&*pool)
+        .await
+        .map_err(err_str)?;
+    let path: Option<String> = row.and_then(|r| r.try_get("path").ok());
+
+    // 2. DELETE row first — if this fails, we leave the file alone.
+    sqlx::query("DELETE FROM screenshots WHERE id = ?")
+        .bind(id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+
+    // 3. Best-effort file removal.
+    if let Some(rel) = path {
+        let abs = data_dir.join(&rel);
+        let _ = std::fs::remove_file(&abs);
+    }
+    Ok(())
+}
+
+/// Copy `data/<screenshot.path>` to `target_path` (a user-chosen absolute
+/// path from the frontend's file dialog). The dialog already validates
+/// writability; here we just need to surface a precise error if the copy
+/// fails (e.g. user picked a read-only drive).
+#[tauri::command]
+pub async fn export_screenshot(
+    id: i64,
+    target_path: String,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+    let row = sqlx::query("SELECT path FROM screenshots WHERE id = ?")
+        .bind(id)
+        .fetch_one(&*pool)
+        .await
+        .map_err(err_str)?;
+    let rel: String = row.try_get("path").map_err(err_str)?;
+    let src = data_dir.join(&rel);
+    std::fs::copy(&src, &target_path).map_err(err_str)?;
+    Ok(())
+}
+
+/// Update `games.screenshot_interval_sec`. 0 = disable capture entirely; any
+/// other value < 60 will be silently clamped to 60 inside the orchestrator
+/// (see launch_game), so the UI doesn't need to enforce that lower bound.
+#[tauri::command]
+pub async fn set_screenshot_interval(
+    game_id: i64,
+    interval_sec: i32,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    if interval_sec < 0 {
+        return Err(format!("interval_sec must be ≥ 0 (got {})", interval_sec));
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    sqlx::query("UPDATE games SET screenshot_interval_sec = ? WHERE id = ?")
+        .bind(interval_sec as i64)
+        .bind(game_id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_screenshot_settings(
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<i32, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let row = sqlx::query("SELECT screenshot_interval_sec FROM games WHERE id = ?")
+        .bind(game_id)
+        .fetch_one(&*pool)
+        .await
+        .map_err(err_str)?;
+    let v: i64 = row.try_get("screenshot_interval_sec").unwrap_or(300);
+    Ok(v as i32)
+}
+
+// ── Save backups (SAVE-01, SAVE-02, SAVE-03) ────────────────────────────────
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct SaveBackupRow {
+    pub id: i64,
+    pub game_id: i64,
+    pub backup_dir: String,
+    pub file_count: i64,
+    pub total_size_bytes: i64,
+    pub created_at: String,
+    pub note: Option<String>,
+}
+
+/// Set (or clear) `games.save_path`. The frontend feeds in a directory path
+/// from a Tauri dialog picker — we store it verbatim. None clears the column,
+/// disabling backup until the user re-configures.
+#[tauri::command]
+pub async fn set_save_path(
+    game_id: i64,
+    save_path: Option<String>,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    sqlx::query("UPDATE games SET save_path = ? WHERE id = ?")
+        .bind(&save_path)
+        .bind(game_id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn list_save_backups(
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<SaveBackupRow>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query(
+        "SELECT id, game_id, backup_dir, file_count, total_size_bytes, created_at, note \
+         FROM save_backups WHERE game_id = ? ORDER BY created_at DESC",
+    )
+    .bind(game_id)
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(SaveBackupRow {
+            id: row.try_get("id").map_err(err_str)?,
+            game_id: row.try_get("game_id").map_err(err_str)?,
+            backup_dir: row.try_get("backup_dir").map_err(err_str)?,
+            file_count: row.try_get("file_count").unwrap_or(0),
+            total_size_bytes: row.try_get("total_size_bytes").unwrap_or(0),
+            created_at: row.try_get("created_at").map_err(err_str)?,
+            note: row.try_get("note").ok(),
+        });
+    }
+    Ok(out)
+}
+
+/// Snapshot the game's currently-configured save dir. Returns the new
+/// `save_backups` row id so the frontend can immediately optimistic-update.
+///
+/// Errors:
+///   - "save path not configured" — `games.save_path IS NULL`
+///   - "source not found: ..." — the configured dir was deleted/moved on disk
+///
+/// Note: `save_backup::create_backup` is sync (disk-bound, < 100ms typically).
+/// For very large save dirs the call can block the runtime; the v1 trade-off
+/// is "simpler error path" over "always non-blocking". If profiling shows it,
+/// wrap in `tokio::task::spawn_blocking` later.
+#[tauri::command]
+pub async fn create_save_backup(
+    game_id: i64,
+    note: Option<String>,
+    state: State<'_, AppPaths>,
+) -> Result<i64, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+
+    // Read save_path. Bail early on NULL (don't even start a directory walk).
+    let row = sqlx::query("SELECT save_path FROM games WHERE id = ?")
+        .bind(game_id)
+        .fetch_one(&*pool)
+        .await
+        .map_err(err_str)?;
+    let save_path: Option<String> = row.try_get("save_path").ok();
+    let src = save_path
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "save path not configured".to_string())?;
+
+    // Recursive copy → BackupResult.
+    let result = crate::save_backup::create_backup(&data_dir, game_id, Path::new(src))
+        .map_err(err_str)?;
+
+    // INSERT into save_backups. backup_dir is the relative path (saves/ID/TS).
+    let res = sqlx::query(
+        "INSERT INTO save_backups (game_id, backup_dir, file_count, total_size_bytes, note) \
+         VALUES (?, ?, ?, ?, ?)",
+    )
+    .bind(game_id)
+    .bind(&result.backup_dir)
+    .bind(result.file_count)
+    .bind(result.total_size_bytes)
+    .bind(&note)
+    .execute(&*pool)
+    .await
+    .map_err(err_str)?;
+
+    Ok(res.last_insert_rowid())
+}
+
+/// Restore a backup back into the game's currently-configured save_path.
+/// **Overwrites existing files in the live save dir** — the frontend confirm
+/// dialog is the user-consent gate for this destructive operation.
+#[tauri::command]
+pub async fn restore_save_backup(
+    id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+
+    // Read backup_dir + game_id (to look up save_path).
+    let row = sqlx::query("SELECT game_id, backup_dir FROM save_backups WHERE id = ?")
+        .bind(id)
+        .fetch_one(&*pool)
+        .await
+        .map_err(err_str)?;
+    let game_id: i64 = row.try_get("game_id").map_err(err_str)?;
+    let backup_dir: String = row.try_get("backup_dir").map_err(err_str)?;
+
+    // Look up the current save_path for game_id (NOT cached on save_backups
+    // intentionally — the user may have moved the save dir between backup
+    // and restore; we always restore to the current configured location).
+    let g = sqlx::query("SELECT save_path FROM games WHERE id = ?")
+        .bind(game_id)
+        .fetch_one(&*pool)
+        .await
+        .map_err(err_str)?;
+    let save_path: Option<String> = g.try_get("save_path").ok();
+    let dst = save_path
+        .as_deref()
+        .filter(|s| !s.is_empty())
+        .ok_or_else(|| "save path not configured".to_string())?;
+
+    crate::save_backup::restore_backup(&data_dir, &backup_dir, Path::new(dst))
+        .map_err(err_str)?;
+    Ok(())
+}
+
+/// Delete a backup — disk tree first, then DB row. Tree-delete is idempotent
+/// (no-op when already gone), so a previously-failed delete that left a stale
+/// row can be retried safely.
+#[tauri::command]
+pub async fn delete_save_backup(
+    id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+
+    let row = sqlx::query("SELECT backup_dir FROM save_backups WHERE id = ?")
+        .bind(id)
+        .fetch_optional(&*pool)
+        .await
+        .map_err(err_str)?;
+    let backup_dir: Option<String> = row.and_then(|r| r.try_get("backup_dir").ok());
+
+    if let Some(rel) = backup_dir {
+        crate::save_backup::delete_backup_dir(&data_dir, &rel).map_err(err_str)?;
+    }
+
+    sqlx::query("DELETE FROM save_backups WHERE id = ?")
+        .bind(id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
+}

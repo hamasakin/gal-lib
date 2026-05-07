@@ -160,6 +160,19 @@ pub fn run() {
             commands::update_game_rating,
             commands::update_game_notes,
             commands::update_game_brand_year,
+            // 05b — stats (2) + screenshots (5) + save backups (5) = 12 new
+            commands::get_playtime_trend,
+            commands::get_top_games,
+            commands::get_screenshots,
+            commands::delete_screenshot,
+            commands::export_screenshot,
+            commands::set_screenshot_interval,
+            commands::get_screenshot_settings,
+            commands::set_save_path,
+            commands::list_save_backups,
+            commands::create_save_backup,
+            commands::restore_save_backup,
+            commands::delete_save_backup,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
