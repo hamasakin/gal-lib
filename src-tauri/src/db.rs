@@ -9,6 +9,9 @@
 //! session-status columns on `sessions` (status + exit_code).
 //! Schema v4 (Phase 4) adds 3 metadata/state columns on `games`
 //! (brand + release_year + is_favorite).
+//! Schema v5 (Phase 5) adds 2 columns on `games` (screenshot_interval_sec +
+//! save_path) and 2 new tables (`screenshots`, `save_backups`) with FK
+//! ON DELETE CASCADE + per-table game_id index.
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -16,6 +19,7 @@ const INIT_SQL: &str = include_str!("../migrations/0001_init.sql");
 const V2_SQL: &str = include_str!("../migrations/0002_add_scan_and_metadata.sql");
 const V3_SQL: &str = include_str!("../migrations/0003_add_launch_and_session_status.sql");
 const V4_SQL: &str = include_str!("../migrations/0004_add_brand_year_favorite.sql");
+const V5_SQL: &str = include_str!("../migrations/0005_add_screenshots_and_saves.sql");
 
 /// All migrations to register with tauri-plugin-sql, in version order.
 /// Add future migrations as additional entries with monotonically increasing
@@ -44,6 +48,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 4,
             description: "add_brand_year_favorite",
             sql: V4_SQL,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 5,
+            description: "add_screenshots_and_saves",
+            sql: V5_SQL,
             kind: MigrationKind::Up,
         },
     ]
@@ -127,7 +137,7 @@ mod tests {
     #[test]
     fn migrations_v4_adds_brand_year_favorite() {
         let m = migrations();
-        assert_eq!(m.len(), 4, "v4: exactly four migrations registered");
+        assert!(m.len() >= 4, "at least four migrations registered");
         let m4 = m.iter().find(|x| x.version == 4).expect("v4 present");
         assert_eq!(m4.description, "add_brand_year_favorite");
 
@@ -161,6 +171,76 @@ mod tests {
         assert!(
             m4.sql.contains("schema_version") && m4.sql.contains("'4'"),
             "v4 sql bumps schema_version to '4'"
+        );
+    }
+
+    #[test]
+    fn migrations_v5_adds_screenshots_and_saves() {
+        let m = migrations();
+        assert_eq!(m.len(), 5, "v5: exactly five migrations registered");
+        let m5 = m.iter().find(|x| x.version == 5).expect("v5 present");
+        assert_eq!(m5.description, "add_screenshots_and_saves");
+
+        // Phase 5 adds 2 columns on games + 2 new tables + 2 indexes.
+        // Count actual ALTER ... ADD COLUMN statements (skip SQL comments).
+        let add_column_count = m5
+            .sql
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("--") && t.contains("ADD COLUMN")
+            })
+            .count();
+        assert_eq!(add_column_count, 2, "v5: exactly 2 ADD COLUMN statements");
+
+        // games: new columns (screenshot_interval_sec + save_path).
+        assert!(
+            m5.sql.contains("screenshot_interval_sec"),
+            "v5 sql contains screenshot_interval_sec"
+        );
+        assert!(
+            m5.sql.contains("save_path"),
+            "v5 sql contains save_path"
+        );
+
+        // New tables — screenshots + save_backups, both with FK ON DELETE CASCADE.
+        assert!(
+            m5.sql.contains("CREATE TABLE screenshots"),
+            "v5 sql creates screenshots table"
+        );
+        assert!(
+            m5.sql.contains("CREATE TABLE save_backups"),
+            "v5 sql creates save_backups table"
+        );
+        // Count `ON DELETE CASCADE` only on non-comment lines (the migration's
+        // header doc-comment also names the clause).
+        let cascade_count = m5
+            .sql
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("--") && t.contains("ON DELETE CASCADE")
+            })
+            .count();
+        assert_eq!(
+            cascade_count, 2,
+            "v5: both new tables use ON DELETE CASCADE"
+        );
+
+        // Indexes on game_id columns for both new tables.
+        assert!(
+            m5.sql.contains("CREATE INDEX idx_screenshots_game_id"),
+            "v5 sql creates idx_screenshots_game_id"
+        );
+        assert!(
+            m5.sql.contains("CREATE INDEX idx_save_backups_game_id"),
+            "v5 sql creates idx_save_backups_game_id"
+        );
+
+        // schema_version bumped to 5.
+        assert!(
+            m5.sql.contains("schema_version") && m5.sql.contains("'5'"),
+            "v5 sql bumps schema_version to '5'"
         );
     }
 }

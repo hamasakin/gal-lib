@@ -52,6 +52,11 @@ windows = { version = "0.58", features = ["Win32_System_Threading", "Win32_Syste
 # elapsed-second math in `launch::session`. Pinned to 0.4 (workspace-wide,
 # also matches sqlx's transitive expectations).
 chrono = { version = "0.4", features = ["serde"] }
+# Phase 5 (05a) — screenshot capture pipeline.
+# screenshots: cross-platform desktop screen capture (Windows = DXGI/GDI fallback).
+# png: encode captured frames to PNG (8-bit RGBA), no external libpng dependency.
+screenshots = "0.8"
+png = "0.17"
 
 [dev-dependencies]
 # 03b — `set_le_path` unit test uses TempDir for an isolated config.json fixture.
