@@ -11,7 +11,7 @@
 
 - [x] **SCAN-01**: 用户可以添加 1 个或多个游戏库根目录，并可单独移除
 - [x] **SCAN-02**: 用户可以为每个根目录单独配置扫描深度（默认 1 层，可选 1/2/3）
-- [ ] **SCAN-03**: 用户可以触发全量或增量扫描，看到实时进度（当前目录、已完成数、总数）
+- [x] **SCAN-03**: 用户可以触发全量或增量扫描，看到实时进度（当前目录、已完成数、总数）
 - [ ] **SCAN-04**: 扫描时按"第 N 层子目录 = 一款游戏"识别游戏边界
 - [ ] **SCAN-05**: 扫描自动从游戏目录内识别启动 exe（递归扫描 + 启发式打分排除安装/卸载/启动器/补丁）
 - [ ] **SCAN-06**: 扫描中用户可单独跳过或重试某个目录
@@ -47,11 +47,11 @@
 ### Library UI（库视图与导航）
 
 - [ ] **LIB-01**: 主界面采用双栏布局（左侧边栏 + 右侧主区）
-- [ ] **LIB-02**: 主区显示封面网格，每张卡片显示封面、标题、状态、时长
+- [x] **LIB-02**: 主区显示封面网格，每张卡片显示封面、标题、状态、时长
 - [ ] **LIB-03**: 用户可以全文搜索游戏（标题 / 罗马音 / 别名 / 品牌 / 标签）
 - [ ] **LIB-04**: 用户可以按多种方式排序（最近游玩、添加日期、字母、时长、评分）
 - [ ] **LIB-05**: 用户点击卡片打开游戏详情页（封面、简介、CV、标签、笔记、操作）
-- [ ] **LIB-06**: 网格视图虚拟化，支持上千游戏卡片流畅滚动
+- [x] **LIB-06**: 网格视图虚拟化，支持上千游戏卡片流畅滚动
 - [ ] **LIB-07**: 设置页可配置库根目录、扫描深度、LE 路径、UI 偏好
 
 ### Categorization（标签与分类）
@@ -133,7 +133,7 @@
 | LIB-01 | Phase 1 | Pending |
 | SCAN-01 | Phase 2 | Complete |
 | SCAN-02 | Phase 2 | Complete |
-| SCAN-03 | Phase 2 | Pending |
+| SCAN-03 | Phase 2 | Complete |
 | SCAN-04 | Phase 2 | Pending |
 | SCAN-05 | Phase 2 | Pending |
 | SCAN-06 | Phase 2 | Pending |
@@ -146,8 +146,8 @@
 | META-05 | Phase 2 | Complete |
 | META-06 | Phase 2 | Complete |
 | META-07 | Phase 2 | Pending |
-| LIB-02 | Phase 2 | Pending |
-| LIB-06 | Phase 2 | Pending |
+| LIB-02 | Phase 2 | Complete |
+| LIB-06 | Phase 2 | Complete |
 | LAUNCH-01 | Phase 3 | Pending |
 | LAUNCH-02 | Phase 3 | Pending |
 | LAUNCH-03 | Phase 3 | Pending |

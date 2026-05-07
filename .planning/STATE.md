@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 02-02e-PLAN.md (frontend invoke layer + Settings page CRUD)
+stopped_at: Completed 02-02f-PLAN.md (Phase 2 complete — Library route + virtualized GameGrid + ScanProgressBar + MetadataPicker)
 last_updated: "2026-05-07T14:30:00.000Z"
 last_activity: 2026-05-07
 progress:
   total_phases: 5
-  completed_phases: 1
+  completed_phases: 2
   total_plans: 12
-  completed_plans: 11
-  percent: 92
+  completed_plans: 12
+  percent: 100
 ---
 
 # Project State
@@ -25,36 +25,37 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 
 ## Current Position
 
-Phase: 2 (library-ingest) — EXECUTING
-Plan: 5 of 6 complete (next: 02f — Library route GameGrid + virtualized cover grid + ScanProgressBar + tailwind H3/aspect-cover tokens)
-Status: Ready to execute
+Phase: 2 (library-ingest) — COMPLETE
+Plan: 6 of 6 complete — Phase 2 frontend pipeline end-to-end addressable; ready for Phase 3 (LE launch + playtime tracking)
+Status: Ready to discuss Phase 3
 Last activity: 2026-05-07
 
-Progress: [█████████░] 92%
+Progress: [██████████] 100% (Phase 2 complete; project at 12/12 planned plans through P2)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 11 (Phase 1: 6 + Phase 2: 02a, 02b, 02c, 02d, 02e)
+- Total plans completed: 12 (Phase 1: 6 + Phase 2: 02a, 02b, 02c, 02d, 02e, 02f)
 - Average duration: ~30min/plan
-- Total execution time: ~6 hours
+- Total execution time: ~6.5 hours
 
 **By Phase:**
 
 | Phase | Plans | Total | Avg/Plan |
 |-------|-------|-------|----------|
 | 1. Foundation | 6 | ~3h | ~30min |
-| 2. Library Ingest | 5 | ~3h | ~36min |
+| 2. Library Ingest | 6 | ~3.5h | ~35min |
 
 **Recent Trend:**
 
-- Last 5 plans: 02a → 02b → 02c → 02d → 02e
-- Trend: 02d/02e are larger (75min / 30min) due to plugin-registration + Tauri-state + 9-command surface in 02d; 02e was a clean frontend wrap with 5 minor Rule-1/2/3 deviations (named-export mismatch, text-h3 token deferred to 02f, error-handling expansion, empty-state row, commit-message forward-promise)
+- Last 6 plans: 02a → 02b → 02c → 02d → 02e → 02f
+- Trend: 02f delivered 4 components + route rewrite + Tauri command + 2 tailwind tokens in 3 atomic commits with 4 minor Rule-1/2 deviations (named-export mismatch matching 02e, error-handling expansion, DropdownMenu right-click forwarding, scan-progress auto-hide timer)
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
 | Phase 02 P02e | 30min | 2 tasks | 4 files |
+| Phase 02 P02f | 35min | 3 tasks | 11 files (5 new + 6 modified) |
 
 ## Accumulated Context
 
@@ -87,6 +88,12 @@ Recent decisions affecting current work:
 - **02e**: Library Zustand store mirrors src/store/app.ts (single create() + setters; no actions/middleware) — keeps room for Phase 4 to add games/filters/sort slices the same way
 - **02e**: Settings page = source-of-truth refresh after every mutation (no optimistic updates) — DB is canonical; depth change implemented as remove+re-add (no UPDATE command needed in 02d)
 - **02e**: Settings.tsx keeps NAMED export to match router.tsx import; section heading uses `text-base font-semibold` (16/600) since `text-h3` token addition is deferred to 02f's tailwind.config.ts work
+- **02f**: Tailwind tokens `aspect-cover` (3/4) + `text-h3` (16/600/1.4) added to theme.extend (Phase 2 NEW per UI-SPEC); 11th Tauri command `list_games` returning Vec<Game> ordered by created_at DESC
+- **02f**: GameGrid uses @tanstack/react-virtual in row-mode with manual lane indexing (count = ceil(games/cols)); columnCount derived from ResizeObserver; cover URLs resolved via `convertFileSrc(dataDir + cover_path)` from `@tauri-apps/api/core`
+- **02f**: GameCard uses DropdownMenu with manual right-click forwarding (e.preventDefault + currentTarget.click) — Radix DropdownMenuTrigger fires on left-click by default, but UI-SPEC mandates DropdownMenu specifically (not ContextMenu); metadata-state badges (pending/failed/no-exe) overlay the cover; click → toast.info "详情页 — 即将上线"
+- **02f**: ScanProgressBar 5s auto-hide timer for terminal states; status-aware summary line (扫描完成 / 扫描已取消 / 扫描失败) reuses UI-SPEC toast copy; sticky top-0 z-10 above main content
+- **02f**: MetadataPicker debounce 400ms via setTimeout in useEffect cleanup; direct-ID inputs take precedence over selected candidate at apply time; confidence Badge palette (≥80 emerald / 70-79 yellow / <70 destructive)
+- **02f**: Library.tsx kept NAMED export (mirrors Settings.tsx 02e fix); main.tsx adds module-scope `__scanProgressUnsub` guard before subscribing to Tauri scan-progress event into useLibraryStore.getState().setScanProgress
 
 ### Pending Todos
 
@@ -107,5 +114,5 @@ Items acknowledged and carried forward from previous milestone close:
 ## Session Continuity
 
 Last session: 2026-05-07T14:30:00.000Z
-Stopped at: Completed 02-02e-PLAN.md (frontend invoke layer + Settings page CRUD)
+Stopped at: Completed 02-02f-PLAN.md (Phase 2 complete — Library route + virtualized GameGrid + ScanProgressBar + MetadataPicker)
 Resume file: None
