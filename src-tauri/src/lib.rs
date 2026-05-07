@@ -1,6 +1,7 @@
 mod cover_cache;
 mod data_dir;
 mod db;
+mod ingest;
 mod metadata;
 mod scan;
 mod title_clean;
