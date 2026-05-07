@@ -21,6 +21,10 @@ tauri-build = { version = "2", features = [] }
 tauri = { version = "2", features = [] }
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+tauri-plugin-sql = { version = "2", features = ["sqlite"] }
+dunce = "1"
+anyhow = "1"
+thiserror = "2"
 
 # Release profile — size-optimized for single-exe distribution (RESEARCH § Architecture).
 # 01f will further tune (e.g. `incremental = false`); leave room for that here.
