@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.0
 milestone_name: milestone
 status: executing
-stopped_at: Completed 03-03b-PLAN.md (LE detector + le_path resolver; ready for 03c process_track)
-last_updated: "2026-05-07T14:14:25.000Z"
-last_activity: 2026-05-07 -- Phase 3 plan 03b executed (Locale Emulator path detection + config.json persistence)
+stopped_at: Completed 03-03c-PLAN.md (process_track + session lifecycle; ready for 03d commands.rs wire-up)
+last_updated: "2026-05-07T14:30:00.000Z"
+last_activity: 2026-05-07 -- Phase 3 plan 03c executed (Win32 process tracking + SQLite session state machine)
 progress:
   total_phases: 5
   completed_phases: 2
   total_plans: 18
-  completed_plans: 14
-  percent: 78
+  completed_plans: 15
+  percent: 83
 ---
 
 # Project State
@@ -26,19 +26,19 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 ## Current Position
 
 Phase: 3 (launch-playtime) — IN PROGRESS
-Plan: 2 of 6 complete (03b done — LE detector + le_path resolver); next is 03c (process_track)
-Status: Ready to execute 03c
-Last activity: 2026-05-07 -- Phase 3 plan 03b executed
+Plan: 3 of 6 complete (03c done — process_track + session lifecycle); next is 03d (commands.rs wire-up)
+Status: Ready to execute 03d
+Last activity: 2026-05-07 -- Phase 3 plan 03c executed
 
-Progress: [██████████] 78% (14/18 plans complete; Phase 3 wave 2/6 done)
+Progress: [████████████████░░░░] 83% (15/18 plans complete; Phase 3 wave 3/6 done)
 
 ## Performance Metrics
 
 **Velocity:**
 
-- Total plans completed: 14 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03b)
+- Total plans completed: 15 (Phase 1: 6 + Phase 2: 02a-02f + Phase 3: 03a-03c)
 - Average duration: ~30min/plan
-- Total execution time: ~6.7 hours
+- Total execution time: ~6.8 hours
 
 **By Phase:**
 
@@ -46,12 +46,12 @@ Progress: [██████████] 78% (14/18 plans complete; Phase 3 wa
 |-------|-------|-------|----------|
 | 1. Foundation | 6 | ~3h | ~30min |
 | 2. Library Ingest | 6 | ~3.5h | ~35min |
-| 3. Launch & Playtime | 2/6 | ~9min so far | ~4.5min |
+| 3. Launch & Playtime | 3/6 | ~14min so far | ~4.7min |
 
 **Recent Trend:**
 
-- Last 6 plans: 02c → 02d → 02e → 02f → 03a → 03b
-- Trend: 03b was another fast pure-Rust addition (1 task, 1 atomic commit, 0 deviations, 2 unit tests green); foundation work continuing to be sub-10min per plan
+- Last 6 plans: 02d → 02e → 02f → 03a → 03b → 03c
+- Trend: 03c bundled two pure-Rust modules (process_track + session) into 2 atomic commits, 0 deviations, cargo test --lib still 36/36; integration tests deferred to 03d where the Tauri+pool harness exists
 
 *Updated after each plan completion*
 | Phase 02 P02d | 75min | 3 tasks | 5 files |
@@ -59,6 +59,7 @@ Progress: [██████████] 78% (14/18 plans complete; Phase 3 wa
 | Phase 02 P02f | 35min | 3 tasks | 11 files (5 new + 6 modified) |
 | Phase 03 P03a | 6min | 1 task | 4 files (1 new + 3 modified) |
 | Phase 03 P03b | 3min | 1 task | 5 files (2 new + 3 modified) |
+| Phase 03 P03c | 5min | 2 tasks | 5 files (2 new + 3 modified) |
 
 ## Accumulated Context
 
@@ -104,6 +105,12 @@ Recent decisions affecting current work:
 - **03b**: `launch/` is library-pure (no Tauri command registration here — that's 03d); keeps `cargo test --lib` green without dragging the Tauri runtime into unit tests; `tempfile = "3"` added to [dev-dependencies] only (release binary size unchanged)
 - **03b**: `expand_env` is intentionally minimal — substitutes only `%LOCALAPPDATA%` (the only token used in COMMON_PATHS); broader expansion would invite unintended substitutions in user-supplied paths
 - **03b**: `set_le_path` validates `path.exists()` before persisting → never write a path the launcher will fail on later (LeError::InvalidPath)
+- **03c**: `find_game_pid` strategy = 1.5s LE-fork grace + 60×500ms basename-match polling (case-insensitive, with stem-prefix fallback for versioned binaries); 30s total budget, returns ProcessError::Timeout on miss; basename-match chosen over parent-PID hooking because LE's parent-child link is unreliable post-LEProc-exit
+- **03c**: `wait_for_exit` blocks `WaitForSingleObject(handle, INFINITE)` inside `tokio::task::spawn_blocking` so it doesn't park a tokio worker; `GetExitCodeProcess` is best-effort (returns -1 on failure) — exit itself is the canonical signal
+- **03c**: Session state machine `starting → running → {completed, cancelled, launch_failed}`; `end_session` AND `cancel_session` BOTH credit elapsed time to `games.total_playtime_sec`, only `mark_failed` zeros (the user expectation: "I closed/killed after playing N min — those count")
+- **03c**: Elapsed seconds computed in Rust (chrono RFC3339 parse + `.max(0)` clamp) rather than SQL `julianday` — defends deterministically against NTP jumps/clock skew
+- **03c**: Two-statement update (sessions then games), no explicit transaction — sqlx 0.8 Pool serializes SQLite writes; partial failure leaves a correct sessions row that future reconciliation could pick up
+- **03c**: `chrono = "0.4"` with `serde` feature added to Cargo.toml (forward-compat for 03d/03e where lifecycle timestamps may serialize to frontend); `windows` crate features unchanged (03a lockup already covers all calls)
 
 ### Pending Todos
 
@@ -123,6 +130,6 @@ Items acknowledged and carried forward from previous milestone close:
 
 ## Session Continuity
 
-Last session: 2026-05-07T14:14:25.000Z
-Stopped at: Completed 03-03b-PLAN.md (Phase 3 wave 2/6 — LE detector + le_path resolver in `launch::le`)
+Last session: 2026-05-07T14:30:00.000Z
+Stopped at: Completed 03-03c-PLAN.md (Phase 3 wave 3/6 — Win32 process tracking + SQLite session lifecycle in `launch::process_track` + `launch::session`)
 Resume file: None
