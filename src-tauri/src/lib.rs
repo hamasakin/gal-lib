@@ -1,5 +1,6 @@
 mod data_dir;
 mod db;
+mod title_clean;
 
 use std::path::PathBuf;
 
