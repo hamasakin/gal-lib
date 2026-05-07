@@ -84,8 +84,8 @@ Phases execute in numeric order: 1 → 2 → 3 → 4 → 5
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 1. Foundation | 0/TBD | Not started | - |
-| 2. Library Ingest | 0/TBD | Not started | - |
+| 1. Foundation | 6/6 | Complete | 2026-05-07 |
+| 2. Library Ingest | 2/6 | In progress | - |
 | 3. Launch & Playtime | 0/TBD | Not started | - |
 | 4. Library Polish | 0/TBD | Not started | - |
 | 5. Stats & Media | 0/TBD | Not started | - |
