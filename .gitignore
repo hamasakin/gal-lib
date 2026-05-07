@@ -1,0 +1,37 @@
+# Logs
+logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+lerna-debug.log*
+
+# Build output
+node_modules
+dist
+dist-ssr
+*.local
+
+# Tauri / Rust build artifacts
+/src-tauri/target/
+/src-tauri/gen/schemas
+
+# Portable runtime data (created by 01c at runtime; never committed)
+/data/
+/data-dev/
+
+# Editor directories and files
+.vscode/*
+!.vscode/extensions.json
+.idea
+.DS_Store
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+
+# Local Claude Code / agent tooling state — not part of the project
+.claude/
+.superpowers/
