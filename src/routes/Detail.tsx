@@ -466,7 +466,7 @@ export default function Detail() {
         executable_path: exePath.length > 0 ? exePath : undefined,
       });
       await launchGame(gameId, useLe);
-      toast.info(`正在启动 — ${displayName}${useLe ? "（LE）" : ""}`);
+      toast.info(`正在启动 — ${displayName}${useLe ? "（日区）" : ""}`);
     } catch (e: unknown) {
       toast.error(`启动失败 — ${String(e)}`);
     }
@@ -626,9 +626,9 @@ export default function Detail() {
                 variant="outline"
                 onClick={() => void onLaunch(true)}
                 disabled={launchDisabled}
-                title="使用 Locale Emulator 转区启动"
+                title="用日区启动器包装启动（在设置页配置 LEProc / ntleas / LEx 等路径）"
               >
-                用 LE 启动
+                用日区启动器
               </Button>
             </div>
           </div>

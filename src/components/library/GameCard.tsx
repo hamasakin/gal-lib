@@ -172,7 +172,7 @@ export function GameCard({
     }
     try {
       await launchGame(game.id, useLe);
-      toast.info(`正在启动 — ${displayName}${useLe ? "（LE）" : ""}`);
+      toast.info(`正在启动 — ${displayName}${useLe ? "（日区）" : ""}`);
     } catch (err: unknown) {
       toast.error(`启动失败 — ${String(err)}`);
     }
@@ -354,7 +354,7 @@ export function GameCard({
               启动
             </ContextMenuItem>
             <ContextMenuItem onClick={() => void onLaunch(true)}>
-              用 LE 启动
+              用日区启动器
             </ContextMenuItem>
           </>
         )}

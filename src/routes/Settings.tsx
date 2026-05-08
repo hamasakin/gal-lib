@@ -341,25 +341,27 @@ export function Settings() {
           </Button>
         </section>
 
-        {/* ─── Locale Emulator section (03f) ─────────────────────────── */}
+        {/* ─── 日区启动器 section ──────────────────────────────────────── */}
         <section className="space-y-4">
           <div className="space-y-1">
             <h2 className="text-base font-semibold text-foreground">
-              Locale Emulator
+              日区启动器（可选）
             </h2>
             <p className="text-body text-muted-foreground">
-              用于将日文游戏转区启动；自动检测如果失败请手动指定 LEProc.exe 路径
+              老 galgame（Shift-JIS 编码）跑在非日区 Windows 上时通过这个包装器转区启动。
+              支持 LEProc.exe / ntleas.exe / LEx 等任何"-runas profile exe"风格的启动器。
+              现代游戏直接启动即可，无需配置此项。LE 通常需要管理员权限，会弹一次 UAC。
             </p>
           </div>
           <div className="flex items-center gap-3">
             <Input
               readOnly
-              value={lePath ?? "未检测到"}
+              value={lePath ?? "未配置"}
               className="flex-1"
               title={lePath ?? undefined}
             />
             <Button variant="secondary" onClick={() => void onPickLePath()}>
-              选择 LEProc.exe
+              选择启动器 .exe
             </Button>
           </div>
         </section>
