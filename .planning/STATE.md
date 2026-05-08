@@ -5,7 +5,7 @@ milestone_name: milestone
 status: Defining requirements
 stopped_at: "Completed 05-05e-PLAN.md (Phase 5 wave 5/5 FINAL — Detail page extensions: ScreenshotsTab + SavesTab + 截图间隔 select in 设置 tab); 29/29 plans done. **v1 milestone complete.**"
 last_updated: "2026-05-08T15:57:01.703Z"
-last_activity: 2026-05-08 — Milestone v1.1 started
+last_activity: 2026-05-09 — Completed quick task 20260509: display fallbacks + clickable BGM/VNDB links + name-search buttons
 progress:
   total_phases: 5
   completed_phases: 1
@@ -211,6 +211,12 @@ None yet.
 ### Blockers/Concerns
 
 None yet.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 20260509 | display fallbacks + clickable BGM/VNDB links + name-search buttons (incl. precursor commit dropping the hero band 1a59fdc) | 2026-05-09 | 1d54c27 | [20260509-display-fallbacks-and-source-links](./quick/20260509-display-fallbacks-and-source-links/) |
 
 ## Deferred Items
 
