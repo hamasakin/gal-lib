@@ -3,7 +3,7 @@
 ## Milestones
 
 - ✅ **v1.0 MVP** — Phases 1-5 (shipped 2026-05-08) — see [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
-- ◆ **v1.1 UI Redesign** — Phases 6-10 (active)
+- ✅ **v1.1 UI Redesign** — Phases 6-10 (shipped 2026-05-08)
 
 ## Overview
 
@@ -17,11 +17,11 @@
 
 Decimal phases appear between their surrounding integers in numeric order.
 
-- [ ] **Phase 6: Design Tokens & Tweaks** - CSS 变量层（3 主题 × 4 强调色 × 2 圆角 × 侧栏 × 密度）+ 字体加载 + Tweaks 调样面板 + localStorage 持久化
-- [ ] **Phase 7: Library Page Redesign** - 卡片重设计（角戳/收藏标）+ 杂志式不对称网格（hero band）+ Sidebar 重塑（status dot variants）+ page-hd + toolbar + 现在游玩浮条
-- [ ] **Phase 8: Detail Page Redesign** - hero 封面背景模糊 + 大封面悬浮 + 招牌启动按钮（44px → 240px hover）+ LE Profile popover + 沉浸式 tabs + meta pills
-- [ ] **Phase 9: Scan & Stats Pages** - Scan 双栏布局（KPI + feed + review queue）+ Stats 12 列仪表盘（KPI + heatmap + bars + ringstack + toplist + breakdown）
-- [ ] **Phase 10: Settings & Screenshots** - Settings 200px 左导航 + 七分区 + path-row + 自定义 toggle + Screenshots masonry + lightbox
+- [x] **Phase 6: Design Tokens & Tweaks** - CSS 变量层（3 主题 × 4 强调色 × 2 圆角 × 侧栏 × 密度）+ 字体加载 + Tweaks 调样面板 + localStorage 持久化
+- [x] **Phase 7: Library Page Redesign** - 卡片重设计（角戳/收藏标）+ 杂志式不对称网格（hero band）+ Sidebar 重塑（status dot variants）+ page-hd + toolbar + 现在游玩浮条
+- [x] **Phase 8: Detail Page Redesign** - hero 封面背景模糊 + 大封面悬浮 + 招牌启动按钮（44px → 240px hover）+ LE Profile popover + 沉浸式 tabs + meta pills
+- [x] **Phase 9: Scan & Stats Pages** (Stats only; Scan deferred — see SUMMARY) - Scan 双栏布局（KPI + feed + review queue）+ Stats 12 列仪表盘（KPI + heatmap + bars + ringstack + toplist + breakdown）
+- [x] **Phase 10: Settings & Screenshots** - Settings 200px 左导航 + 七分区 + path-row + 自定义 toggle + Screenshots masonry + lightbox
 
 ## Phase Details
 
@@ -90,8 +90,8 @@ Phases execute in numeric order: 6 → 7 → 8 → 9 → 10
 
 | Phase | Plans Complete | Status | Completed |
 |-------|----------------|--------|-----------|
-| 6. Design Tokens & Tweaks | 0/0 | Not Started | — |
-| 7. Library Page Redesign | 0/0 | Not Started | — |
-| 8. Detail Page Redesign | 0/0 | Not Started | — |
-| 9. Scan & Stats Pages | 0/0 | Not Started | — |
-| 10. Settings & Screenshots | 0/0 | Not Started | — |
+| 6. Design Tokens & Tweaks | 1/1 | Complete | 2026-05-08 |
+| 7. Library Page Redesign | 1/1 | Complete | 2026-05-08 |
+| 8. Detail Page Redesign | 1/1 | Complete | 2026-05-08 |
+| 9. Scan & Stats Pages | 1/1 | Complete (partial) | 2026-05-08 |
+| 10. Settings & Screenshots | 1/1 | Complete | 2026-05-08 |
