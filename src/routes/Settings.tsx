@@ -345,23 +345,23 @@ export function Settings() {
         <section className="space-y-4">
           <div className="space-y-1">
             <h2 className="text-base font-semibold text-foreground">
-              日区启动器（可选）
+              日区启动器
             </h2>
             <p className="text-body text-muted-foreground">
-              老 galgame（Shift-JIS 编码）跑在非日区 Windows 上时通过这个包装器转区启动。
-              支持 LEProc.exe / ntleas.exe / LEx 等任何"-runas profile exe"风格的启动器。
-              现代游戏直接启动即可，无需配置此项。LE 通常需要管理员权限，会弹一次 UAC。
+              已内置 Locale Emulator —— 在游戏卡片右键选「用日区启动器」即可启动老 galgame（Shift-JIS 编码）。
+              首次启动会弹一次 UAC 同意框（LE 自身需要管理员权限）。
+              想换成 ntleas / LEx / 自己的批处理脚本？在下面填入它的 exe 路径作为覆盖。
             </p>
           </div>
           <div className="flex items-center gap-3">
             <Input
               readOnly
-              value={lePath ?? "未配置"}
+              value={lePath ?? "默认使用内置 LE（无需配置）"}
               className="flex-1"
               title={lePath ?? undefined}
             />
             <Button variant="secondary" onClick={() => void onPickLePath()}>
-              选择启动器 .exe
+              覆盖：选择启动器 .exe
             </Button>
           </div>
         </section>

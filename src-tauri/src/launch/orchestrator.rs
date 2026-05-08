@@ -89,13 +89,16 @@ enum SpawnedPid {
 /// Inputs the command layer must supply per-launch. `pool` and `data_dir`
 /// come from `AppPaths`; `game_id` comes from the frontend. `use_le`
 /// distinguishes the two launch modes: false (default) spawns the game
-/// directly; true spawns through `LEProc.exe -runas <profile>` for
-/// transcoded-locale launching.
+/// directly; true wraps the launch through the configured locale launcher
+/// (bundled LEProc by default, or any `-runas`-compatible binary the user
+/// pointed at via Settings). `bundled_le_proc` is the absolute path to the
+/// LEProc.exe shipped inside the app's resources, populated at setup time.
 pub struct LaunchInputs {
     pub data_dir: PathBuf,
     pub pool: SqlitePool,
     pub game_id: i64,
     pub use_le: bool,
+    pub bundled_le_proc: Option<PathBuf>,
 }
 
 /// Synchronous prep step (DB read + optional LE resolve). Split out so
@@ -142,9 +145,15 @@ pub async fn prepare_launch(
     // Resolve LE last — it's the most likely failure point on a fresh install,
     // and we want the games-table read to validate first so a missing-exe
     // game surfaces NoExecutable instead of LE::NotFound. Only resolved when
-    // the caller actually intends to launch through LE.
+    // the caller actually intends to launch through LE. The bundled LEProc
+    // (shipped inside the app's resources) is the default — falls back to
+    // a user-configured override or system-installed LE when bundled is
+    // somehow missing.
     let le_path = if inputs.use_le {
-        Some(le::resolve_le_path(&inputs.data_dir)?)
+        Some(le::resolve_le_path(
+            &inputs.data_dir,
+            inputs.bundled_le_proc.as_deref(),
+        )?)
     } else {
         None
     };
@@ -328,6 +337,7 @@ mod tests {
             pool: pool.clone(),
             game_id: 1,
             use_le: false,
+            bundled_le_proc: None,
         };
         let _ = prepare_launch(&inputs);
         let _ = launch_game(LaunchInputs {
@@ -335,6 +345,7 @@ mod tests {
             pool: pool.clone(),
             game_id: 1,
             use_le: false,
+            bundled_le_proc: None,
         });
     }
 }

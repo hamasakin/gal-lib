@@ -120,6 +120,14 @@ fn to_wide(s: &str) -> Vec<u16> {
 /// sees a single UAC consent dialog per launch (or zero if their LE is
 /// pinned to "always run elevated" via compat).
 ///
+/// Invocation form is `LEProc.exe <game.exe> [args]` — LEProc with no flag
+/// runs the target with its own profile (if it has one) or the default
+/// ja-JP profile (if it doesn't). This sidesteps the `-runas <guid>`
+/// dance which requires a pre-configured LEConfig.xml profile on the
+/// system, and matches what the bundled portable LE supports out of the
+/// box. The `profile` parameter is reserved for a future explicit-profile
+/// path and is unused right now.
+///
 /// Returns the LEProc PID just like the old `Command::spawn` path so
 /// `find_game_pid` can carry on unchanged.
 pub fn spawn_le(
@@ -129,18 +137,17 @@ pub fn spawn_le(
     args: &[&str],
     cwd: &Path,
 ) -> std::io::Result<u32> {
+    let _ = profile; // kept for API compatibility; unused with default-profile launch
     eprintln!(
-        "[launch] LE spawn attempt (runas): le_path={:?} profile={:?} game_exe={:?} args={:?} cwd={:?}",
-        le_path, profile, game_exe, args, cwd
+        "[launch] LE spawn attempt (runas, default profile): le_path={:?} game_exe={:?} args={:?} cwd={:?}",
+        le_path, game_exe, args, cwd
     );
 
-    // Build the parameters string LEProc expects.
+    // LEProc.exe <game.exe> [args] — first positional arg drives the
+    // default-profile path inside LEProc's main entry. No `-run`/`-runas`
+    // prefix needed.
     let game_exe_str = game_exe.to_string_lossy();
-    let mut params = format!(
-        "-runas {} {}",
-        quote_arg(profile),
-        quote_arg(&game_exe_str)
-    );
+    let mut params = quote_arg(&game_exe_str);
     for a in args {
         params.push(' ');
         params.push_str(&quote_arg(a));

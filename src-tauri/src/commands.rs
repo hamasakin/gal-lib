@@ -733,12 +733,14 @@ pub async fn launch_game(
 
     let pool = state.pool().await.map_err(err_str)?;
     let data_dir = state.data_dir.clone();
+    let bundled_le_proc = state.bundled_le_proc.get().cloned();
 
     let (_session_id, active, join) = orchestrator::launch_game(orchestrator::LaunchInputs {
         data_dir,
         pool: (*pool).clone(),
         game_id,
         use_le: use_le.unwrap_or(false),
+        bundled_le_proc,
     })
     .await
     .map_err(err_str)?;

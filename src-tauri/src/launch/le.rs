@@ -98,31 +98,46 @@ fn expand_env(s: &str) -> String {
 /// `config.json` is created with default Phase 1 contents on app boot, so it
 /// is expected to exist by the time this runs in production. Tests pass a
 /// fresh `TempDir` and rely on the `unwrap_or_else("{}")` fallback.
-pub fn resolve_le_path(data_dir: &Path) -> Result<PathBuf, LeError> {
+pub fn resolve_le_path(
+    data_dir: &Path,
+    bundled_le_proc: Option<&Path>,
+) -> Result<PathBuf, LeError> {
     let cfg_path = data_dir.join("config.json");
     let cfg_str = fs::read_to_string(&cfg_path).unwrap_or_else(|_| "{}".into());
     let mut cfg: Value =
         serde_json::from_str(&cfg_str).unwrap_or_else(|_| Value::Object(Default::default()));
 
-    // Cache hit: previously persisted path that still exists on disk.
+    // 1. Manual override — user explicitly picked a launcher path via the
+    // Settings page. Honor it as long as the file still exists.
     if let Some(p) = cfg.get("le_path").and_then(|v| v.as_str()) {
         let pb = PathBuf::from(p);
         if pb.exists() {
-            eprintln!("[launch] LE resolved from config cache: {:?}", pb);
+            eprintln!("[launch] LE resolved from manual override: {:?}", pb);
             return Ok(pb);
         }
-        eprintln!("[launch] LE config path stale (does not exist): {}", p);
+        eprintln!("[launch] LE override path stale (file gone): {}", p);
     }
 
+    // 2. Bundled LEProc that ships with the app — the default for users who
+    // never configure anything. Resolved at setup time in lib.rs.
+    if let Some(bundled) = bundled_le_proc {
+        if bundled.exists() {
+            eprintln!("[launch] LE resolved from bundled resources: {:?}", bundled);
+            return Ok(bundled.to_path_buf());
+        }
+    }
+
+    // 3. Last-ditch detection — user-installed LE via registry / common paths
+    // / PATH. Hits when the bundle is somehow missing AND no override is set.
     match detect_le_path() {
         Some(detected) => {
-            eprintln!("[launch] LE detected: {:?}", detected);
+            eprintln!("[launch] LE detected on system: {:?}", detected);
             cfg["le_path"] = Value::String(detected.to_string_lossy().into());
             fs::write(&cfg_path, serde_json::to_string_pretty(&cfg).unwrap())?;
             Ok(detected)
         }
         None => {
-            eprintln!("[launch] LE not found — registry, common paths, and PATH all checked");
+            eprintln!("[launch] LE not found anywhere (override / bundled / detected)");
             Err(LeError::NotFound)
         }
     }

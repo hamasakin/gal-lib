@@ -36,6 +36,12 @@ use tokio::sync::OnceCell;
 pub struct AppPaths {
     pub data_dir: PathBuf,
     pub db_url: String,
+    /// Resolved absolute path to the bundled `LEProc.exe`. Populated in
+    /// `setup` via `app.path().resolve(..., BaseDirectory::Resource)`.
+    /// `None` only if the resource doesn't actually exist on disk (which
+    /// would be a packaging bug). resolve_le_path uses this as the default
+    /// when no user override is configured.
+    pub bundled_le_proc: std::sync::OnceLock<PathBuf>,
     pub(crate) pool: OnceCell<Arc<SqlitePool>>,
 }
 
@@ -99,6 +105,7 @@ pub fn run() {
         .manage(AppPaths {
             data_dir,
             db_url,
+            bundled_le_proc: std::sync::OnceLock::new(),
             pool: OnceCell::new(),
         })
         .manage(commands::ScanState::new())
@@ -106,6 +113,31 @@ pub fn run() {
         .setup(|app| {
             // 03e — system tray (icon + 「显示主窗口」/「退出应用」 menu + tooltip).
             tray::setup_tray(&app.handle())?;
+
+            // Resolve the bundled LEProc.exe path now that app.path() is
+            // available. PathResolver handles the dev-vs-bundle directory
+            // mapping — in production this lands in <install>/resources/,
+            // in `pnpm tauri dev` it points at src-tauri/. Either way, the
+            // resource declared as "resources/locale-emulator/*" in
+            // tauri.conf.json resolves correctly.
+            if let Ok(le_proc) = app
+                .path()
+                .resolve(
+                    "resources/locale-emulator/LEProc.exe",
+                    tauri::path::BaseDirectory::Resource,
+                )
+            {
+                if le_proc.exists() {
+                    eprintln!("[gal-lib] bundled LEProc resolved at {:?}", le_proc);
+                    let paths = app.state::<AppPaths>();
+                    let _ = paths.bundled_le_proc.set(le_proc);
+                } else {
+                    eprintln!(
+                        "[gal-lib] bundled LEProc resolved but missing on disk: {:?}",
+                        le_proc
+                    );
+                }
+            }
 
             // 03e — close-to-tray: intercept main window close, hide instead of exit.
             // The session orchestrator + tokio tasks live independently of the
