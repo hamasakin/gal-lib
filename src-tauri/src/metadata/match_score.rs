@@ -8,6 +8,23 @@
 //! Normalization: lowercase + strip whitespace + strip common punctuation
 //! (`/-_:.&!?～~`) so that "Fate stay night" and "fate/stay/night" match.
 
+/// Score a query against multiple candidate strings, returning the max.
+///
+/// Bangumi and VNDB return both a canonical title and alternate names
+/// (`name_cn`, `titles[].title`). A Japanese directory name often scores
+/// 0 against a romaji canonical title but 100 against its CJK alias —
+/// taking the max ensures cross-language hits aren't lost.
+///
+/// Empty strings in the slice are skipped.
+pub fn score_best(query: &str, candidates: &[&str]) -> u8 {
+    candidates
+        .iter()
+        .filter(|c| !c.is_empty())
+        .map(|c| score(query, c))
+        .max()
+        .unwrap_or(0)
+}
+
 pub fn score(query: &str, candidate: &str) -> u8 {
     let q = normalize(query);
     let c = normalize(candidate);
@@ -111,5 +128,26 @@ mod tests {
         assert_eq!(score("", "anything"), 0);
         assert_eq!(score("anything", ""), 0);
         assert_eq!(score("", ""), 0);
+    }
+
+    #[test]
+    fn score_best_takes_max_across_candidates() {
+        // Romaji canonical + CJK alias: query matches the alias exactly,
+        // canonical scores low. score_best should return 100.
+        let s = score_best("CLANNAD", &["Crannado Visual Novel", "CLANNAD"]);
+        assert_eq!(s, 100, "expected 100 from alias match, got {}", s);
+    }
+
+    #[test]
+    fn score_best_skips_empty_candidates() {
+        // Common case: name_cn is None → empty string supplied.
+        let s = score_best("Fate", &["Fate", ""]);
+        assert_eq!(s, 100);
+    }
+
+    #[test]
+    fn score_best_zero_when_all_empty() {
+        assert_eq!(score_best("query", &["", ""]), 0);
+        assert_eq!(score_best("query", &[]), 0);
     }
 }

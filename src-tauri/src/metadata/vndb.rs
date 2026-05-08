@@ -44,17 +44,24 @@ pub async fn search(query: &str) -> Result<Vec<Candidate>, MetadataError> {
         .results
         .into_iter()
         .map(|hit| {
-            let confidence = match_score::score(&query_owned, &hit.title);
+            let alias: Vec<String> = hit
+                .titles
+                .unwrap_or_default()
+                .into_iter()
+                .map(|t| t.title)
+                .collect();
+            // Score across canonical title + every alternate title (zh-Hans
+            // / ja / en variants). Without this, a Japanese directory name
+            // scores 0 against an English `title` even when one of the
+            // alternates is a perfect Japanese match.
+            let mut pool: Vec<&str> = vec![hit.title.as_str()];
+            pool.extend(alias.iter().map(|s| s.as_str()));
+            let confidence = match_score::score_best(&query_owned, &pool);
             Candidate {
                 source: MetadataSource::Vndb,
                 source_id: hit.id,
                 title: hit.title.clone(),
-                alias: hit
-                    .titles
-                    .unwrap_or_default()
-                    .into_iter()
-                    .map(|t| t.title)
-                    .collect(),
+                alias,
                 cover_url: hit.image.and_then(|i| i.url),
                 release_date: hit.released,
                 summary: hit.description,

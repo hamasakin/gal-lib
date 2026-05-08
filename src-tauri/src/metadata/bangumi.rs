@@ -45,9 +45,9 @@ pub async fn search(query: &str) -> Result<Vec<Candidate>, MetadataError> {
     Ok(raw
         .data
         .into_iter()
-        .take(5)
         .map(|s| {
-            let confidence = match_score::score(&query_owned, &s.name);
+            let name_cn = s.name_cn.clone().unwrap_or_default();
+            let confidence = match_score::score_best(&query_owned, &[&s.name, &name_cn]);
             Candidate {
                 source: MetadataSource::Bangumi,
                 source_id: s.id.to_string(),

@@ -1,11 +1,16 @@
-//! Per-game ingest orchestrator: search Bangumi → fallback VNDB → cache cover.
+//! Per-game ingest orchestrator: parallel Bangumi+VNDB search → merge → cache cover.
 //!
 //! Pipeline (per `DiscoveredGame`):
-//!   1. Bangumi search by `clean_name`; pick best hit
-//!   2. If best hit confidence ≥ 80 → use it
-//!   3. Otherwise VNDB search (fallback); pick best hit, ≥ 80 → use it
+//!   1. Search Bangumi AND VNDB in parallel by `clean_name`
+//!   2. Merge candidates from both sources, sort by confidence desc
+//!   3. If best ≥ 80 → use it
 //!   4. If chosen, download cover into `data/covers/{game_id}.{ext}`
 //!   5. Return `IngestResult` for caller to UPDATE `games` row
+//!
+//! Why parallel rather than Bangumi-first/VNDB-fallback: Bangumi sometimes
+//! returns a wrong hit ≥ 80 (collision with a same-named CN translation
+//! patch or doujin), suppressing the correct VNDB hit. Parallel-merge lets
+//! the highest-confidence candidate win regardless of source.
 //!
 //! Returning a plain struct (not executing SQL) keeps this layer testable
 //! in isolation — the caller (`commands::start_scan`) owns the DB pool.
@@ -15,7 +20,7 @@
 //! 02-CONTEXT § Card Grid Virtualization).
 
 use crate::cover_cache;
-use crate::metadata::{self, MetadataSource};
+use crate::metadata::{self, Candidate, MetadataSource};
 use crate::scan::DiscoveredGame;
 use std::path::Path;
 
@@ -40,6 +45,28 @@ pub struct IngestResult {
 
 /// Auto-bind threshold (locked in 02-CONTEXT § Metadata Match Pipeline).
 const AUTO_BIND_THRESHOLD: u8 = 80;
+
+/// Search Bangumi + VNDB concurrently, merge results, return the highest
+/// confidence candidate at-or-above `AUTO_BIND_THRESHOLD`.
+///
+/// Either source erroring is non-fatal — we just lose its candidates.
+/// If neither source produces a ≥ threshold hit, returns `None`.
+async fn pick_best_across_sources(query: &str) -> Option<Candidate> {
+    let (b, v) = tokio::join!(
+        metadata::bangumi::search(query),
+        metadata::vndb::search(query),
+    );
+    let mut pool: Vec<Candidate> = Vec::new();
+    if let Ok(hits) = b {
+        pool.extend(hits);
+    }
+    if let Ok(hits) = v {
+        pool.extend(hits);
+    }
+    pool.into_iter()
+        .filter(|c| c.confidence >= AUTO_BIND_THRESHOLD)
+        .max_by_key(|c| c.confidence)
+}
 
 /// Process one discovered game: search → fallback → cover-cache.
 ///
@@ -83,28 +110,8 @@ pub async fn process_game(
         return result;
     }
 
-    // 1. Bangumi search
-    let bangumi_best = match metadata::bangumi::search(&discovered.clean_name).await {
-        Ok(hits) => hits.into_iter().max_by_key(|c| c.confidence),
-        Err(_) => None,
-    };
-    let bangumi_pick = bangumi_best
-        .as_ref()
-        .filter(|c| c.confidence >= AUTO_BIND_THRESHOLD)
-        .cloned();
-
-    // 2. VNDB fallback (only if Bangumi didn't auto-bind)
-    let final_choice = if let Some(c) = bangumi_pick {
-        Some(c)
-    } else {
-        match metadata::vndb::search(&discovered.clean_name).await {
-            Ok(hits) => hits
-                .into_iter()
-                .max_by_key(|c| c.confidence)
-                .filter(|c| c.confidence >= AUTO_BIND_THRESHOLD),
-            Err(_) => None,
-        }
-    };
+    // 1. Search BOTH sources in parallel, merge, pick best ≥ threshold.
+    let final_choice = pick_best_across_sources(&discovered.clean_name).await;
 
     if let Some(c) = final_choice {
         result.name = c.title.clone();
