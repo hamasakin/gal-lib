@@ -8,7 +8,7 @@ mod metadata;
 mod save_backup;
 mod scan;
 mod screenshot;
-mod title_clean;
+pub mod title_clean;
 mod tray;
 
 use std::path::PathBuf;
