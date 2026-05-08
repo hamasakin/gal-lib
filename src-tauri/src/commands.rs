@@ -72,8 +72,13 @@ async fn ingest_one_dir(
     let path_str = dg.path.to_string_lossy().to_string();
     let exec_str = dg.executable.as_ref().map(|p| p.to_string_lossy().to_string());
 
+    // screenshot_interval_sec=0 keeps auto-capture off by default for new
+    // games; users who want it can flip the per-game value via the Detail
+    // page's 设置 tab. The schema column default of 300 (set in v5) is not
+    // referenced because we always specify the column explicitly here.
     let insert_res = sqlx::query(
-        "INSERT INTO games (path, name, executable_path) VALUES (?, ?, ?) \
+        "INSERT INTO games (path, name, executable_path, screenshot_interval_sec) \
+         VALUES (?, ?, ?, 0) \
          ON CONFLICT(path) DO UPDATE SET name=excluded.name, executable_path=excluded.executable_path",
     )
     .bind(&path_str)

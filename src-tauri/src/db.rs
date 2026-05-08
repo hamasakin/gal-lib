@@ -20,6 +20,7 @@ const V2_SQL: &str = include_str!("../migrations/0002_add_scan_and_metadata.sql"
 const V3_SQL: &str = include_str!("../migrations/0003_add_launch_and_session_status.sql");
 const V4_SQL: &str = include_str!("../migrations/0004_add_brand_year_favorite.sql");
 const V5_SQL: &str = include_str!("../migrations/0005_add_screenshots_and_saves.sql");
+const V6_SQL: &str = include_str!("../migrations/0006_disable_default_screenshots.sql");
 
 /// All migrations to register with tauri-plugin-sql, in version order.
 /// Add future migrations as additional entries with monotonically increasing
@@ -54,6 +55,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 5,
             description: "add_screenshots_and_saves",
             sql: V5_SQL,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 6,
+            description: "disable_default_screenshots",
+            sql: V6_SQL,
             kind: MigrationKind::Up,
         },
     ]
@@ -177,7 +184,7 @@ mod tests {
     #[test]
     fn migrations_v5_adds_screenshots_and_saves() {
         let m = migrations();
-        assert_eq!(m.len(), 5, "v5: exactly five migrations registered");
+        assert!(m.len() >= 5, "v5: at least five migrations registered");
         let m5 = m.iter().find(|x| x.version == 5).expect("v5 present");
         assert_eq!(m5.description, "add_screenshots_and_saves");
 
