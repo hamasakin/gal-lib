@@ -55,6 +55,7 @@ import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { toastLaunchSuccess } from "@/lib/toast";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import {
@@ -444,7 +445,7 @@ export default function Detail() {
         executable_path: exePath.length > 0 ? exePath : undefined,
       });
       await launchGame(gameId, false);
-      toast.info(`正在启动 — ${displayName}`);
+      toastLaunchSuccess(displayName, profile);
     } catch (e: unknown) {
       toast.error(`启动失败 — ${String(e)}`);
     }

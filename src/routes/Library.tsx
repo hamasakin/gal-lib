@@ -18,9 +18,10 @@
  * Routing-export note: router.tsx uses `import { Library }` — keep NAMED export.
  */
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { toastScanFinished } from "@/lib/toast";
 import { useLibraryStore } from "@/store/library";
 import {
   getSidebarCategories,
@@ -32,6 +33,7 @@ import { startScan, listScanRoots } from "@/lib/scan";
 import { GameGrid } from "@/components/library/GameGrid";
 import { GameList } from "@/components/library/GameList";
 import { ViewToggle } from "@/components/library/ViewToggle";
+import { FilterPanel } from "@/components/library/FilterPanel";
 import { ScanProgressBar } from "@/components/library/ScanProgressBar";
 import { ActiveSessionBar } from "@/components/library/ActiveSessionBar";
 import { MetadataPicker } from "@/components/library/MetadataPicker";
@@ -42,6 +44,12 @@ import { StatusFilterChips } from "@/components/library/StatusFilterChips";
 import { DensityToggle } from "@/components/library/DensityToggle";
 import { PageHeader } from "@/components/library/PageHeader";
 import { usePreferencesStore } from "@/store/preferences";
+import {
+  type AdvancedFilter,
+  applyAdvancedFilter,
+  EMPTY_ADV_FILTER,
+  isAdvFilterActive,
+} from "@/lib/advancedFilter";
 import { RefreshCw, FolderPlus, Library as LibraryIcon, SearchX, AlertCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -71,6 +79,7 @@ export function Library() {
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
 
   const [pickerGame, setPickerGame] = useState<Game | null>(null);
+  const [advFilter, setAdvFilter] = useState<AdvancedFilter>(EMPTY_ADV_FILTER);
   const navigate = useNavigate();
   const viewMode = usePreferencesStore((s) => s.viewMode);
 
@@ -101,21 +110,43 @@ export function Library() {
     void refetchGrid();
   }, [refetchGrid]);
 
+  // Detect the running → completed edge once and fire the rich scan-finished
+  // toast post-refresh. The ref guard prevents double-fires when refetchGrid
+  // identity changes (deps below) while scanProgress is still in 'completed'.
+  const prevScanStatus = useRef<string | null>(null);
   useEffect(() => {
-    if (scanProgress?.status === "completed") {
-      void refetchGrid();
-      void refreshSidebar();
+    const prev = prevScanStatus.current;
+    const next = scanProgress?.status ?? null;
+    prevScanStatus.current = next;
+    if (prev !== "completed" && next === "completed") {
+      const total = scanProgress?.total ?? 0;
+      void (async () => {
+        await refetchGrid();
+        await refreshSidebar();
+        // Post-refresh read — refetchGrid setGames-through means the store
+        // snapshot now carries the freshly inserted/updated rows.
+        const latest = useLibraryStore.getState().games;
+        const pending = latest.filter(
+          (g) => g.match_confidence != null && g.match_confidence < 80,
+        ).length;
+        toastScanFinished(total, total - pending, pending);
+      })();
     }
-  }, [scanProgress?.status, refetchGrid, refreshSidebar]);
+  }, [scanProgress?.status, scanProgress?.total, refetchGrid, refreshSidebar]);
 
   const onChildMutation = useCallback(() => {
     void refetchGrid();
     void refreshSidebar();
   }, [refetchGrid, refreshSidebar]);
 
-  const isEmpty = games.length === 0;
+  // Server-fetched array (already narrowed by backend SearchFilter +
+  // sort + searchQuery). The advanced FilterPanel runs as a client-side
+  // post-filter on top of this — keeps all complex multi-axis logic out
+  // of the SQL builder.
+  const visibleGames = applyAdvancedFilter(games, advFilter);
+  const isEmpty = visibleGames.length === 0;
   const hasActiveSearch = searchQuery.trim() !== "";
-  const hasActiveFilter = !isFilterEmpty(filter);
+  const hasActiveFilter = !isFilterEmpty(filter) || isAdvFilterActive(advFilter);
   const scanCompleted = scanProgress?.status === "completed";
   const noScanYet =
     isEmpty && !scanProgress && !hasActiveSearch && !hasActiveFilter;
@@ -127,6 +158,7 @@ export function Library() {
   function clearAllFilters() {
     setFilter({});
     setSearchQuery("");
+    setAdvFilter(EMPTY_ADV_FILTER);
   }
 
   async function onRescan() {
@@ -165,7 +197,11 @@ export function Library() {
       <div className="flex-1 overflow-auto">
         <PageHeader
           crumb="图书馆"
-          badge={`${games.length} 部作品`}
+          badge={
+            isAdvFilterActive(advFilter)
+              ? `${visibleGames.length} / ${games.length} 部`
+              : `${games.length} 部作品`
+          }
           title={
             <>
               本月你的<span className="text-brand italic">箱庭</span>
@@ -207,6 +243,11 @@ export function Library() {
           <StatusFilterChips />
           <FilterChip />
           <span className="flex-1" />
+          <FilterPanel
+            games={games}
+            filter={advFilter}
+            onChange={setAdvFilter}
+          />
           <SearchBar />
           <ViewToggle />
           {viewMode === "grid" && <DensityToggle />}
@@ -250,12 +291,12 @@ export function Library() {
 
         {!isEmpty && viewMode === "grid" && (
           <GameGrid
-            games={games}
+            games={visibleGames}
             onPickMetadata={setPickerGame}
             onChildMutation={onChildMutation}
           />
         )}
-        {!isEmpty && viewMode === "list" && <GameList games={games} />}
+        {!isEmpty && viewMode === "list" && <GameList games={visibleGames} />}
       </div>
 
       <MetadataPicker game={pickerGame} onClose={() => setPickerGame(null)} />
