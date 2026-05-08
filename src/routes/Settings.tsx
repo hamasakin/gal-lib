@@ -290,15 +290,33 @@ export function Settings() {
 
         {/* ── Main content ────────────────────────────────────────── */}
         <main className="pr-9">
-          <header className="mb-7">
-            <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-3">
-              设置 / Preferences
+          <header className="mb-7 flex items-start gap-4">
+            {/* Hakoniwa wordmark — supplementary §9 wordmark variant.
+                Square seal mark + serif title pair, mirrors the titlebar
+                lockup but sized for the page header. */}
+            <div
+              aria-hidden
+              className="grid h-12 w-12 flex-shrink-0 place-items-center font-serif text-[28px] font-bold text-white"
+              style={{
+                background:
+                  "linear-gradient(155deg, var(--accent), var(--accent-deep))",
+                borderRadius: "var(--r-md)",
+                boxShadow: "0 6px 20px -8px var(--accent)",
+                color: "var(--accent-on)",
+              }}
+            >
+              箱
             </div>
-            <h1 className="mt-1 font-serif text-[26px] font-medium text-ink-0">
-              偏好与配置
-            </h1>
-            <div className="mt-1 font-mono text-[11px] text-ink-2">
-              所有数据存储在 portable `data/` 目录 · 共 {totalRoots} 个扫描根
+            <div className="min-w-0">
+              <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-3">
+                设置 / Preferences
+              </div>
+              <h1 className="mt-0.5 font-serif text-[26px] font-medium text-ink-0">
+                偏好与配置
+              </h1>
+              <div className="mt-1 font-mono text-[11px] text-ink-2">
+                所有数据存储在 portable `data/` 目录 · 共 {totalRoots} 个扫描根
+              </div>
             </div>
           </header>
 

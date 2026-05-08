@@ -205,33 +205,33 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-4">
-          {/* Search input + source toggle */}
-          <div className="flex items-center gap-2">
-            <Input
-              placeholder="搜索 Bangumi 或 VNDB"
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              className="flex-1 min-w-0"
-            />
-            <ToggleGroup
-              type="single"
-              value={source}
-              variant="outline"
-              size="sm"
-              onValueChange={(v) => {
-                if (v === "bangumi" || v === "vndb") setSource(v);
-              }}
-              className="shrink-0"
-            >
-              <ToggleGroupItem value="bangumi" variant="outline" size="sm">
-                Bangumi
-              </ToggleGroupItem>
-              <ToggleGroupItem value="vndb" variant="outline" size="sm">
-                VNDB
-              </ToggleGroupItem>
-            </ToggleGroup>
-          </div>
+        <div className="flex flex-col gap-3">
+          {/* Source pill row — supplementary §5 design moves the toggle to its
+              own row at the top, above the search input. */}
+          <ToggleGroup
+            type="single"
+            value={source}
+            variant="outline"
+            size="sm"
+            onValueChange={(v) => {
+              if (v === "bangumi" || v === "vndb") setSource(v);
+            }}
+            className="self-start"
+          >
+            <ToggleGroupItem value="bangumi" variant="outline" size="sm">
+              Bangumi
+            </ToggleGroupItem>
+            <ToggleGroupItem value="vndb" variant="outline" size="sm">
+              VNDB
+            </ToggleGroupItem>
+          </ToggleGroup>
+
+          <Input
+            placeholder="搜索 Bangumi 或 VNDB"
+            value={query}
+            onChange={(e) => setQuery(e.target.value)}
+            className="w-full min-w-0"
+          />
 
           {/* Direct ID toggle */}
           <div>
@@ -285,11 +285,12 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                             sourceId: c.source_id,
                           })
                         }
-                        className={`flex w-full items-start gap-3 rounded-md border p-3 text-left transition ${
+                        className={`flex w-full items-start gap-3 border p-3 text-left transition ${
                           isSelected
-                            ? "border-ring bg-accent/20"
-                            : "border-border hover:bg-secondary"
+                            ? "border-brand bg-brand-soft border-l-[3px]"
+                            : "border-line hover:border-line-strong hover:bg-bg-2"
                         }`}
+                        style={{ borderRadius: "var(--r-md)" }}
                       >
                         <div className="size-[60px_80px] shrink-0 overflow-hidden rounded bg-secondary" style={{ width: 60, height: 80 }}>
                           {c.cover_url ? (
