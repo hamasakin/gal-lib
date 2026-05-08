@@ -304,6 +304,7 @@ export function TweaksPanel() {
         <div className="grid grid-cols-2 gap-1.5">
           <JumpButton label="图书馆" onClick={() => go("/")} />
           <JumpButton label="统计" onClick={() => go("/stats")} />
+          <JumpButton label="截图集" onClick={() => go("/screenshots")} />
           <JumpButton
             label="详情"
             onClick={

@@ -4,6 +4,7 @@ import { Library } from "./routes/Library";
 import { Settings } from "./routes/Settings";
 import Detail from "./routes/Detail";
 import Stats from "./routes/Stats";
+import Screenshots from "./routes/Screenshots";
 
 /**
  * Application router.
@@ -35,6 +36,7 @@ export const router = createHashRouter([
       { index: true, element: <Library /> },
       { path: "settings", element: <Settings /> },
       { path: "stats", element: <Stats /> },
+      { path: "screenshots", element: <Screenshots /> },
       { path: "games/:id", element: <Detail /> },
     ],
   },

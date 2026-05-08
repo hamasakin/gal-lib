@@ -1,53 +1,33 @@
 /**
- * Settings route ("/settings") — Phase 2 implementation.
+ * Settings route ("/settings") — v1.1 redesign.
  *
- * Replaces the Phase 1 placeholder ("设置 — 即将上线"). Provides the
- * "scan_roots" CRUD UI and the "全量扫描 / 增量扫描" trigger buttons,
- * matching `02-UI-SPEC.md §Settings Page` verbatim:
- *   - max-width 720px, single-column, p-6
- *   - section "扫描根目录" — list + Depth select + Remove (with confirm) + Add
- *   - section "扫描操作" — full + incremental scan buttons
+ * Layout: 200px left nav + main content (max 720px).
+ * Sections (anchored, smooth-scroll):
+ *   1. 外观                       — points to Tweaks panel for axes
+ *   2. 扫描根目录                 — list + depth + remove + add
+ *   3. 添加单个游戏               — directory picker for ad-hoc add
+ *   4. Locale Emulator           — bundled LE info + override picker
+ *   5. 标签管理                   — TagManager component
+ *   6. 扫描操作                   — full/incremental scan
+ *   7. UI 偏好                    — UIPreferences component
+ *   8. 调试                       — clear-all-data
  *
- * Locked copy (UI-SPEC §Copywriting Contract — DO NOT edit):
- *   设置 / 扫描根目录 / gal-lib 会扫描这些目录下的游戏 /
- *   第 1 层 / 第 2 层 / 第 3 层 / 添加根目录 /
- *   全量扫描 / 增量扫描 /
- *   确定移除该根目录？ / 已扫描的游戏不会被删除
+ * Logic preserved from v1.0:
+ *   - listScanRoots refresh after every CRUD
+ *   - addGame toast.promise progress flow
+ *   - LE path picker via openDialog filtered to .exe
+ *   - clearAllData confirm + multi-source refetch
  *
- * Routing-export note: `router.tsx` imports `{ Settings }` (NAMED export),
- * so this file MUST `export function Settings`. Do NOT switch to default
- * export — would silently break the route to render `undefined`.
- *
- * State-flow note: after add/remove/depth-change we always re-fetch the full
- * `listScanRoots()` rather than mutating store optimistically — keeps the
- * frontend cache aligned with SQLite truth (no stale rowid problems).
+ * Visual: 200px nav (sticky) + main column. Each section is a `setting-block`
+ * with serif h2 + mono lede + path-row / setting rows. nav active state
+ * driven by scroll-spy via IntersectionObserver.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
-import {
-  addGame,
-  addScanRoot,
-  clearAllData,
-  listScanRoots,
-  removeScanRoot,
-  startScan,
-} from "@/lib/scan";
-import { getSidebarCategories, searchGames } from "@/lib/search";
-// 03f: LE path config — alias setLePath to applyLePath to avoid clashing
-// with the local React state setter `setLePath` (same name).
-import { getLePath, setLePath as applyLePath } from "@/lib/launch";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
+import { Trash2 } from "lucide-react";
+import { useNavigate } from "react-router-dom";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -59,27 +39,48 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { Trash2 } from "lucide-react";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  addGame,
+  addScanRoot,
+  clearAllData,
+  listScanRoots,
+  removeScanRoot,
+  startScan,
+} from "@/lib/scan";
+import { getSidebarCategories, searchGames } from "@/lib/search";
+import { getLePath, setLePath as applyLePath } from "@/lib/launch";
 import { useLibraryStore } from "@/store/library";
-import { useNavigate } from "react-router-dom";
-// 04f: Settings page polish — Tag CRUD + UI preferences sections appended
-// to the existing P2/P3 sections (扫描根目录 / Locale Emulator / 扫描操作).
 import { TagManager } from "@/components/settings/TagManager";
 import { UIPreferences } from "@/components/settings/UIPreferences";
+import { cn } from "@/lib/utils";
+
+const SECTIONS = [
+  { id: "appearance", label: "外观" },
+  { id: "scan-roots", label: "扫描根目录" },
+  { id: "single-add", label: "添加单个游戏" },
+  { id: "le", label: "Locale Emulator" },
+  { id: "tags", label: "标签管理" },
+  { id: "scan-ops", label: "扫描操作" },
+  { id: "ui", label: "UI 偏好" },
+  { id: "debug", label: "调试" },
+] as const;
 
 export function Settings() {
   const scanRoots = useLibraryStore((s) => s.scanRoots);
   const setScanRoots = useLibraryStore((s) => s.setScanRoots);
   const navigate = useNavigate();
-  // 03f: LE path display state. `null` = backend has no persisted path
-  // (or persisted path is stale and was filtered out — see 03d's
-  // `get_le_path` stale-fallback). UI renders the locked copy "未检测到"
-  // in that case.
   const [lePath, setLePath] = useState<string | null>(null);
   const [isAddingGame, setIsAddingGame] = useState(false);
+  const [activeSection, setActiveSection] = useState<string>("appearance");
+  const sectionRefs = useRef<Record<string, HTMLElement | null>>({});
 
-  // Initial load — refresh on mount so Settings always shows DB truth (e.g.
-  // user opens Settings the first time, or after a hot-reload).
   useEffect(() => {
     listScanRoots()
       .then(setScanRoots)
@@ -95,12 +96,35 @@ export function Settings() {
       });
   }, [setScanRoots]);
 
-  /**
-   * Manual LE path override. Opens a file-picker filtered to .exe, sends
-   * the picked path to `set_le_path` (which validates `exists()` and
-   * persists to data/config.json::le_path). On success the input updates
-   * and a confirmation toast renders.
-   */
+  // Scroll-spy: observe each section, update activeSection on intersection.
+  useEffect(() => {
+    const observer = new IntersectionObserver(
+      (entries) => {
+        const visible = entries
+          .filter((e) => e.isIntersecting)
+          .sort((a, b) => b.intersectionRatio - a.intersectionRatio);
+        if (visible[0]) {
+          const id = (visible[0].target as HTMLElement).dataset.sectionId;
+          if (id) setActiveSection(id);
+        }
+      },
+      { rootMargin: "-20% 0px -60% 0px" },
+    );
+    for (const sec of SECTIONS) {
+      const el = sectionRefs.current[sec.id];
+      if (el) observer.observe(el);
+    }
+    return () => observer.disconnect();
+  }, []);
+
+  function scrollTo(id: string) {
+    sectionRefs.current[id]?.scrollIntoView({
+      behavior: "smooth",
+      block: "start",
+    });
+    setActiveSection(id);
+  }
+
   async function onPickLePath() {
     let picked: string | string[] | null;
     try {
@@ -112,7 +136,7 @@ export function Settings() {
       toast.error(`打开文件选择失败 — ${String(e)}`);
       return;
     }
-    if (typeof picked !== "string") return; // user cancelled
+    if (typeof picked !== "string") return;
     try {
       await applyLePath(picked);
       setLePath(picked);
@@ -130,12 +154,9 @@ export function Settings() {
       toast.error(`打开目录选择失败 — ${String(e)}`);
       return;
     }
-    // Tauri's plugin-dialog returns: string (single path) | string[] (multi)
-    // | null (cancel). With multiple:false, we expect string|null.
-    if (typeof picked !== "string") return; // user cancelled
-
+    if (typeof picked !== "string") return;
     try {
-      await addScanRoot(picked, 1); // default depth = 1 (UI-SPEC default)
+      await addScanRoot(picked, 1);
       const rs = await listScanRoots();
       setScanRoots(rs);
       toast.success("已添加根目录");
@@ -153,9 +174,6 @@ export function Settings() {
       return;
     }
     if (typeof picked !== "string") return;
-    // Display the dir basename in the loading toast so the user knows which
-    // game is being added (the metadata fetch can take 5-30s on a fresh app
-    // due to Bangumi's 1 req/s rate limit).
     const basename = picked.split(/[\\/]/).pop() || picked;
     setIsAddingGame(true);
     const job = (async () => {
@@ -175,8 +193,7 @@ export function Settings() {
     try {
       await job;
     } catch {
-      // Error already surfaced via toast.promise; swallow so the catch
-      // doesn't bubble to React's unhandled-rejection handler.
+      // Errors surfaced via toast.promise.
     } finally {
       setIsAddingGame(false);
     }
@@ -193,11 +210,6 @@ export function Settings() {
     }
   }
 
-  // Backend doesn't expose an UPDATE command for scan_roots (path is the
-  // UNIQUE index; depth is the only mutable column). Phase 2 implements
-  // depth change as remove + re-add — semantically equivalent for users
-  // (no scanned games get deleted by removing a root, per CONTEXT.md
-  // "scanned games are NOT auto-deleted on root removal").
   async function onChangeDepth(id: number, depth: 1 | 2 | 3) {
     const target = scanRoots.find((r) => r.id === id);
     if (!target) return;
@@ -242,179 +254,321 @@ export function Settings() {
     }
   }
 
+  const totalRoots = useMemo(() => scanRoots.length, [scanRoots]);
+
   return (
-    <ScrollArea className="h-full w-full">
-      <div className="mx-auto max-w-[720px] space-y-8 p-6">
-        <h1 className="text-h2 font-semibold text-foreground">设置</h1>
-
-        {/* ─── 扫描根目录 section ─────────────────────────────────────── */}
-        <section className="space-y-4">
-          <div className="space-y-1">
-            <h2 className="text-base font-semibold text-foreground">
-              扫描根目录
-            </h2>
-            <p className="text-body text-muted-foreground">
-              gal-lib 会扫描这些目录下的游戏
-            </p>
+    <div className="h-full overflow-auto">
+      <div
+        className="mx-auto grid max-w-[1100px] gap-8 px-2 py-10"
+        style={{ gridTemplateColumns: "200px 1fr" }}
+      >
+        {/* ── Left nav ────────────────────────────────────────────── */}
+        <nav className="sticky top-10 self-start border-r border-line pl-6 pr-6">
+          <div className="mb-3 font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-3">
+            设置
           </div>
-
-          <ul className="space-y-2">
-            {scanRoots.map((r) => (
-              <li
-                key={r.id}
-                className="flex items-center gap-3 rounded-md border border-border bg-card p-3"
+          {SECTIONS.map((s) => {
+            const on = activeSection === s.id;
+            return (
+              <button
+                key={s.id}
+                type="button"
+                onClick={() => scrollTo(s.id)}
+                className={cn(
+                  "flex w-full items-center gap-2.5 px-3 py-2 text-left text-[12.5px] transition-colors",
+                  on
+                    ? "bg-brand-soft text-ink-0"
+                    : "text-ink-2 hover:bg-bg-2 hover:text-ink-0",
+                )}
+                style={{ borderRadius: "var(--r-sm)" }}
               >
-                <span
-                  className="flex-1 truncate text-body text-foreground"
-                  title={r.path}
-                >
-                  {r.path}
-                </span>
-                <Select
-                  value={String(r.depth)}
-                  onValueChange={(v) =>
-                    void onChangeDepth(r.id, Number(v) as 1 | 2 | 3)
-                  }
-                >
-                  <SelectTrigger className="w-28">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="1">第 1 层</SelectItem>
-                    <SelectItem value="2">第 2 层</SelectItem>
-                    <SelectItem value="3">第 3 层</SelectItem>
-                  </SelectContent>
-                </Select>
-                <AlertDialog>
-                  <AlertDialogTrigger asChild>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="hover:text-destructive"
-                      aria-label="移除"
-                    >
-                      <Trash2 className="size-4" />
-                    </Button>
-                  </AlertDialogTrigger>
-                  <AlertDialogContent>
-                    <AlertDialogHeader>
-                      <AlertDialogTitle>确定移除该根目录？</AlertDialogTitle>
-                      <AlertDialogDescription>
-                        已扫描的游戏不会被删除
-                      </AlertDialogDescription>
-                    </AlertDialogHeader>
-                    <AlertDialogFooter>
-                      <AlertDialogCancel>取消</AlertDialogCancel>
-                      <AlertDialogAction onClick={() => void onRemove(r.id)}>
-                        移除
-                      </AlertDialogAction>
-                    </AlertDialogFooter>
-                  </AlertDialogContent>
-                </AlertDialog>
-              </li>
-            ))}
-            {scanRoots.length === 0 && (
-              <li className="rounded-md border border-dashed border-border p-6 text-center text-body text-muted-foreground">
-                还没有根目录 — 点下方按钮添加
-              </li>
-            )}
-          </ul>
+                <span>{s.label}</span>
+              </button>
+            );
+          })}
+        </nav>
 
-          <Button onClick={() => void onAdd()}>添加根目录</Button>
-        </section>
+        {/* ── Main content ────────────────────────────────────────── */}
+        <main className="pr-9">
+          <header className="mb-7">
+            <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-3">
+              设置 / Preferences
+            </div>
+            <h1 className="mt-1 font-serif text-[26px] font-medium text-ink-0">
+              偏好与配置
+            </h1>
+            <div className="mt-1 font-mono text-[11px] text-ink-2">
+              所有数据存储在 portable `data/` 目录 · 共 {totalRoots} 个扫描根
+            </div>
+          </header>
 
-        {/* ─── 添加单个游戏 section ───────────────────────────────────── */}
-        <section className="space-y-4">
-          <div className="space-y-1">
-            <h2 className="text-base font-semibold text-foreground">
-              添加单个游戏
-            </h2>
-            <p className="text-body text-muted-foreground">
-              跳过扫描，直接选择某个游戏目录加入库
-            </p>
-          </div>
-          <Button
-            onClick={() => void onAddSingleGame()}
-            disabled={isAddingGame}
+          <Section
+            id="appearance"
+            title="外观"
+            lede="主题 / 强调色 / 圆角 / 侧栏宽度 / 封面密度"
+            sectionRefs={sectionRefs}
           >
-            {isAddingGame ? "正在添加..." : "选择游戏目录"}
-          </Button>
-        </section>
-
-        {/* ─── 日区启动器 section ──────────────────────────────────────── */}
-        <section className="space-y-4">
-          <div className="space-y-1">
-            <h2 className="text-base font-semibold text-foreground">
-              日区启动器
-            </h2>
-            <p className="text-body text-muted-foreground">
-              已内置 Locale Emulator —— 在游戏卡片右键选「用日区启动器」即可启动老 galgame（Shift-JIS 编码）。
-              首次启动会弹一次 UAC 同意框（LE 自身需要管理员权限）。
-              想换成 ntleas / LEx / 自己的批处理脚本？在下面填入它的 exe 路径作为覆盖。
+            <p className="font-sans text-[12.5px] leading-[1.7] text-ink-1">
+              通过屏幕右下浮动 <span className="font-serif text-brand">Tweaks</span> 面板调整
+              5 个外观维度，所有偏好实时生效并保存到 localStorage。
             </p>
-          </div>
-          <div className="flex items-center gap-3">
-            <Input
-              readOnly
-              value={lePath ?? "默认使用内置 LE（无需配置）"}
-              className="flex-1"
-              title={lePath ?? undefined}
-            />
-            <Button variant="secondary" onClick={() => void onPickLePath()}>
-              覆盖：选择启动器 .exe
-            </Button>
-          </div>
-        </section>
+            <p className="mt-2 font-mono text-[11px] text-ink-3">
+              提示：滑块/分段控件就在面板里，不需要在这里复制一份开关。
+            </p>
+          </Section>
 
-        {/* ─── 扫描操作 section ──────────────────────────────────────── */}
-        <section className="space-y-4">
-          <h2 className="text-base font-semibold text-foreground">扫描操作</h2>
-          <div className="flex gap-3">
-            <Button onClick={() => void onScan("full")}>全量扫描</Button>
-            <Button
-              variant="secondary"
-              onClick={() => void onScan("incremental")}
+          <Section
+            id="scan-roots"
+            title="扫描根目录"
+            lede="gal-lib 会扫描这些目录下的游戏"
+            sectionRefs={sectionRefs}
+          >
+            <div className="space-y-2">
+              {scanRoots.length === 0 ? (
+                <div
+                  className="border border-dashed border-line bg-bg-1 p-8 text-center font-mono text-[11px] text-ink-3"
+                  style={{ borderRadius: "var(--r-md)" }}
+                >
+                  还没有根目录 — 点下方按钮添加
+                </div>
+              ) : (
+                scanRoots.map((r) => (
+                  <div
+                    key={r.id}
+                    className="grid items-center gap-2.5 border border-line bg-bg-1 px-3.5 py-2.5"
+                    style={{
+                      gridTemplateColumns: "1fr 90px 32px",
+                      borderRadius: "var(--r-sm)",
+                    }}
+                  >
+                    <code
+                      className="truncate font-mono text-[11px] text-ink-0"
+                      title={r.path}
+                    >
+                      {r.path}
+                    </code>
+                    <Select
+                      value={String(r.depth)}
+                      onValueChange={(v) =>
+                        void onChangeDepth(r.id, Number(v) as 1 | 2 | 3)
+                      }
+                    >
+                      <SelectTrigger className="h-7 text-[11px]">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent>
+                        <SelectItem value="1">第 1 层</SelectItem>
+                        <SelectItem value="2">第 2 层</SelectItem>
+                        <SelectItem value="3">第 3 层</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <button
+                          type="button"
+                          aria-label="移除"
+                          className="grid h-7 w-7 place-items-center text-ink-3 transition-colors hover:bg-bg-2 hover:text-destructive"
+                          style={{ borderRadius: "var(--r-sm)" }}
+                        >
+                          <Trash2 size={13} />
+                        </button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>确定移除该根目录？</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            已扫描的游戏不会被删除
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>取消</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => void onRemove(r.id)}>
+                            移除
+                          </AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                ))
+              )}
+            </div>
+            <SettingButton onClick={() => void onAdd()} className="mt-3.5">
+              + 添加根目录
+            </SettingButton>
+          </Section>
+
+          <Section
+            id="single-add"
+            title="添加单个游戏"
+            lede="跳过扫描，直接选择某个游戏目录加入库"
+            sectionRefs={sectionRefs}
+          >
+            <SettingButton
+              onClick={() => void onAddSingleGame()}
+              disabled={isAddingGame}
             >
-              增量扫描
-            </Button>
-          </div>
-        </section>
+              {isAddingGame ? "正在添加..." : "选择游戏目录"}
+            </SettingButton>
+          </Section>
 
-        {/* ─── 04f: 标签管理 section ─────────────────────────────────── */}
-        <TagManager />
-
-        {/* ─── 04f: UI 偏好 section ──────────────────────────────────── */}
-        <UIPreferences />
-
-        {/* ─── 调试 section ─────────────────────────────────────────── */}
-        <section className="space-y-4">
-          <div className="space-y-1">
-            <h2 className="text-base font-semibold text-foreground">调试</h2>
-            <p className="text-body text-muted-foreground">
-              清除所有游戏、扫描根、会话与封面/截图/存档备份文件（保留标签与 LE 路径）
+          <Section
+            id="le"
+            title="Locale Emulator"
+            lede="日区转区启动器 — 已内置 LE，老 galgame 可一键 Shift-JIS 启动"
+            sectionRefs={sectionRefs}
+          >
+            <p className="font-sans text-[12.5px] leading-[1.7] text-ink-1">
+              在游戏卡片右键选「用日区启动器」即可启动；首次启动会弹一次 UAC 同意框（LE 自身需要管理员权限）。
+              想换成 ntleas / LEx / 自定义批处理，在下面填入它的 exe 路径作为覆盖。
             </p>
-          </div>
-          <AlertDialog>
-            <AlertDialogTrigger asChild>
-              <Button variant="destructive">清除所有数据</Button>
-            </AlertDialogTrigger>
-            <AlertDialogContent>
-              <AlertDialogHeader>
-                <AlertDialogTitle>确定清除所有数据？</AlertDialogTitle>
-                <AlertDialogDescription>
-                  此操作不可撤销，将删除全部游戏、扫描根、会话历史与缓存文件
-                </AlertDialogDescription>
-              </AlertDialogHeader>
-              <AlertDialogFooter>
-                <AlertDialogCancel>取消</AlertDialogCancel>
-                <AlertDialogAction onClick={() => void onClearAllData()}>
-                  清除
-                </AlertDialogAction>
-              </AlertDialogFooter>
-            </AlertDialogContent>
-          </AlertDialog>
-        </section>
+            <div
+              className="mt-3.5 grid items-center gap-2.5 border border-line bg-bg-1 px-3.5 py-2.5"
+              style={{
+                gridTemplateColumns: "1fr 200px",
+                borderRadius: "var(--r-sm)",
+              }}
+            >
+              <code
+                className="truncate font-mono text-[11px] text-ink-0"
+                title={lePath ?? "默认使用内置 LE"}
+              >
+                {lePath ?? <span className="text-ink-3">默认使用内置 LE（无需配置）</span>}
+              </code>
+              <SettingButton onClick={() => void onPickLePath()}>
+                覆盖：选择启动器 .exe
+              </SettingButton>
+            </div>
+          </Section>
+
+          <Section
+            id="tags"
+            title="标签管理"
+            lede="自定义标签 · 颜色 · 关联游戏"
+            sectionRefs={sectionRefs}
+          >
+            <TagManager />
+          </Section>
+
+          <Section
+            id="scan-ops"
+            title="扫描操作"
+            lede="增量扫描跳过已识别的游戏 · 全量扫描重新匹配元数据"
+            sectionRefs={sectionRefs}
+          >
+            <div className="flex gap-2.5">
+              <SettingButton primary onClick={() => void onScan("full")}>
+                全量扫描
+              </SettingButton>
+              <SettingButton onClick={() => void onScan("incremental")}>
+                增量扫描
+              </SettingButton>
+            </div>
+          </Section>
+
+          <Section
+            id="ui"
+            title="UI 偏好"
+            lede="默认排序 · 主题（占位）"
+            sectionRefs={sectionRefs}
+          >
+            <UIPreferences />
+          </Section>
+
+          <Section
+            id="debug"
+            title="调试"
+            lede="清除所有游戏 · 扫描根 · 会话与封面/截图/存档备份（保留标签与 LE 路径）"
+            sectionRefs={sectionRefs}
+          >
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex h-8 items-center border border-destructive/40 bg-destructive/10 px-4 text-[12.5px] text-destructive transition-colors hover:bg-destructive/20"
+                  style={{ borderRadius: "var(--r-md)" }}
+                >
+                  清除所有数据
+                </button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>确定清除所有数据？</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    此操作不可撤销，将删除全部游戏、扫描根、会话历史与缓存文件
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => void onClearAllData()}>
+                    清除
+                  </AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
+          </Section>
+        </main>
       </div>
-    </ScrollArea>
+    </div>
+  );
+}
+
+// ── Internals ────────────────────────────────────────────────────────────
+
+interface SectionProps {
+  id: string;
+  title: string;
+  lede: string;
+  children: React.ReactNode;
+  sectionRefs: React.MutableRefObject<Record<string, HTMLElement | null>>;
+}
+
+function Section({ id, title, lede, children, sectionRefs }: SectionProps) {
+  return (
+    <section
+      data-section-id={id}
+      ref={(el) => {
+        sectionRefs.current[id] = el;
+      }}
+      className="mb-9 scroll-mt-4"
+    >
+      <h2 className="font-serif text-[16px] font-medium text-ink-0">{title}</h2>
+      <div className="mt-1 mb-3 font-mono text-[10.5px] text-ink-3">{lede}</div>
+      <div>{children}</div>
+    </section>
+  );
+}
+
+interface SettingButtonProps {
+  primary?: boolean;
+  onClick: () => void;
+  disabled?: boolean;
+  className?: string;
+  children: React.ReactNode;
+}
+
+function SettingButton({
+  primary,
+  onClick,
+  disabled,
+  className,
+  children,
+}: SettingButtonProps) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        "inline-flex h-8 items-center border px-3.5 text-[12.5px] transition-colors",
+        primary
+          ? "bg-brand text-bg-0 border-brand hover:bg-brand-deep"
+          : "border-line bg-bg-2 text-ink-1 hover:border-line-strong hover:bg-bg-3 hover:text-ink-0",
+        disabled && "cursor-not-allowed opacity-50",
+        className,
+      )}
+      style={{ borderRadius: "var(--r-md)" }}
+    >
+      {children}
+    </button>
   );
 }

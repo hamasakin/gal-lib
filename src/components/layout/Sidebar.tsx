@@ -41,6 +41,7 @@ export function Sidebar() {
   const location = useLocation();
   const isSettingsActive = location.pathname === "/settings";
   const isStatsActive = location.pathname === "/stats";
+  const isScreenshotsActive = location.pathname === "/screenshots";
 
   const sidebar = useLibraryStore((s) => s.sidebar);
   const setSidebar = useLibraryStore((s) => s.setSidebar);
@@ -177,6 +178,11 @@ export function Sidebar() {
             label="游玩统计"
             active={isStatsActive}
             onClick={() => navigate("/stats")}
+          />
+          <SidebarRow
+            label="截图集"
+            active={isScreenshotsActive}
+            onClick={() => navigate("/screenshots")}
           />
           <SidebarRow
             label="设置"
