@@ -8,7 +8,8 @@
 export type Theme = "midnight" | "papyrus" | "ink";
 export type Accent = "violet" | "teal" | "sakura" | "matcha";
 export type Radius = "sharp" | "soft";
-export type SidebarWidth = "narrow" | "regular" | "wide";
+export type SidebarWidth = "icon" | "narrow" | "regular" | "wide";
+export type ViewMode = "grid" | "list";
 export type Density = "small" | "medium" | "large";
 
 export interface Preferences {
@@ -17,6 +18,7 @@ export interface Preferences {
   radius: Radius;
   sidebar: SidebarWidth;
   density: Density;
+  viewMode: ViewMode;
 }
 
 export const DEFAULT_PREFS: Preferences = {
@@ -25,13 +27,20 @@ export const DEFAULT_PREFS: Preferences = {
   radius: "sharp",
   sidebar: "regular",
   density: "medium",
+  viewMode: "grid",
 };
 
 export const THEMES: Theme[] = ["midnight", "papyrus", "ink"];
 export const ACCENTS: Accent[] = ["violet", "teal", "sakura", "matcha"];
 export const RADII: Radius[] = ["sharp", "soft"];
-export const SIDEBAR_WIDTHS: SidebarWidth[] = ["narrow", "regular", "wide"];
+export const SIDEBAR_WIDTHS: SidebarWidth[] = [
+  "icon",
+  "narrow",
+  "regular",
+  "wide",
+];
 export const DENSITIES: Density[] = ["small", "medium", "large"];
+export const VIEW_MODES: ViewMode[] = ["grid", "list"];
 
 const STORAGE_KEY = "gal-lib:prefs";
 
@@ -45,6 +54,8 @@ const isSidebar = (v: unknown): v is SidebarWidth =>
   typeof v === "string" && (SIDEBAR_WIDTHS as string[]).includes(v);
 const isDensity = (v: unknown): v is Density =>
   typeof v === "string" && (DENSITIES as string[]).includes(v);
+const isViewMode = (v: unknown): v is ViewMode =>
+  typeof v === "string" && (VIEW_MODES as string[]).includes(v);
 
 /** Read preferences from localStorage, validating each axis against its enum. */
 export function loadPreferences(): Preferences {
@@ -63,6 +74,9 @@ export function loadPreferences(): Preferences {
       density: isDensity(parsed.density)
         ? parsed.density
         : DEFAULT_PREFS.density,
+      viewMode: isViewMode(parsed.viewMode)
+        ? parsed.viewMode
+        : DEFAULT_PREFS.viewMode,
     };
   } catch {
     return DEFAULT_PREFS;
@@ -87,4 +101,5 @@ export function applyPreferences(prefs: Preferences): void {
   r.setAttribute("data-radius", prefs.radius);
   r.setAttribute("data-sidebar", prefs.sidebar);
   r.setAttribute("data-density", prefs.density);
+  r.setAttribute("data-view", prefs.viewMode);
 }

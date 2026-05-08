@@ -18,9 +18,17 @@
 
 import { useEffect } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import {
+  BarChart3,
+  Heart,
+  Image as ImageIcon,
+  Library as LibraryIcon,
+  Settings as SettingsIcon,
+} from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { cn } from "@/lib/utils";
 import { useLibraryStore } from "@/store/library";
+import { usePreferencesStore } from "@/store/preferences";
 import { getSidebarCategories } from "@/lib/search";
 import { listTags } from "@/lib/tags";
 import type { SearchFilter } from "@/lib/search";
@@ -36,6 +44,8 @@ const STATUS_DISPLAY: Array<{
   { value: "dropped", label: "弃坑", dotClass: "bg-ink-2" },
 ];
 
+type SidebarRowIcon = React.ComponentType<{ size?: number; strokeWidth?: number }>;
+
 export function Sidebar() {
   const navigate = useNavigate();
   const location = useLocation();
@@ -50,6 +60,9 @@ export function Sidebar() {
   const setFilter = useLibraryStore((s) => s.setFilter);
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
   const totalGames = useLibraryStore((s) => s.games.length);
+
+  const sidebarMode = usePreferencesStore((s) => s.sidebar);
+  const isIconMode = sidebarMode === "icon";
 
   useEffect(() => {
     getSidebarCategories()
@@ -140,24 +153,29 @@ export function Sidebar() {
     <aside
       className="flex h-full shrink-0 flex-col border-r border-line bg-bg-1"
       style={{ width: "var(--sidebar-w, 248px)" }}
+      data-icon-mode={isIconMode || undefined}
     >
       <ScrollArea className="flex-1">
         <div className="flex flex-col py-2">
-          <SectionLabel>视图</SectionLabel>
+          {!isIconMode && <SectionLabel>视图</SectionLabel>}
           <SidebarRow
             label="图书馆全景"
+            icon={LibraryIcon}
             count={totalGames}
             active={isAllActive}
             onClick={resetAll}
+            iconMode={isIconMode}
           />
           <SidebarRow
             label="收藏夹"
+            icon={Heart}
             count={sidebar?.favorite_count ?? 0}
             active={isFavoriteActive}
             onClick={() => applyFilter({ favorite: true })}
+            iconMode={isIconMode}
           />
 
-          <SectionLabel>通关状态</SectionLabel>
+          {!isIconMode && <SectionLabel>通关状态</SectionLabel>}
           {STATUS_DISPLAY.map(({ value, label, dotClass }) => {
             const count =
               sidebar?.statuses.find((s) => s.status === value)?.count ?? 0;
@@ -169,28 +187,41 @@ export function Sidebar() {
                 active={isStatusActive(value)}
                 onClick={() => applyFilter({ status: value })}
                 statusDotClass={dotClass}
+                iconMode={isIconMode}
               />
             );
           })}
 
-          <SectionLabel>工具</SectionLabel>
+          {!isIconMode && <SectionLabel>工具</SectionLabel>}
+          {isIconMode && (
+            <div
+              aria-hidden
+              className="mx-3 my-2 h-px bg-line"
+            />
+          )}
           <SidebarRow
             label="游玩统计"
+            icon={BarChart3}
             active={isStatsActive}
             onClick={() => navigate("/stats")}
+            iconMode={isIconMode}
           />
           <SidebarRow
             label="截图集"
+            icon={ImageIcon}
             active={isScreenshotsActive}
             onClick={() => navigate("/screenshots")}
+            iconMode={isIconMode}
           />
           <SidebarRow
             label="设置"
+            icon={SettingsIcon}
             active={isSettingsActive}
             onClick={() => navigate("/settings")}
+            iconMode={isIconMode}
           />
 
-          {(sidebar?.tags ?? []).length > 0 && (
+          {!isIconMode && (sidebar?.tags ?? []).length > 0 && (
             <>
               <SectionLabel>自定义标签</SectionLabel>
               {sidebar!.tags.map(({ tag, count }) => (
@@ -205,7 +236,7 @@ export function Sidebar() {
             </>
           )}
 
-          {(sidebar?.brands ?? []).length > 0 && (
+          {!isIconMode && (sidebar?.brands ?? []).length > 0 && (
             <>
               <SectionLabel>品牌 · 厂牌</SectionLabel>
               {sidebar!.brands.map(({ brand, count }) => (
@@ -220,7 +251,7 @@ export function Sidebar() {
             </>
           )}
 
-          {(sidebar?.year_decades ?? []).length > 0 && (
+          {!isIconMode && (sidebar?.year_decades ?? []).length > 0 && (
             <>
               <SectionLabel>发行年份</SectionLabel>
               {sidebar!.year_decades.map(({ decade, count }) => (
@@ -257,17 +288,65 @@ interface SidebarRowProps {
   count?: number;
   /** Status dot variant (renders 6px colored square left of label). */
   statusDotClass?: string;
+  /** Lucide icon for icon-only mode (and as a leading glyph in normal mode). */
+  icon?: SidebarRowIcon;
   active?: boolean;
   onClick: () => void;
+  /** When true, render as 40px square icon button with tooltip via `title`. */
+  iconMode?: boolean;
 }
 
 function SidebarRow({
   label,
   count,
   statusDotClass,
+  icon: Icon,
   active,
   onClick,
+  iconMode,
 }: SidebarRowProps) {
+  // Icon-only mode — 40px square anchored row, tooltip via title attr.
+  if (iconMode) {
+    return (
+      <button
+        type="button"
+        onClick={onClick}
+        aria-current={active ? "page" : undefined}
+        title={count != null ? `${label} · ${count}` : label}
+        aria-label={label}
+        className={cn(
+          "relative grid h-10 w-full place-items-center text-ink-2 transition-colors",
+          "border-l-2 border-transparent",
+          active
+            ? "border-l-brand bg-brand-soft text-brand"
+            : "hover:bg-bg-2 hover:text-ink-0",
+        )}
+      >
+        {Icon ? (
+          <Icon size={17} strokeWidth={1.6} />
+        ) : statusDotClass ? (
+          <span
+            aria-hidden
+            className={cn("h-2 w-2", statusDotClass)}
+            style={{ borderRadius: "var(--r-sm)" }}
+          />
+        ) : (
+          <span className="font-serif text-[14px] text-ink-1">
+            {label.replace(/^# /, "").charAt(0)}
+          </span>
+        )}
+        {count != null && count > 0 && (
+          <span
+            aria-hidden
+            className="absolute right-1.5 top-1.5 font-mono text-[8px] text-ink-3"
+          >
+            {count}
+          </span>
+        )}
+      </button>
+    );
+  }
+
   return (
     <button
       type="button"

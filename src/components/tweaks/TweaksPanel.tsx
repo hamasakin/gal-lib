@@ -26,6 +26,7 @@ const RADIUS_LABELS: Record<(typeof RADII)[number], string> = {
 };
 
 const SIDEBAR_LABELS: Record<(typeof SIDEBAR_WIDTHS)[number], string> = {
+  icon: "图标",
   narrow: "窄",
   regular: "中",
   wide: "宽",

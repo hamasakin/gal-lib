@@ -113,6 +113,9 @@
 }
 
 /* Sidebar widths */
+[data-sidebar="icon"] {
+  --sidebar-w: 56px;
+}
 [data-sidebar="narrow"] {
   --sidebar-w: 200px;
 }

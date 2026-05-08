@@ -1,6 +1,7 @@
 import { create } from "zustand";
 import {
   applyPreferences,
+  DEFAULT_PREFS,
   loadPreferences,
   savePreferences,
   type Accent,
@@ -9,6 +10,7 @@ import {
   type Radius,
   type SidebarWidth,
   type Theme,
+  type ViewMode,
 } from "@/lib/preferences";
 
 interface PreferencesStore extends Preferences {
@@ -17,6 +19,7 @@ interface PreferencesStore extends Preferences {
   setRadius: (v: Radius) => void;
   setSidebar: (v: SidebarWidth) => void;
   setDensity: (v: Density) => void;
+  setViewMode: (v: ViewMode) => void;
   reset: () => void;
 }
 
@@ -34,6 +37,7 @@ const update = (
     radius: get().radius,
     sidebar: get().sidebar,
     density: get().density,
+    viewMode: get().viewMode,
   };
   applyPreferences(next);
   savePreferences(next);
@@ -46,16 +50,6 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   setRadius: (radius) => update({ radius }, set, get),
   setSidebar: (sidebar) => update({ sidebar }, set, get),
   setDensity: (density) => update({ density }, set, get),
-  reset: () =>
-    update(
-      {
-        theme: "midnight",
-        accent: "violet",
-        radius: "sharp",
-        sidebar: "regular",
-        density: "medium",
-      },
-      set,
-      get,
-    ),
+  setViewMode: (viewMode) => update({ viewMode }, set, get),
+  reset: () => update({ ...DEFAULT_PREFS }, set, get),
 }));
