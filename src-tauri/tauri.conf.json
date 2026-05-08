@@ -1,8 +1,8 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
-  "productName": "gal-lib",
+  "productName": "hakoniwa",
   "version": "0.1.0",
-  "identifier": "com.gal-lib.app",
+  "identifier": "com.hakoniwa.app",
   "build": {
     "beforeDevCommand": "pnpm dev",
     "beforeBuildCommand": "pnpm build",
@@ -14,7 +14,7 @@
     "windows": [
       {
         "label": "main",
-        "title": "gal-lib",
+        "title": "箱庭 · Hakoniwa",
         "width": 1280,
         "height": 800,
         "minWidth": 960,

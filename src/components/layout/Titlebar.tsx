@@ -1,12 +1,12 @@
 import { WindowControls } from './WindowControls';
 
 /**
- * v1.1 titlebar — design's library-card aesthetic.
+ * v1.2 titlebar — Hakoniwa rebrand.
  *
- * Pattern: 32px tall row with `seal` mark (16×16 brand square holding 「書」),
- * serif app title, mono meta hint, then window controls. -webkit-app-region:
- * drag is set on the inner div (NOT the <header>) so the WindowControls slot
- * stays clickable.
+ * Pattern: 32px tall row with seal mark (16×16 brand square holding 「箱」),
+ * serif app title 箱庭, mono romaji meta, then window controls.
+ * -webkit-app-region: drag is set on the inner div (NOT the <header>) so the
+ * WindowControls slot stays clickable.
  */
 export function Titlebar() {
   return (
@@ -23,12 +23,14 @@ export function Titlebar() {
             boxShadow: "inset 0 0 0 1px rgba(255,255,255,.05)",
           }}
         >
-          書
+          箱
         </span>
         <span className="font-serif text-[12px] tracking-[0.04em] text-ink-1">
-          gal-lib
+          箱庭
         </span>
-        <span className="font-mono text-[10.5px] text-ink-3">portable</span>
+        <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-ink-3">
+          Hakoniwa · portable
+        </span>
       </div>
       <WindowControls />
     </header>
