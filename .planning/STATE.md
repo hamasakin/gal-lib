@@ -5,7 +5,7 @@ milestone_name: milestone
 status: Defining requirements
 stopped_at: "Completed 05-05e-PLAN.md (Phase 5 wave 5/5 FINAL — Detail page extensions: ScreenshotsTab + SavesTab + 截图间隔 select in 设置 tab); 29/29 plans done. **v1 milestone complete.**"
 last_updated: "2026-05-08T15:57:01.703Z"
-last_activity: 2026-05-09 — Completed quick task 20260509: display fallbacks + clickable BGM/VNDB links + name-search buttons
+last_activity: 2026-05-09 — Completed quick task 20260509b: detail top-nav bar + 更多 menu + launch-icon centering
 progress:
   total_phases: 5
   completed_phases: 1
@@ -217,6 +217,7 @@ None yet.
 | # | Description | Date | Commit | Directory |
 |---|-------------|------|--------|-----------|
 | 20260509 | display fallbacks + clickable BGM/VNDB links + name-search buttons (incl. precursor commit dropping the hero band 1a59fdc) | 2026-05-09 | 1d54c27 | [20260509-display-fallbacks-and-source-links](./quick/20260509-display-fallbacks-and-source-links/) |
+| 20260509b | detail-page top nav bar (back+breadcrumb+prev/next+Esc) + 更多 dropdown w/ 打开本地目录 + new open_in_explorer Tauri command (43→44) + launch-button play-icon centering | 2026-05-09 | 53a9182 | [20260509b-detail-topnav-launch-icon-more-menu](./quick/20260509b-detail-topnav-launch-icon-more-menu/) |
 
 ## Deferred Items
 
