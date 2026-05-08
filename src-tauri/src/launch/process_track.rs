@@ -66,19 +66,27 @@ pub fn spawn_le(
     args: &[&str],
     cwd: &Path,
 ) -> std::io::Result<u32> {
+    eprintln!(
+        "[launch] LE spawn attempt: le_path={:?} profile={:?} game_exe={:?} args={:?} cwd={:?}",
+        le_path, profile, game_exe, args, cwd
+    );
     let mut cmd = std::process::Command::new(le_path);
     cmd.arg("-runas").arg(profile).arg(game_exe);
     for a in args {
         cmd.arg(a);
     }
     cmd.current_dir(cwd);
-    let child = cmd.spawn()?;
-    let pid = child.id();
-    eprintln!(
-        "[launch] LEProc spawned: pid={} le_path={:?} profile={:?} game_exe={:?} cwd={:?}",
-        pid, le_path, profile, game_exe, cwd
-    );
-    Ok(pid)
+    match cmd.spawn() {
+        Ok(child) => {
+            let pid = child.id();
+            eprintln!("[launch] LEProc spawned successfully: pid={}", pid);
+            Ok(pid)
+        }
+        Err(e) => {
+            eprintln!("[launch] LEProc spawn failed: {} (kind={:?})", e, e.kind());
+            Err(e)
+        }
+    }
 }
 
 /// Spawn the game executable directly (no LE wrapper). Returns the game's
@@ -89,13 +97,26 @@ pub fn spawn_direct(
     args: &[&str],
     cwd: &Path,
 ) -> std::io::Result<u32> {
+    eprintln!(
+        "[launch] direct spawn attempt: game_exe={:?} args={:?} cwd={:?}",
+        game_exe, args, cwd
+    );
     let mut cmd = std::process::Command::new(game_exe);
     for a in args {
         cmd.arg(a);
     }
     cmd.current_dir(cwd);
-    let child = cmd.spawn()?;
-    Ok(child.id())
+    match cmd.spawn() {
+        Ok(child) => {
+            let pid = child.id();
+            eprintln!("[launch] direct spawned successfully: pid={}", pid);
+            Ok(pid)
+        }
+        Err(e) => {
+            eprintln!("[launch] direct spawn failed: {} (kind={:?})", e, e.kind());
+            Err(e)
+        }
+    }
 }
 
 /// Poll the process table until a process with basename matching

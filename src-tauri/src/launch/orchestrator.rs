@@ -219,30 +219,39 @@ pub async fn launch_game(inputs: LaunchInputs) -> Result<LaunchHandle, OrchError
     // no async surface, suitable for a flag that only flips once.
     let cancel_flag = Arc::new(AtomicBool::new(false));
 
-    // Spawn synchronously (LE or direct) so an immediate failure surfaces
-    // before the wait task is dispatched. The session row remains the source
-    // of truth for failed launches — we still flip status to launch_failed
-    // from inside the task on spawn error.
+    // Spawn synchronously (LE or direct). If spawn fails outright (bad
+    // exe path, missing LEProc, OS denied) we mark the session failed and
+    // bubble the io::Error up so the command layer can surface it as a
+    // Tauri Err(String) — the frontend's existing launchGame() catch then
+    // shows a toast. Without this short-circuit, a spawn failure stayed
+    // hidden inside the wait task and the user just saw the active-session
+    // bar flicker silently before disappearing.
     let pool = inputs.pool.clone();
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    // For LE: spawn_le returns LEProc's PID; the real game PID has to be
-    // discovered via find_game_pid. For direct: spawn_direct returns the
-    // game's own PID — no polling needed.
-    let spawn_kind: Result<SpawnedPid, std::io::Error> = match &le_path_opt {
+    let spawn_outcome: Result<SpawnedPid, std::io::Error> = match &le_path_opt {
         Some(le_path) => process_track::spawn_le(le_path, &profile, &exe_path, &arg_refs, &cwd)
             .map(|_le_pid| SpawnedPid::NeedsLookup),
         None => process_track::spawn_direct(&exe_path, &arg_refs, &cwd).map(SpawnedPid::Known),
+    };
+    let spawned = match spawn_outcome {
+        Ok(s) => s,
+        Err(e) => {
+            // Best-effort: leave the session as launch_failed so totals
+            // don't drift. Errors here are intentionally swallowed — the
+            // io::Error from spawn is the user-actionable signal.
+            let _ = session::mark_failed(&pool, session_id).await;
+            return Err(OrchError::Io(e));
+        }
     };
 
     let exe_for_pid = exe_path.clone();
     let cancel_for_wait = cancel_flag.clone();
     let join: tokio::task::JoinHandle<Result<(), OrchError>> = tokio::spawn(async move {
-        let pid_resolved: Result<u32, ()> = match spawn_kind {
-            Ok(SpawnedPid::Known(pid)) => Ok(pid),
-            Ok(SpawnedPid::NeedsLookup) => {
-                process_track::find_game_pid(&exe_for_pid).await.map_err(|_| ())
-            }
-            Err(_) => Err(()),
+        let pid_resolved: Result<u32, ()> = match spawned {
+            SpawnedPid::Known(pid) => Ok(pid),
+            SpawnedPid::NeedsLookup => process_track::find_game_pid(&exe_for_pid)
+                .await
+                .map_err(|_| ()),
         };
         match pid_resolved {
             Ok(game_pid) => {

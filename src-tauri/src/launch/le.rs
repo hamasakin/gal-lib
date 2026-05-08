@@ -108,15 +108,24 @@ pub fn resolve_le_path(data_dir: &Path) -> Result<PathBuf, LeError> {
     if let Some(p) = cfg.get("le_path").and_then(|v| v.as_str()) {
         let pb = PathBuf::from(p);
         if pb.exists() {
+            eprintln!("[launch] LE resolved from config cache: {:?}", pb);
             return Ok(pb);
         }
-        // else: stale path — fall through to re-detect.
+        eprintln!("[launch] LE config path stale (does not exist): {}", p);
     }
 
-    let detected = detect_le_path().ok_or(LeError::NotFound)?;
-    cfg["le_path"] = Value::String(detected.to_string_lossy().into());
-    fs::write(&cfg_path, serde_json::to_string_pretty(&cfg).unwrap())?;
-    Ok(detected)
+    match detect_le_path() {
+        Some(detected) => {
+            eprintln!("[launch] LE detected: {:?}", detected);
+            cfg["le_path"] = Value::String(detected.to_string_lossy().into());
+            fs::write(&cfg_path, serde_json::to_string_pretty(&cfg).unwrap())?;
+            Ok(detected)
+        }
+        None => {
+            eprintln!("[launch] LE not found — registry, common paths, and PATH all checked");
+            Err(LeError::NotFound)
+        }
+    }
 }
 
 /// Manual override: write `path` to `data/config.json::le_path`.
