@@ -262,6 +262,13 @@
   z-index: 1;
 }
 
+/* Detail page tabs — accent the underline indicator so it matches the
+   brand color instead of the default `--foreground`. shadcn's variant="line"
+   uses `after:bg-foreground`; we override to `--accent` for brand consistency. */
+.detail-tabs [data-slot="tabs-trigger"]::after {
+  background: var(--accent);
+}
+
 /* Pulse keyframe used by ActiveSession bar + status dots */
 @keyframes gallib-pulse {
   0%,
