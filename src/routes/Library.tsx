@@ -30,6 +30,8 @@ import {
 import type { Game } from "@/lib/games";
 import { startScan, listScanRoots } from "@/lib/scan";
 import { GameGrid } from "@/components/library/GameGrid";
+import { GameList } from "@/components/library/GameList";
+import { ViewToggle } from "@/components/library/ViewToggle";
 import { ScanProgressBar } from "@/components/library/ScanProgressBar";
 import { ActiveSessionBar } from "@/components/library/ActiveSessionBar";
 import { MetadataPicker } from "@/components/library/MetadataPicker";
@@ -39,6 +41,7 @@ import { FilterChip } from "@/components/library/FilterChip";
 import { StatusFilterChips } from "@/components/library/StatusFilterChips";
 import { DensityToggle } from "@/components/library/DensityToggle";
 import { PageHeader } from "@/components/library/PageHeader";
+import { usePreferencesStore } from "@/store/preferences";
 import { RefreshCw, FolderPlus, Library as LibraryIcon, SearchX, AlertCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -69,6 +72,7 @@ export function Library() {
 
   const [pickerGame, setPickerGame] = useState<Game | null>(null);
   const navigate = useNavigate();
+  const viewMode = usePreferencesStore((s) => s.viewMode);
 
   const refetchGrid = useCallback(async () => {
     const trimmedQuery = searchQuery.trim();
@@ -204,7 +208,8 @@ export function Library() {
           <FilterChip />
           <span className="flex-1" />
           <SearchBar />
-          <DensityToggle />
+          <ViewToggle />
+          {viewMode === "grid" && <DensityToggle />}
           <SortSelect />
         </div>
 
@@ -243,13 +248,14 @@ export function Library() {
           />
         )}
 
-        {!isEmpty && (
+        {!isEmpty && viewMode === "grid" && (
           <GameGrid
             games={games}
             onPickMetadata={setPickerGame}
             onChildMutation={onChildMutation}
           />
         )}
+        {!isEmpty && viewMode === "list" && <GameList games={games} />}
       </div>
 
       <MetadataPicker game={pickerGame} onClose={() => setPickerGame(null)} />

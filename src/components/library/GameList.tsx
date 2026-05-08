@@ -1,0 +1,220 @@
+/**
+ * GameList — table-style alternate to GameGrid (supplementary §4 ListView).
+ *
+ * Dense rows of cover thumb + title + brand + year + status badge + rating +
+ * total play time + last played. Click row → detail page (same target as
+ * GameCard). Status uses the same color tokens as the sidebar dot palette so
+ * grid ↔ list visual continuity stays.
+ *
+ * Skipped columns from the prototype design: sessions count + tags. Both
+ * require additional aggregations the `games` row doesn't carry; adding them
+ * would mean a backend join we don't have a demand signal for yet. Title +
+ * playtime + status give the user enough at-a-glance to choose this view
+ * over the grid for "find by name / sort by time" tasks.
+ */
+
+import { useEffect, useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
+import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { ImageOff, Heart } from "lucide-react";
+import type { Game } from "@/lib/games";
+import { displayGameName } from "@/lib/display";
+import { cn } from "@/lib/utils";
+
+interface GameListProps {
+  games: Game[];
+}
+
+const STATUS_LABELS: Record<Game["status"], string> = {
+  unplayed: "未游玩",
+  playing: "游玩中",
+  cleared: "已通关",
+  dropped: "已弃",
+};
+
+const STATUS_COLORS: Record<Game["status"], string> = {
+  playing: "var(--accent)",
+  cleared: "#6fd1c8",
+  unplayed: "var(--ink-stamp)",
+  dropped: "var(--ink-2)",
+};
+
+function fmtDuration(seconds: number): string {
+  if (seconds <= 0) return "—";
+  const totalMin = Math.floor(seconds / 60);
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  if (h <= 0) return `${m} 分`;
+  return m > 0 ? `${h} 时 ${m} 分` : `${h} 时`;
+}
+
+function fmtLastPlayed(iso: string | null): string {
+  if (!iso) return "—";
+  try {
+    return new Date(iso).toLocaleDateString("zh-CN", {
+      year: "2-digit",
+      month: "2-digit",
+      day: "2-digit",
+    });
+  } catch {
+    return "—";
+  }
+}
+
+export function GameList({ games }: GameListProps) {
+  const navigate = useNavigate();
+
+  const [dataDir, setDataDir] = useState<string | null>(null);
+  useEffect(() => {
+    invoke<string>("get_data_dir")
+      .then(setDataDir)
+      .catch((e: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("[GameList] get_data_dir failed:", e);
+      });
+  }, []);
+
+  const resolveCover = useMemo(() => {
+    return (game: Game): string | null => {
+      if (game.cover_path && dataDir) {
+        const abs = `${dataDir.replace(/\\/g, "/")}/${game.cover_path}`;
+        return convertFileSrc(abs);
+      }
+      return game.cover_url ?? null;
+    };
+  }, [dataDir]);
+
+  return (
+    <div className="px-8 py-6">
+      <div
+        className="overflow-hidden border border-line"
+        style={{ borderRadius: "var(--r-md)" }}
+      >
+        <table className="w-full border-collapse text-[12px]">
+          <thead>
+            <tr className="bg-bg-1">
+              <Th className="w-10 px-3 text-center"></Th>
+              <Th>标题</Th>
+              <Th className="hidden md:table-cell">品牌</Th>
+              <Th className="hidden md:table-cell w-14 text-right">发行</Th>
+              <Th className="w-20">状态</Th>
+              <Th className="w-16 text-right">评分</Th>
+              <Th className="w-24 text-right">时长</Th>
+              <Th className="hidden lg:table-cell w-20 text-right">上次游玩</Th>
+            </tr>
+          </thead>
+          <tbody>
+            {games.map((g) => {
+              const cover = resolveCover(g);
+              const title = displayGameName(g);
+              return (
+                <tr
+                  key={g.id}
+                  onClick={() => navigate(`/games/${g.id}`)}
+                  className={cn(
+                    "cursor-pointer border-t border-line transition-colors",
+                    "hover:bg-bg-1",
+                  )}
+                >
+                  <td className="px-3 py-2">
+                    <div
+                      className="relative h-9 w-7 overflow-hidden bg-bg-2"
+                      style={{ borderRadius: "var(--r-sm)" }}
+                    >
+                      {cover ? (
+                        <img
+                          src={cover}
+                          alt=""
+                          aria-hidden
+                          draggable={false}
+                          loading="lazy"
+                          className="h-full w-full object-cover"
+                          onError={(e) => {
+                            (e.currentTarget as HTMLImageElement).style.display =
+                              "none";
+                          }}
+                        />
+                      ) : (
+                        <div className="grid h-full w-full place-items-center text-ink-3">
+                          <ImageOff size={11} />
+                        </div>
+                      )}
+                    </div>
+                  </td>
+                  <td className="px-3 py-2">
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      {g.is_favorite && (
+                        <Heart
+                          size={11}
+                          fill="currentColor"
+                          strokeWidth={1.5}
+                          className="flex-shrink-0 text-brand"
+                          aria-hidden
+                        />
+                      )}
+                      <span
+                        className="truncate font-serif text-[13px] text-ink-0"
+                        title={title}
+                      >
+                        {title}
+                      </span>
+                    </div>
+                  </td>
+                  <td className="hidden md:table-cell px-3 py-2 text-ink-1">
+                    {g.brand ?? <span className="text-ink-3">—</span>}
+                  </td>
+                  <td className="hidden md:table-cell px-3 py-2 text-right font-mono text-ink-2">
+                    {g.release_year ?? "—"}
+                  </td>
+                  <td className="px-3 py-2">
+                    <span
+                      className="inline-flex h-[18px] items-center border px-1.5 font-mono text-[9.5px] uppercase tracking-[0.12em]"
+                      style={{
+                        color: STATUS_COLORS[g.status],
+                        borderColor: STATUS_COLORS[g.status],
+                        borderRadius: "var(--r-sm)",
+                      }}
+                    >
+                      {STATUS_LABELS[g.status]}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-ink-1">
+                    {g.rating != null ? `★ ${g.rating}` : (
+                      <span className="text-ink-3">—</span>
+                    )}
+                  </td>
+                  <td className="px-3 py-2 text-right font-mono text-ink-1 tabular-nums">
+                    {fmtDuration(g.total_playtime_sec)}
+                  </td>
+                  <td className="hidden lg:table-cell px-3 py-2 text-right font-mono text-[10.5px] text-ink-3">
+                    {fmtLastPlayed(g.last_played_at)}
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+    </div>
+  );
+}
+
+function Th({
+  children,
+  className,
+}: {
+  children?: React.ReactNode;
+  className?: string;
+}) {
+  return (
+    <th
+      scope="col"
+      className={cn(
+        "px-3 py-2 text-left font-mono text-[10px] font-normal uppercase tracking-[0.14em] text-ink-3",
+        className,
+      )}
+    >
+      {children}
+    </th>
+  );
+}
