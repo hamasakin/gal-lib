@@ -7,7 +7,7 @@
 //!
 //! Tray contract (CONTEXT §System Tray):
 //!   - icon: reuse the bundled window icon (no separate art asset in P3)
-//!   - tooltip: "gal-lib"
+//!   - tooltip: "箱庭 · Hakoniwa"
 //!   - menu: 「显示主窗口」 + 「退出应用」
 //!   - left-click on icon = same as 「显示主窗口」
 //!   - 「退出应用」 first cancels any active session (best-effort) then app.exit(0)
@@ -36,7 +36,7 @@ pub fn setup_tray(app: &AppHandle) -> tauri::Result<()> {
 
     let _ = TrayIconBuilder::with_id(TRAY_ID)
         .menu(&menu)
-        .tooltip("gal-lib")
+        .tooltip("箱庭 · Hakoniwa")
         .icon(
             app.default_window_icon()
                 .cloned()
@@ -104,7 +104,7 @@ fn quit_with_session_cleanup(app: &AppHandle) {
 }
 
 /// Update the tray tooltip to `text`. No-op if the tray hasn't been built
-/// yet. Provided for future phases (e.g. "gal-lib — playing <game name>");
+/// yet. Provided for future phases (e.g. "箱庭 · 正在游玩 <game name>");
 /// not wired in P3.
 #[allow(dead_code)]
 pub fn update_tray_tooltip(app: &AppHandle, text: &str) {
