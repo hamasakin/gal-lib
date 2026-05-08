@@ -525,7 +525,7 @@ export default function Detail() {
         </Button>
 
         {/* ── Hero ────────────────────────────────────────────────────── */}
-        <div className="flex gap-6">
+        <div className="flex flex-wrap gap-6">
           <div className="aspect-cover w-[200px] flex-shrink-0 overflow-hidden rounded-md bg-secondary">
             {coverSrc ? (
               <img
@@ -543,7 +543,7 @@ export default function Detail() {
               </div>
             )}
           </div>
-          <div className="flex flex-1 flex-col gap-3">
+          <div className="flex min-w-0 flex-1 flex-col gap-3">
             <h1 className="text-h2 font-semibold text-foreground">
               {displayName}
             </h1>
@@ -614,7 +614,7 @@ export default function Detail() {
               </div>
             )}
 
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 onClick={() => void onLaunch(false)}
                 disabled={launchDisabled}

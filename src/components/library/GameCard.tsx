@@ -225,12 +225,25 @@ export function GameCard({
       {/* Left-click on the card body navigates to the detail page;
           right-click is intercepted by Radix's ContextMenuTrigger and opens
           ContextMenuContent at the cursor position (anchored over the card,
-          not below it). */}
+          not below it).
+
+          Outer wrapper is a div (not <button>) because the cover overlay
+          contains its own <Button> elements (launch / 强制结束) — a button
+          inside a button is invalid HTML and triggers React's hydration
+          warning. role="button" + tabIndex + Enter/Space key handler keeps
+          keyboard a11y. */}
       <ContextMenuTrigger asChild>
-        <button
-          type="button"
+        <div
+          role="button"
+          tabIndex={0}
           onClick={onCardClick}
-          className="group flex flex-col gap-2 text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-md"
+          onKeyDown={(e) => {
+            if (e.key === "Enter" || e.key === " ") {
+              e.preventDefault();
+              onCardClick();
+            }
+          }}
+          className="group flex cursor-pointer flex-col gap-2 text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-md"
           aria-label={displayName}
         >
           <div className="relative aspect-cover w-full overflow-hidden rounded-md bg-secondary ring-1 ring-transparent group-hover:ring-border transition">
@@ -331,7 +344,7 @@ export function GameCard({
               <span>{status.label}</span>
             </div>
           </div>
-        </button>
+        </div>
       </ContextMenuTrigger>
 
       <ContextMenuContent className="w-44">
