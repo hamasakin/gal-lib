@@ -39,7 +39,8 @@ import { FilterChip } from "@/components/library/FilterChip";
 import { StatusFilterChips } from "@/components/library/StatusFilterChips";
 import { DensityToggle } from "@/components/library/DensityToggle";
 import { PageHeader } from "@/components/library/PageHeader";
-import { RefreshCw, FolderPlus } from "lucide-react";
+import { RefreshCw, FolderPlus, Library as LibraryIcon, SearchX, AlertCircle } from "lucide-react";
+import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 function isFilterEmpty(f: SearchFilter): boolean {
@@ -163,7 +164,7 @@ export function Library() {
           badge={`${games.length} 部作品`}
           title={
             <>
-              本月你的<span className="text-brand italic">私人书架</span>
+              本月你的<span className="text-brand italic">箱庭</span>
             </>
           }
           sub={subLine}
@@ -207,31 +208,38 @@ export function Library() {
           <SortSelect />
         </div>
 
-        {/* Grid + empty states */}
+        {/* Grid + empty states — designed per supplementary §8 (StatesWall) */}
         {noScanYet && (
           <EmptyPanel
-            title="还没有游戏"
-            sub="请到设置页添加扫描根目录"
-            actionLabel="打开设置"
+            icon={LibraryIcon}
+            title="你的箱庭还是空的"
+            sub="添加一个根目录，让箱庭把那一堆乱糟糟的文件夹整理成你的私人书架。"
+            actionLabel="+ 添加根目录"
             onAction={() => navigate("/settings")}
+            hint="也可以稍后从设置页随时新增"
           />
         )}
 
         {scanFinishedZeroResults && (
           <EmptyPanel
-            title="未识别到游戏"
-            sub="请检查根目录扫描深度配置"
-            actionLabel="回到设置"
+            icon={AlertCircle}
+            accent="#ffd166"
+            title="扫描完成 · 未识别到游戏"
+            sub="该根目录下没有符合深度规则的子文件夹。可能扫描深度不对，或目录里其实没有游戏。"
+            actionLabel="回到设置调整"
             onAction={() => navigate("/settings")}
+            hint="多数情况是把深度从「扁平」改成「按品牌分层」就能找到"
           />
         )}
 
         {filterFoundNothing && (
           <EmptyPanel
-            title="无匹配结果"
-            sub="尝试调整搜索或清除筛选条件"
+            icon={SearchX}
+            title="没有匹配的游戏"
+            sub="当前筛选条件一个都没匹配上。要不试试放宽条件，或者直接清除全部筛选。"
             actionLabel="清除筛选"
             onAction={clearAllFilters}
+            hint={`已扫描 ${searchQuery ? "搜索词" : "筛选条件"}：尝试调整后重试`}
           />
         )}
 
@@ -250,26 +258,73 @@ export function Library() {
 }
 
 interface EmptyPanelProps {
+  icon: LucideIcon;
   title: string;
   sub: string;
   actionLabel: string;
   onAction: () => void;
+  /** Mono-style hint shown at the bottom of the card. */
+  hint?: string;
+  /**
+   * Optional accent color for warning/error variants. When omitted the panel
+   * uses the brand accent (`var(--accent)`).
+   */
+  accent?: string;
 }
 
-function EmptyPanel({ title, sub, actionLabel, onAction }: EmptyPanelProps) {
+/**
+ * State card styled per supplementary §8 (StatesWall): 64px glyph badge with
+ * accent ring + tinted bg, serif title, sans sub copy, primary CTA, mono hint
+ * footer. Three rendered variants in this route — empty library, scan
+ * finished zero-results, and filter found nothing.
+ */
+function EmptyPanel({
+  icon: Icon,
+  title,
+  sub,
+  actionLabel,
+  onAction,
+  hint,
+  accent,
+}: EmptyPanelProps) {
+  const glyphColor = accent ?? "var(--accent)";
+  const glyphBg = accent ? `${accent}20` : "var(--accent-soft)";
+
   return (
-    <div className="flex w-full items-center justify-center px-8 py-24">
-      <div className="flex max-w-md flex-col items-center gap-4 text-center">
-        <h2 className="font-serif text-[28px] font-medium text-ink-0">{title}</h2>
-        <p className="font-mono text-[12px] text-ink-2">{sub}</p>
+    <div className="flex w-full justify-center px-8 py-16">
+      <div
+        className="flex w-full max-w-[420px] flex-col items-center border border-line bg-bg-1 px-8 py-10 text-center"
+        style={{ borderRadius: "var(--r-lg)" }}
+      >
+        <div
+          className="mb-5 grid h-16 w-16 place-items-center"
+          style={{
+            background: glyphBg,
+            border: `1px solid ${glyphColor}`,
+            borderRadius: "var(--r-md)",
+            color: glyphColor,
+          }}
+          aria-hidden
+        >
+          <Icon size={28} strokeWidth={1.6} />
+        </div>
+        <h2 className="font-serif text-[17px] font-medium text-ink-0">{title}</h2>
+        <p className="mt-2.5 max-w-[280px] text-[12.5px] leading-[1.7] text-ink-2">
+          {sub}
+        </p>
         <button
           type="button"
           onClick={onAction}
-          className="inline-flex h-8 items-center border border-line bg-bg-1 px-4 text-[12.5px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-ink-0"
-          style={{ borderRadius: "var(--r-md)" }}
+          className="mt-5 inline-flex h-9 items-center border bg-brand px-5 font-medium text-[12.5px] text-[var(--accent-on)] transition-colors hover:bg-brand-deep hover:text-white"
+          style={{ borderRadius: "var(--r-md)", borderColor: "var(--accent)" }}
         >
           {actionLabel}
         </button>
+        {hint && (
+          <p className="mt-4 font-mono text-[10.5px] tracking-[0.04em] text-ink-3">
+            {hint}
+          </p>
+        )}
       </div>
     </div>
   );

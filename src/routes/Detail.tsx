@@ -656,6 +656,11 @@ export default function Detail() {
 
           {/* Info column */}
           <div className="min-w-0 pb-2">
+            {(game.brand || game.release_year) && (
+              <div className="mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-2">
+                {[game.brand, game.release_year].filter(Boolean).join(" · ")}
+              </div>
+            )}
             <h1
               className="font-serif text-[38px] font-medium leading-[1.1] tracking-[0.01em] text-ink-0"
               style={{ textWrap: "balance" }}
