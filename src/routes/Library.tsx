@@ -7,7 +7,7 @@
  *   <ActiveSessionBar/>         — present iff active session
  *   <Toolbar row>               — StatusFilterChips · FilterChip
  *                                 · spacer · SearchBar · DensityToggle · SortSelect
- *   <GameGrid/> | <empty>       — magazine grid (hero band + stacks)
+ *   <GameGrid/> | <empty>       — uniform density grid (--card-w driven)
  *   <MetadataPicker/>           — controlled dialog
  *
  * Functional logic preserved from v1.0:
