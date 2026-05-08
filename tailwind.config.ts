@@ -1,4 +1,5 @@
 import type { Config } from "tailwindcss";
+import plugin from "tailwindcss/plugin";
 
 export default {
   darkMode: ["class"],
@@ -69,5 +70,26 @@ export default {
       },
     },
   },
-  plugins: [require("tailwindcss-animate")],
+  plugins: [
+    require("tailwindcss-animate"),
+    // shadcn 4.7 generates Tailwind v4-style data-attribute shorthand classes
+    // (data-active:, data-open:, data-horizontal:, ...). This project pins
+    // Tailwind v3 which only supports the long-form `data-[state=...]:`
+    // syntax. Register the shorthand variants explicitly so the generated
+    // shadcn classes actually apply — without this, e.g. `Tabs` falls back
+    // to flex-row and renders TabsList beside (not above) TabsContent.
+    plugin(({ addVariant }) => {
+      addVariant("data-active", "&[data-state=active]");
+      addVariant("data-inactive", "&[data-state=inactive]");
+      addVariant("data-open", "&[data-state=open]");
+      addVariant("data-closed", "&[data-state=closed]");
+      addVariant("data-checked", "&[data-state=checked]");
+      addVariant("data-unchecked", "&[data-state=unchecked]");
+      addVariant("data-horizontal", "&[data-orientation=horizontal]");
+      addVariant("data-vertical", "&[data-orientation=vertical]");
+      addVariant("data-inset", "&[data-inset=true]");
+      addVariant("data-disabled", "&[data-disabled]");
+      addVariant("not-data-disabled", "&:not([data-disabled])");
+    }),
+  ],
 } satisfies Config;
