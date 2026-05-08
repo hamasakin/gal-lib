@@ -2009,3 +2009,25 @@ pub async fn delete_save_backup(
         .map_err(err_str)?;
     Ok(())
 }
+
+// ── Quick task 20260509b — open path in OS file manager ────────────────────
+//
+// Used by the Detail-page 更多 menu's 打开本地目录 entry. Validates that the
+// path exists so a stale `games.path` (deleted directory) surfaces a clean
+// error instead of Explorer's generic "location not available" dialog.
+//
+// `Command::arg(path)` passes the path as a separate argv entry — no shell
+// interpretation, no command injection vector. The path itself originates
+// from `games.path`, which the user added during scan.
+#[tauri::command]
+pub fn open_in_explorer(path: String) -> Result<(), String> {
+    use std::process::Command;
+    if !Path::new(&path).exists() {
+        return Err(format!("路径不存在：{}", path));
+    }
+    Command::new("explorer")
+        .arg(&path)
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("无法打开 Explorer：{}", e))
+}

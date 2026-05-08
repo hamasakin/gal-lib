@@ -41,8 +41,11 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowLeft,
+  ChevronLeft,
+  ChevronRight,
   Copy,
   ExternalLink,
+  FolderOpen,
   Heart,
   ImageOff,
   MoreHorizontal,
@@ -74,6 +77,7 @@ import { SavesTab } from "@/components/library/SavesTab";
 import { LaunchButton } from "@/components/library/LaunchButton";
 import {
   listGames,
+  openGameDir,
   updateGameFavorite,
   updateGameNotes,
   updateGameRating,
@@ -102,6 +106,12 @@ import {
   vndbPageUrl,
   vndbSearchUrl,
 } from "@/lib/display";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
 
 const LE_PROFILES = [
   "Japanese",
@@ -183,6 +193,8 @@ export default function Detail() {
   const activeSession = useLibraryStore((s) => s.activeSession);
   const sessionsByGame = useLibraryStore((s) => s.sessionsByGame);
   const setSessionsForGame = useLibraryStore((s) => s.setSessionsForGame);
+  const games = useLibraryStore((s) => s.games);
+  const setFilter = useLibraryStore((s) => s.setFilter);
 
   const [game, setGame] = useState<Game | null>(null);
   const [profile, setProfile] = useState<LeProfile>("Japanese");
@@ -310,6 +322,19 @@ export default function Detail() {
     }
   }, [activeSession, gameId, setSessionsForGame, refreshGame]);
 
+  // Esc → back. Window-level listener — Radix Dialog primitives (used by
+  // every modal in the app) trap focus and call stopPropagation on their
+  // own Esc handlers, so this only fires when no dialog is open.
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      if (e.key === "Escape") {
+        navigate(-1);
+      }
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [navigate]);
+
   if (!Number.isFinite(gameId)) {
     return <div className="p-8 font-mono text-[12px] text-ink-2">无效的游戏 id</div>;
   }
@@ -320,6 +345,22 @@ export default function Detail() {
   }
 
   const sessions = sessionsByGame[gameId] ?? [];
+  // Prev/next sibling navigation in the top bar — driven by the current
+  // (filtered/sorted) games array. When the user deep-linked here before
+  // Library hydrated, idx === -1 → arrows disable + counter blank.
+  const idx = games.findIndex((g) => g.id === gameId);
+  const total = games.length;
+  const position = idx >= 0 ? idx + 1 : null;
+  const prevId = idx > 0 ? games[idx - 1].id : null;
+  const nextId =
+    idx >= 0 && idx < games.length - 1 ? games[idx + 1].id : null;
+
+  function onBrandCrumbClick() {
+    if (!game?.brand) return;
+    setFilter({ brand: game.brand });
+    navigate("/");
+  }
+
   const isActive = activeSession?.game_id === gameId;
   const otherActive = activeSession != null && !isActive;
   const noExe = game.executable_path == null;
@@ -445,6 +486,15 @@ export default function Detail() {
     }
   }
 
+  async function onOpenDir() {
+    if (!game) return;
+    try {
+      await openGameDir(game.path);
+    } catch (e: unknown) {
+      toast.error(`打开目录失败 — ${String(e)}`);
+    }
+  }
+
   const summaryMd = buildSummary(game);
   const lastSavedSeconds = lastSavedAt
     ? Math.max(0, Math.floor((Date.now() - lastSavedAt) / 1000))
@@ -457,6 +507,91 @@ export default function Detail() {
 
   return (
     <div className="relative h-full w-full overflow-auto">
+      {/* ── TOP NAV BAR ──────────────────────────────────────────────── */}
+      <header
+        className="sticky top-0 z-30 flex h-[52px] items-center justify-between border-b border-line bg-bg-0/85 px-5 backdrop-blur"
+      >
+        {/* Left: back + breadcrumb */}
+        <div className="flex min-w-0 items-center gap-3.5">
+          <button
+            type="button"
+            onClick={() => navigate(-1)}
+            className="inline-flex h-8 items-center gap-1.5 border border-line bg-bg-1 pl-2 pr-2.5 font-mono text-[11px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-ink-0"
+            style={{ borderRadius: "var(--r-md)" }}
+          >
+            <ArrowLeft size={12} strokeWidth={2} />
+            <span>返回图书馆</span>
+            <kbd
+              className="ml-1 inline-flex h-[18px] items-center border border-line bg-bg-2 px-1.5 font-mono text-[9.5px] uppercase tracking-[0.06em] text-ink-3"
+              style={{ borderRadius: "var(--r-sm)" }}
+            >
+              Esc
+            </kbd>
+          </button>
+
+          <nav
+            aria-label="breadcrumb"
+            className="flex min-w-0 items-center gap-2 font-mono text-[11px] text-ink-3"
+          >
+            <button
+              type="button"
+              onClick={() => navigate("/")}
+              className="text-ink-2 transition-colors hover:text-ink-0"
+            >
+              图书馆
+            </button>
+            {game.brand ? (
+              <>
+                <span aria-hidden className="text-ink-3">/</span>
+                <button
+                  type="button"
+                  onClick={onBrandCrumbClick}
+                  className="max-w-[140px] truncate text-ink-2 transition-colors hover:text-ink-0"
+                >
+                  {game.brand}
+                </button>
+              </>
+            ) : null}
+            <span aria-hidden className="text-ink-3">/</span>
+            <span
+              className="min-w-0 max-w-[280px] truncate font-serif text-[12.5px] text-ink-1"
+              title={displayName}
+            >
+              {displayName}
+            </span>
+          </nav>
+        </div>
+
+        {/* Right: prev/next + counter */}
+        <div className="flex flex-shrink-0 items-center gap-1.5">
+          <button
+            type="button"
+            onClick={() => prevId != null && navigate(`/games/${prevId}`)}
+            disabled={prevId == null}
+            aria-label="上一部"
+            title="上一部"
+            className="grid h-7 w-7 place-items-center border border-line bg-bg-1 text-ink-2 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-bg-1 disabled:hover:text-ink-2"
+            style={{ borderRadius: "var(--r-sm)" }}
+          >
+            <ChevronLeft size={13} strokeWidth={2} />
+          </button>
+          <span className="min-w-[58px] text-center font-mono text-[11px] text-ink-2">
+            {position != null ? `${position} / ${total}` : "—"}
+          </span>
+          <button
+            type="button"
+            onClick={() => nextId != null && navigate(`/games/${nextId}`)}
+            disabled={nextId == null}
+            aria-label="下一部"
+            title="下一部"
+            className="grid h-7 w-7 place-items-center border border-line bg-bg-1 text-ink-2 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-bg-1 disabled:hover:text-ink-2"
+            style={{ borderRadius: "var(--r-sm)" }}
+          >
+            <ChevronRight size={13} strokeWidth={2} />
+          </button>
+        </div>
+      </header>
+
       {/* ── HERO ──────────────────────────────────────────────────────── */}
       <section className="relative h-[380px] overflow-hidden border-b border-line">
         {/* Blurred bg */}
@@ -521,20 +656,8 @@ export default function Detail() {
 
           {/* Info column */}
           <div className="min-w-0 pb-2">
-            <div className="flex items-center gap-3 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-2">
-              <button
-                type="button"
-                onClick={() => navigate(-1)}
-                className="inline-flex items-center gap-1.5 text-ink-1 hover:text-ink-0"
-              >
-                <ArrowLeft size={11} strokeWidth={2} />
-                <span>图书馆</span>
-              </button>
-              {game.brand ? <span>· {game.brand}</span> : null}
-              {game.release_year ? <span>· {game.release_year}</span> : null}
-            </div>
             <h1
-              className="mt-1.5 font-serif text-[38px] font-medium leading-[1.1] tracking-[0.01em] text-ink-0"
+              className="font-serif text-[38px] font-medium leading-[1.1] tracking-[0.01em] text-ink-0"
               style={{ textWrap: "balance" }}
             >
               {displayName}
@@ -606,14 +729,28 @@ export default function Detail() {
                 fill={game.is_favorite ? "currentColor" : "none"}
               />
             </button>
-            <button
-              type="button"
-              title="更多"
-              aria-label="更多"
-              className="grid h-9 w-9 place-items-center rounded-full border border-line bg-bg-1/80 text-ink-2 transition-colors hover:bg-bg-2 hover:text-ink-0 backdrop-blur"
-            >
-              <MoreHorizontal size={15} strokeWidth={1.7} />
-            </button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  title="更多"
+                  aria-label="更多"
+                  className="grid h-9 w-9 place-items-center rounded-full border border-line bg-bg-1/80 text-ink-2 transition-colors hover:bg-bg-2 hover:text-ink-0 backdrop-blur"
+                >
+                  <MoreHorizontal size={15} strokeWidth={1.7} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuItem onClick={() => void onOpenDir()}>
+                  <FolderOpen size={14} className="mr-2" />
+                  打开本地目录
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void onCopyPath()}>
+                  <Copy size={14} className="mr-2" />
+                  复制路径
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
             <LaunchButton
               profile={profile}
               onProfileChange={(p) => setProfile(p as LeProfile)}

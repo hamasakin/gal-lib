@@ -146,3 +146,13 @@ export async function updateGameBrandYear(
 ): Promise<void> {
   await invoke("update_game_brand_year", { gameId, brand, releaseYear });
 }
+
+/**
+ * Open a filesystem path in the OS file manager (Windows Explorer).
+ * Wraps the `open_in_explorer` Tauri command added for the Detail page's
+ * 更多 ▸ 打开本地目录 entry. Errors propagate as toast-friendly Chinese
+ * strings ("路径不存在...", "无法打开 Explorer...").
+ */
+export async function openGameDir(path: string): Promise<void> {
+  await invoke("open_in_explorer", { path });
+}

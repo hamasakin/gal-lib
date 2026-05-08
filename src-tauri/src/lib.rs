@@ -208,6 +208,8 @@ pub fn run() {
             commands::create_save_backup,
             commands::restore_save_backup,
             commands::delete_save_backup,
+            // 20260509b — open game directory in OS file manager (1 new)
+            commands::open_in_explorer,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
