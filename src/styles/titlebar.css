@@ -1,5 +1,5 @@
 /* Titlebar 局部样式：sticky 行为、按钮尺寸、focus ring。
- * 全局调色板 token 由 01b 在 src/index.css 提供。
+ * v1.1：调色板由 src/index.css 提供的设计 token 驱动（var(--ink-0)/var(--accent)）。
  */
 
 .titlebar-root {
@@ -16,12 +16,24 @@
   justify-content: center;
   width: 36px;
   height: 36px;
-  border-radius: 4px;
+  border-radius: var(--r-sm);
   background-color: transparent;
-  color: hsl(var(--foreground));
-  transition: background-color 150ms ease, color 150ms ease;
+  color: var(--ink-1);
+  transition:
+    background-color 150ms ease,
+    color 150ms ease;
   cursor: default;
-  -webkit-app-region: no-drag; /* 即便环境忽略 data-tauri-drag-region，也兜一层 */
+  -webkit-app-region: no-drag;
+}
+
+.window-ctrl-btn:hover {
+  background-color: var(--bg-2);
+  color: var(--ink-0);
+}
+
+.window-ctrl-btn.close:hover {
+  background-color: #c1352f;
+  color: #fff;
 }
 
 .window-ctrl-btn:focus {
@@ -29,6 +41,6 @@
 }
 
 .window-ctrl-btn:focus-visible {
-  outline: 2px solid #7C5CFF;
+  outline: 2px solid var(--accent);
   outline-offset: 2px;
 }

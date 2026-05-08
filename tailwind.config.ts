@@ -2,82 +2,109 @@ import type { Config } from "tailwindcss";
 import plugin from "tailwindcss/plugin";
 
 export default {
+  // 旧 milestone 用 darkMode: ["class"] + .dark；v1.1 改用 [data-theme] 多主题切换。
+  // 保留 class 模式做向后兼容，组件层不再依赖 .dark；色值差异完全由 CSS 变量决定。
   darkMode: ["class"],
   content: ["./index.html", "./src/**/*.{ts,tsx}"],
   theme: {
     extend: {
       colors: {
-        border: "hsl(var(--border))",
-        input: "hsl(var(--input))",
-        ring: "hsl(var(--ring))",
-        background: "hsl(var(--background))",
-        foreground: "hsl(var(--foreground))",
+        // shadcn 兼容层 — 直接吃 CSS var（无 hsl 包裹）。color tokens 由 src/index.css
+        // 的设计令牌驱动，所以 bg-background / text-foreground 等既有调用零改动。
+        border: "var(--border)",
+        input: "var(--input)",
+        ring: "var(--ring)",
+        background: "var(--background)",
+        foreground: "var(--foreground)",
         primary: {
-          DEFAULT: "hsl(var(--primary))",
-          foreground: "hsl(var(--primary-foreground))",
+          DEFAULT: "var(--primary)",
+          foreground: "var(--primary-foreground)",
         },
         secondary: {
-          DEFAULT: "hsl(var(--secondary))",
-          foreground: "hsl(var(--secondary-foreground))",
+          DEFAULT: "var(--secondary)",
+          foreground: "var(--secondary-foreground)",
         },
         destructive: {
-          DEFAULT: "hsl(var(--destructive))",
-          foreground: "hsl(var(--destructive-foreground))",
+          DEFAULT: "var(--destructive)",
+          foreground: "var(--destructive-foreground)",
         },
         muted: {
-          DEFAULT: "hsl(var(--muted))",
-          foreground: "hsl(var(--muted-foreground))",
+          DEFAULT: "var(--muted)",
+          foreground: "var(--muted-foreground)",
         },
+        // shadcn 的 "accent" 是 surface elevated（不是 brand 强调色）；保留旧语义。
         accent: {
-          DEFAULT: "hsl(var(--accent))",
-          foreground: "hsl(var(--accent-foreground))",
+          DEFAULT: "var(--shadcn-accent)",
+          foreground: "var(--shadcn-accent-foreground)",
         },
         popover: {
-          DEFAULT: "hsl(var(--popover))",
-          foreground: "hsl(var(--popover-foreground))",
+          DEFAULT: "var(--popover)",
+          foreground: "var(--popover-foreground)",
         },
         card: {
-          DEFAULT: "hsl(var(--card))",
-          foreground: "hsl(var(--card-foreground))",
+          DEFAULT: "var(--card)",
+          foreground: "var(--card-foreground)",
+        },
+
+        // gal-lib v1.1 设计令牌 — 直接当 Tailwind utility 使用，例如 bg-bg-1 / text-ink-2。
+        "bg-0": "var(--bg-0)",
+        "bg-1": "var(--bg-1)",
+        "bg-2": "var(--bg-2)",
+        "bg-3": "var(--bg-3)",
+        "ink-0": "var(--ink-0)",
+        "ink-1": "var(--ink-1)",
+        "ink-2": "var(--ink-2)",
+        "ink-3": "var(--ink-3)",
+        "ink-stamp": "var(--ink-stamp)",
+        line: "var(--line)",
+        "line-strong": "var(--line-strong)",
+        brand: {
+          DEFAULT: "var(--accent)",
+          deep: "var(--accent-deep)",
+          soft: "var(--accent-soft)",
+          on: "var(--accent-on)",
         },
       },
       borderRadius: {
-        lg: "var(--radius)",
-        md: "calc(var(--radius) - 2px)",
-        sm: "calc(var(--radius) - 4px)",
+        // 旧业务用 rounded-lg/md/sm；映射到设计的可变圆角。
+        lg: "var(--r-lg)",
+        md: "var(--r-md)",
+        sm: "var(--r-sm)",
+        xl: "var(--r-xl)",
       },
       fontFamily: {
-        sans: [
-          "ui-sans-serif",
-          "system-ui",
-          '"Segoe UI"',
-          '"Microsoft YaHei"',
-          "sans-serif",
-        ],
+        sans: ["var(--sans)"],
+        serif: ["var(--serif)"],
+        mono: ["var(--mono)"],
       },
       fontSize: {
-        // UI-SPEC §Typography — 4-tier scale locked (P1)
+        // UI-SPEC §Typography（v1.0 锁定，v1.1 沿用）
         body: ["14px", { lineHeight: "1.5", fontWeight: "400" }],
         label: ["13px", { lineHeight: "1.4", fontWeight: "500" }],
         h2: ["18px", { lineHeight: "1.4", fontWeight: "600" }],
-        display: ["13px", { lineHeight: "1.0", fontWeight: "500" }],
-        // 02-UI-SPEC §Typography — H3 added as 5th tier (P2)
         h3: ["16px", { lineHeight: "1.4", fontWeight: "600" }],
+        display: ["13px", { lineHeight: "1.0", fontWeight: "500" }],
       },
-      // 02-UI-SPEC §Game Card — 3:4 cover aspect ratio token (P2)
       aspectRatio: {
         cover: "3 / 4",
+      },
+      boxShadow: {
+        card: "var(--shadow-card)",
+        lift: "var(--shadow-lift)",
+      },
+      keyframes: {
+        "gallib-pulse": {
+          "0%, 100%": { boxShadow: "0 0 0 0 var(--accent)", opacity: "1" },
+          "50%": { boxShadow: "0 0 0 6px transparent", opacity: "0.65" },
+        },
+      },
+      animation: {
+        "gallib-pulse": "gallib-pulse 1.6s ease-in-out infinite",
       },
     },
   },
   plugins: [
     require("tailwindcss-animate"),
-    // shadcn 4.7 generates Tailwind v4-style data-attribute shorthand classes
-    // (data-active:, data-open:, data-horizontal:, ...). This project pins
-    // Tailwind v3 which only supports the long-form `data-[state=...]:`
-    // syntax. Register the shorthand variants explicitly so the generated
-    // shadcn classes actually apply — without this, e.g. `Tabs` falls back
-    // to flex-row and renders TabsList beside (not above) TabsContent.
     plugin(({ addVariant }) => {
       addVariant("data-active", "&[data-state=active]");
       addVariant("data-inactive", "&[data-state=inactive]");

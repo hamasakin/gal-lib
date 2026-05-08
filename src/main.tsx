@@ -4,6 +4,12 @@ import { RouterProvider } from "react-router-dom";
 import { router } from "./router";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
+import { applyPreferences, loadPreferences } from "@/lib/preferences";
+
+// v1.1 — apply persisted theme/accent/radius/sidebar/density to <html>
+// BEFORE first render to prevent flash-of-default-theme. The store hydrates
+// from the same loadPreferences() so this is a no-op once mounted.
+applyPreferences(loadPreferences());
 // 01c: fire-and-forget DB warm-up so tauri-plugin-sql's lazy Database.load
 // actually executes (and runs the 0001 migration) on first dev launch.
 // Without this trigger, app.db never materializes. Errors are swallowed:

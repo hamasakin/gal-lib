@@ -2,6 +2,7 @@ import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { TitlebarSlot } from "@/components/layout/TitlebarSlot";
 import { Sidebar } from "@/components/layout/Sidebar";
+import { TweaksPanel } from "@/components/tweaks/TweaksPanel";
 import { useAppStore } from "@/store/app";
 import { getDataDir } from "@/lib/db";
 
@@ -54,6 +55,7 @@ export default function App() {
           <Outlet />
         </main>
       </div>
+      <TweaksPanel />
     </div>
   );
 }
