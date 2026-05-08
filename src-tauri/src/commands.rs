@@ -23,7 +23,7 @@
 use crate::launch::{le, orchestrator, process_track, session};
 use crate::{ingest, metadata, scan, AppPaths};
 use serde::{Deserialize, Serialize};
-use sqlx::Row;
+use sqlx::{Row, SqlitePool};
 use std::collections::HashSet;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -59,6 +59,61 @@ impl Default for ScanState {
 /// Helper: stringify any error for Tauri's String error contract.
 fn err_str<E: std::fmt::Display>(e: E) -> String {
     format!("{}", e)
+}
+
+/// Ingest one DiscoveredGame: UPSERT row, run metadata + cover pipeline,
+/// UPDATE row with the result. Shared by `start_scan` (the bulk scan loop)
+/// and `add_game` (single-directory entry-point). Returns the row id.
+async fn ingest_one_dir(
+    pool: &SqlitePool,
+    data_dir: &Path,
+    dg: &scan::DiscoveredGame,
+) -> Result<i64, String> {
+    let path_str = dg.path.to_string_lossy().to_string();
+    let exec_str = dg.executable.as_ref().map(|p| p.to_string_lossy().to_string());
+
+    let insert_res = sqlx::query(
+        "INSERT INTO games (path, name, executable_path) VALUES (?, ?, ?) \
+         ON CONFLICT(path) DO UPDATE SET name=excluded.name, executable_path=excluded.executable_path",
+    )
+    .bind(&path_str)
+    .bind(&dg.clean_name)
+    .bind(&exec_str)
+    .execute(pool)
+    .await;
+
+    let game_id: i64 = match insert_res {
+        Ok(r) if r.last_insert_rowid() != 0 => r.last_insert_rowid(),
+        _ => sqlx::query("SELECT id FROM games WHERE path = ?")
+            .bind(&path_str)
+            .fetch_one(pool)
+            .await
+            .and_then(|r| r.try_get::<i64, _>("id"))
+            .map_err(err_str)?,
+    };
+
+    let result = ingest::process_game(game_id, data_dir, dg).await;
+
+    sqlx::query(
+        "UPDATE games SET name = ?, name_cn = ?, cover_path = ?, cover_url = ?, \
+                          bangumi_id = ?, vndb_id = ?, metadata_source = ?, \
+                          match_confidence = ?, last_scanned_at = datetime('now') \
+         WHERE id = ?",
+    )
+    .bind(&result.name)
+    .bind(&result.name_cn)
+    .bind(&result.cover_path)
+    .bind(&result.cover_url)
+    .bind(&result.bangumi_id)
+    .bind(&result.vndb_id)
+    .bind(&result.metadata_source)
+    .bind(result.match_confidence.map(|x| x as i64))
+    .bind(game_id)
+    .execute(pool)
+    .await
+    .map_err(err_str)?;
+
+    Ok(game_id)
 }
 
 // ── scan_roots CRUD ─────────────────────────────────────────────────────────
@@ -264,73 +319,8 @@ pub async fn start_scan(
         // limiter is 1 req/s, parallelism wouldn't help and would garble
         // the per-game progress reporting).
         for (i, dg) in discovered.into_iter().enumerate() {
-            // INSERT base row to obtain rowid for cover filename.
             let path_str = dg.path.to_string_lossy().to_string();
-            let exec_str = dg.executable.as_ref().map(|p| p.to_string_lossy().to_string());
-
-            let insert_res = sqlx::query(
-                "INSERT INTO games (path, name, executable_path) VALUES (?, ?, ?) \
-                 ON CONFLICT(path) DO UPDATE SET name=excluded.name, executable_path=excluded.executable_path",
-            )
-            .bind(&path_str)
-            .bind(&dg.clean_name)
-            .bind(&exec_str)
-            .execute(&*pool_for_task)
-            .await;
-
-            // Resolve the row id (last_insert_rowid is 0 on UPDATE-only
-            // path of UPSERT; need a SELECT then).
-            let game_id: i64 = match insert_res {
-                Ok(r) if r.last_insert_rowid() != 0 => r.last_insert_rowid(),
-                _ => {
-                    match sqlx::query("SELECT id FROM games WHERE path = ?")
-                        .bind(&path_str)
-                        .fetch_one(&*pool_for_task)
-                        .await
-                        .and_then(|r| r.try_get::<i64, _>("id"))
-                    {
-                        Ok(id) => id,
-                        Err(_) => {
-                            // row gone / DB error — still advance progress so
-                            // the bar doesn't stall on this index.
-                            let _ = app_for_emit.emit(
-                                "scan-progress",
-                                scan::ScanProgress {
-                                    current_dir: path_str.clone(),
-                                    completed: i + 1,
-                                    total,
-                                    status: scan::ScanStatus::Running,
-                                },
-                            );
-                            continue;
-                        }
-                    }
-                }
-            };
-
-            // Run metadata + cover pipeline.
-            let result = ingest::process_game(game_id, &data_dir, &dg).await;
-
-            // Persist the result.
-            let _ = sqlx::query(
-                "UPDATE games SET name = ?, name_cn = ?, cover_path = ?, cover_url = ?, \
-                                  bangumi_id = ?, vndb_id = ?, metadata_source = ?, \
-                                  match_confidence = ?, last_scanned_at = datetime('now') \
-                 WHERE id = ?",
-            )
-            .bind(&result.name)
-            .bind(&result.name_cn)
-            .bind(&result.cover_path)
-            .bind(&result.cover_url)
-            .bind(&result.bangumi_id)
-            .bind(&result.vndb_id)
-            .bind(&result.metadata_source)
-            .bind(result.match_confidence.map(|x| x as i64))
-            .bind(game_id)
-            .execute(&*pool_for_task)
-            .await;
-
-            // Per-game ingest-phase progress event.
+            let _ = ingest_one_dir(&*pool_for_task, &data_dir, &dg).await;
             let _ = app_for_emit.emit(
                 "scan-progress",
                 scan::ScanProgress {
@@ -378,6 +368,40 @@ pub async fn mark_skip_dir(
         s.insert(PathBuf::from(path));
     }
     Ok(())
+}
+
+/// Skip the bulk scan and add a single game directory directly. Builds a
+/// `DiscoveredGame` from the directory (basename → clean_title, exe via
+/// `walker::pick_best_exe`) and feeds it to the shared `ingest_one_dir`
+/// helper. Returns the resulting `games.id`.
+#[tauri::command]
+pub async fn add_game(
+    dir_path: String,
+    state: State<'_, AppPaths>,
+) -> Result<i64, String> {
+    let dir = PathBuf::from(&dir_path);
+    if !dir.is_dir() {
+        return Err(format!("path is not a directory: {}", dir_path));
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+
+    let raw_name = dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let clean_name = crate::title_clean::clean_title(&raw_name);
+    let executable = scan::walker::pick_best_exe(&dir);
+
+    let dg = scan::DiscoveredGame {
+        path: dir,
+        raw_name,
+        clean_name,
+        executable,
+    };
+
+    ingest_one_dir(&*pool, &data_dir, &dg).await
 }
 
 // ── metadata search / bind / refresh ────────────────────────────────────────
@@ -890,8 +914,6 @@ fn _retain_process_track_import() {
 }
 
 // ── 03e tray helper: synchronous pool accessor ──────────────────────────────
-
-use sqlx::SqlitePool;
 
 /// Synchronous accessor for the shared sqlx pool. Used by the tray quit path
 /// (`tray::quit_with_session_cleanup`) which runs on the main thread and

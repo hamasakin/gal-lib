@@ -62,6 +62,15 @@ export async function markSkipDir(path: string): Promise<void> {
 }
 
 /**
+ * Add a single game directory directly (bypasses scan_roots + bulk scan).
+ * Returns the new `games.id`. Frontend should refresh the games grid +
+ * sidebar after success.
+ */
+export async function addGame(dirPath: string): Promise<number> {
+  return invoke<number>("add_game", { dirPath });
+}
+
+/**
  * Subscribe to the `scan-progress` event stream.
  *
  * Returns an `UnlistenFn` — caller MUST invoke on cleanup (e.g. inside a

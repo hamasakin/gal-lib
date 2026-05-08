@@ -27,11 +27,13 @@ import { useEffect, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import {
+  addGame,
   addScanRoot,
   listScanRoots,
   removeScanRoot,
   startScan,
 } from "@/lib/scan";
+import { getSidebarCategories, searchGames } from "@/lib/search";
 // 03f: LE path config — alias setLePath to applyLePath to avoid clashing
 // with the local React state setter `setLePath` (same name).
 import { getLePath, setLePath as applyLePath } from "@/lib/launch";
@@ -135,6 +137,29 @@ export function Settings() {
       const rs = await listScanRoots();
       setScanRoots(rs);
       toast.success("已添加根目录");
+    } catch (e: unknown) {
+      toast.error(`添加失败 — ${String(e)}`);
+    }
+  }
+
+  async function onAddSingleGame() {
+    let picked: string | string[] | null;
+    try {
+      picked = await openDialog({ directory: true, multiple: false });
+    } catch (e: unknown) {
+      toast.error(`打开目录选择失败 — ${String(e)}`);
+      return;
+    }
+    if (typeof picked !== "string") return;
+    try {
+      await addGame(picked);
+      const [games, sidebar] = await Promise.all([
+        searchGames(null, "last_played", null),
+        getSidebarCategories(),
+      ]);
+      useLibraryStore.getState().setGames(games);
+      useLibraryStore.getState().setSidebar(sidebar);
+      toast.success("已添加游戏");
     } catch (e: unknown) {
       toast.error(`添加失败 — ${String(e)}`);
     }
@@ -262,6 +287,19 @@ export function Settings() {
           </ul>
 
           <Button onClick={() => void onAdd()}>添加根目录</Button>
+        </section>
+
+        {/* ─── 添加单个游戏 section ───────────────────────────────────── */}
+        <section className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold text-foreground">
+              添加单个游戏
+            </h2>
+            <p className="text-body text-muted-foreground">
+              跳过扫描，直接选择某个游戏目录加入库
+            </p>
+          </div>
+          <Button onClick={() => void onAddSingleGame()}>选择游戏目录</Button>
         </section>
 
         {/* ─── Locale Emulator section (03f) ─────────────────────────── */}

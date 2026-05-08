@@ -100,16 +100,24 @@ export function Sidebar() {
   /**
    * Replace the entire filter slice with a single-axis filter (clearing
    * any other axes). Sidebar leaves are mutually exclusive by design.
+   * Bounces back to the Library route so the click has visible effect
+   * when invoked from /settings or /stats.
    */
   function applyFilter(next: SearchFilter) {
+    if (location.pathname !== "/") {
+      navigate("/");
+    }
     setFilter(next);
   }
 
   /**
    * "全部" — reset everything (filter + searchQuery). Restores the boot
-   * view: full library, default sort.
+   * view: full library, default sort. Same route-bounce as applyFilter.
    */
   function resetAll() {
+    if (location.pathname !== "/") {
+      navigate("/");
+    }
     setFilter({});
     setSearchQuery("");
   }
