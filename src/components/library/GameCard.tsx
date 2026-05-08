@@ -35,6 +35,7 @@ import { updateGameFavorite, updateGameStatus } from "@/lib/games";
 import { endActiveSession, launchGame } from "@/lib/launch";
 import { useLibraryStore } from "@/store/library";
 import { cn } from "@/lib/utils";
+import { displayGameName } from "@/lib/display";
 
 interface GameCardProps {
   game: Game;
@@ -119,7 +120,7 @@ export function GameCard({
 
   const stamp = getStamp(game);
   const metaState = getMetadataState(game);
-  const displayName = game.name_cn ?? game.name;
+  const displayName = displayGameName(game);
   const noExe = game.executable_path == null;
   const isActive = activeSession?.game_id === game.id;
   const otherActive = activeSession != null && !isActive;

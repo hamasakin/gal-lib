@@ -49,6 +49,7 @@ import {
 import { type Game } from "@/lib/games";
 import { useLibraryStore } from "@/store/library";
 import { getSidebarCategories, searchGames } from "@/lib/search";
+import { displayGameName } from "@/lib/display";
 
 interface MetadataPickerProps {
   /** When non-null the dialog is open; null closes. */
@@ -80,7 +81,10 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
   // Reset form when the dialog opens for a new game.
   useEffect(() => {
     if (game) {
-      setQuery(game.name ?? "");
+      // Seed the search box with the user-facing name (basename for unmatched
+      // entries) — that's the title most likely to match upstream search
+      // for a game the cleaner stripped to a stub.
+      setQuery(displayGameName(game));
       setSource("bangumi");
       setCandidates([]);
       setSelected(null);
@@ -195,14 +199,9 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
       <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
           <DialogTitle className="pr-8 truncate">
-            {(() => {
-              if (!game) return "重新匹配元数据";
-              const display =
-                (game.name_cn && game.name_cn.length > 0 && game.name_cn) ||
-                (game.name && game.name.length > 0 && game.name) ||
-                "";
-              return display ? `重新匹配元数据 — ${display}` : "重新匹配元数据";
-            })()}
+            {game
+              ? `重新匹配元数据 — ${displayGameName(game)}`
+              : "重新匹配元数据"}
           </DialogTitle>
         </DialogHeader>
 

@@ -46,6 +46,7 @@ import {
   Heart,
   ImageOff,
   MoreHorizontal,
+  Search,
 } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
@@ -93,6 +94,14 @@ import {
 } from "@/lib/screenshots";
 import { useLibraryStore } from "@/store/library";
 import { cn } from "@/lib/utils";
+import {
+  bangumiPageUrl,
+  bangumiSearchUrl,
+  displayGameName,
+  openExternal,
+  vndbPageUrl,
+  vndbSearchUrl,
+} from "@/lib/display";
 
 const LE_PROFILES = [
   "Japanese",
@@ -317,7 +326,9 @@ export default function Detail() {
   const launchDisabled = otherActive || noExe;
   const reviewNeeded = game.match_confidence != null && game.match_confidence < 80;
 
-  const displayName = game.name_cn ?? game.name;
+  const displayName = displayGameName(game);
+  // Alt line: only show when name_cn carries the primary title; the
+  // secondary line is then the raw `name` (cleaned upstream title).
   const altName = game.name_cn ? game.name : null;
   const coverSrc =
     game.cover_path && dataDir
@@ -553,7 +564,22 @@ export default function Detail() {
                   待复核 · 置信度 {game.match_confidence}%
                 </Pill>
               )}
-              {game.bangumi_id ? <Pill>BGM · {game.bangumi_id}</Pill> : null}
+              {game.bangumi_id ? (
+                <PillLink
+                  href={bangumiPageUrl(game.bangumi_id)}
+                  title="在 Bangumi 打开此条目"
+                >
+                  BGM · {game.bangumi_id}
+                </PillLink>
+              ) : null}
+              {game.vndb_id ? (
+                <PillLink
+                  href={vndbPageUrl(game.vndb_id)}
+                  title="在 VNDB 打开此条目"
+                >
+                  VNDB · {game.vndb_id}
+                </PillLink>
+              ) : null}
               {game.executable_path ? (
                 <Pill className="font-mono">
                   {game.executable_path.split(/[/\\]/).pop()}
@@ -815,11 +841,23 @@ export default function Detail() {
               </DD>
               <DT>BGM</DT>
               <DD className="font-mono">
-                {game.bangumi_id ?? <span className="text-ink-3">—</span>}
+                {game.bangumi_id ? (
+                  <ExtAnchor href={bangumiPageUrl(game.bangumi_id)}>
+                    {game.bangumi_id}
+                  </ExtAnchor>
+                ) : (
+                  <span className="text-ink-3">—</span>
+                )}
               </DD>
               <DT>VNDB</DT>
               <DD className="font-mono">
-                {game.vndb_id ?? <span className="text-ink-3">—</span>}
+                {game.vndb_id ? (
+                  <ExtAnchor href={vndbPageUrl(game.vndb_id)}>
+                    {game.vndb_id}
+                  </ExtAnchor>
+                ) : (
+                  <span className="text-ink-3">—</span>
+                )}
               </DD>
               <DT>来源</DT>
               <DD className="font-mono uppercase tracking-[0.06em]">
@@ -882,13 +920,31 @@ export default function Detail() {
               {game.cover_url ? (
                 <SidebarBtn
                   icon={<ExternalLink size={12} />}
-                  onClick={() => {
-                    window.open(game.cover_url ?? "", "_blank");
-                  }}
+                  onClick={() => openExternal(game.cover_url ?? "")}
                 >
                   封面源
                 </SidebarBtn>
               ) : null}
+            </div>
+          </DSection>
+
+          <DSection title="搜索源" className="mt-6">
+            <p className="font-mono text-[10.5px] text-ink-3">
+              用当前游戏名在数据源站内搜索
+            </p>
+            <div className="mt-2 flex flex-wrap gap-1.5">
+              <SidebarBtn
+                icon={<Search size={12} />}
+                onClick={() => openExternal(bangumiSearchUrl(game.name))}
+              >
+                Bangumi 搜索
+              </SidebarBtn>
+              <SidebarBtn
+                icon={<Search size={12} />}
+                onClick={() => openExternal(vndbSearchUrl(game.name))}
+              >
+                VNDB 搜索
+              </SidebarBtn>
             </div>
           </DSection>
         </aside>
@@ -916,6 +972,48 @@ function Pill({
     >
       {children}
     </span>
+  );
+}
+
+function PillLink({
+  href,
+  title,
+  children,
+}: {
+  href: string;
+  title?: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => openExternal(href)}
+      title={title}
+      className="inline-flex h-6 cursor-pointer items-center gap-1.5 border border-line bg-black/35 px-2.5 font-mono text-[10.5px] text-ink-1 transition-colors hover:border-line-strong hover:text-ink-0"
+      style={{ borderRadius: "9999px" }}
+    >
+      {children}
+      <ExternalLink size={10} strokeWidth={2} className="opacity-60" />
+    </button>
+  );
+}
+
+function ExtAnchor({
+  href,
+  children,
+}: {
+  href: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={() => openExternal(href)}
+      className="inline-flex items-center gap-1 font-mono text-ink-1 underline decoration-line decoration-1 underline-offset-[3px] transition-colors hover:text-ink-0 hover:decoration-line-strong"
+    >
+      <span>{children}</span>
+      <ExternalLink size={10} strokeWidth={2} className="opacity-50" />
+    </button>
   );
 }
 
