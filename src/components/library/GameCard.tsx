@@ -5,6 +5,8 @@
  *   - 3:4 cover with --shadow-card; hover: -4px translate + --shadow-lift
  *   - Top-left: 「藏书章」mono uppercase status stamp (5 colors)
  *   - Top-right: heart-fill favorite mark (only when favorited; brand-colored)
+ *   - Bottom-left: at most one of 获取中 / 待复核 / 无 EXE
+ *     (precedence pending > review-needed > no-exe)
  *   - Hover overlay: linear gradient bottom + 30px circular play icon (bottom-right)
  *   - Title: serif font, 13.5px, line-clamp-2
  *   - Sub-row: brand + sep dot + mono playtime
@@ -13,7 +15,6 @@
  *   - Click → navigate(/games/:id)
  *   - Right-click → ContextMenu (launch / 强制结束 / 收藏 toggle / status / 元数据)
  *   - Single-session lock: when another game is active, launch hidden
- *   - Metadata pending/failed/no-exe badges stack on the cover
  */
 
 import { Heart, ImageOff, Play, Square } from "lucide-react";
@@ -45,16 +46,18 @@ interface GameCardProps {
   onMutated?: () => void;
 }
 
-type StampStatus = "playing" | "cleared" | "dropped" | "todo" | "review";
+type StampStatus = "playing" | "cleared" | "dropped" | "todo";
 
 /**
- * Map game state → stamp visual.
- * Per design: 5 stamp variants (s-playing/s-cleared/s-dropped/s-todo/s-review).
+ * Map game state → top-left status stamp visual.
  *   playing → 游玩中     (accent color)
  *   cleared → 已通关     (teal)
  *   dropped → 弃坑       (ink-2 muted)
  *   unplayed → 未开始    (ink-stamp / orange-red)
- *   metadata low-conf → 复核 (yellow; renders top-right via stamp.s-review)
+ *
+ * The metadata-low-conf state is rendered as a separate bottom-left
+ * 「待复核」 badge (see metaState below) — keeps actionable badges
+ * grouped at the bottom and the playthrough stamp clean at the top.
  */
 function getStamp(game: Game): { status: StampStatus; label: string } {
   switch (game.status) {
@@ -86,7 +89,6 @@ const STAMP_COLOR: Record<StampStatus, string> = {
   cleared: "text-[#6fd1c8]",
   dropped: "text-ink-2",
   todo: "text-ink-stamp",
-  review: "text-[#ffd166]",
 };
 
 const STATUS_SUBMENU: Array<{
@@ -125,7 +127,20 @@ export function GameCard({
   const isActive = activeSession?.game_id === game.id;
   const otherActive = activeSession != null && !isActive;
   const launchDisabled = noExe || otherActive;
-  const showReviewStamp = metaState === "failed";
+
+  // Bottom-left badge precedence: at most one renders, in this order.
+  //   pending  → 获取中   (transient — scan still in flight)
+  //   failed   → 待复核   (actionable — user needs to pick metadata)
+  //   no-exe   → 无 EXE   (informational — can't launch)
+  // Right-top corner is now exclusively the favorite heart.
+  const bottomBadge: "pending" | "review" | "no-exe" | null =
+    metaState === "pending"
+      ? "pending"
+      : metaState === "failed"
+        ? "review"
+        : noExe
+          ? "no-exe"
+          : null;
 
   function onCardClick() {
     navigate(`/games/${game.id}`);
@@ -232,24 +247,9 @@ export function GameCard({
               {stamp.label}
             </div>
 
-            {/* 「复核」stamp — top-right (only when metadata failed/low-conf) */}
-            {showReviewStamp && (
-              <div
-                className={cn(
-                  "absolute right-2 top-2 z-[3] inline-flex items-center px-1.5 py-[2px]",
-                  "border border-current font-mono text-[9px] uppercase tracking-[0.12em] backdrop-blur-md",
-                  "bg-black/50 text-[#ffd166]",
-                )}
-                style={{ borderRadius: "var(--r-sm)" }}
-              >
-                复核
-              </div>
-            )}
-
-            {/* Favorite mark — top-right (mutually exclusive with review since
-                review-needing games rarely have favorites; if both, favorite
-                wins because the user explicitly opted in) */}
-            {game.is_favorite && !showReviewStamp && (
+            {/* Favorite mark — top-right (review state moved to bottom-left
+                so the heart owns the right-top corner unconditionally) */}
+            {game.is_favorite && (
               <div
                 className="absolute right-2 top-2 z-[3] text-brand"
                 style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,.5))" }}
@@ -258,9 +258,9 @@ export function GameCard({
               </div>
             )}
 
-            {/* Pending-metadata badge (bottom-left, takes "no-exe"'s slot
-                when both apply since pending state is more actionable) */}
-            {metaState === "pending" && (
+            {/* Bottom-left badge — at most one renders; precedence in
+                bottomBadge is pending > review > no-exe. */}
+            {bottomBadge === "pending" && (
               <div
                 className="absolute bottom-2 left-2 z-[3] inline-flex items-center px-1.5 py-[2px] border border-line-strong bg-black/55 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-1 backdrop-blur"
                 style={{ borderRadius: "var(--r-sm)" }}
@@ -268,9 +268,15 @@ export function GameCard({
                 获取中
               </div>
             )}
-
-            {/* No-exe badge (bottom-left only when no pending) */}
-            {metaState !== "pending" && noExe && (
+            {bottomBadge === "review" && (
+              <div
+                className="absolute bottom-2 left-2 z-[3] inline-flex items-center px-1.5 py-[2px] border border-current bg-black/60 font-mono text-[9px] uppercase tracking-[0.12em] text-[#ffd166] backdrop-blur"
+                style={{ borderRadius: "var(--r-sm)" }}
+              >
+                待复核
+              </div>
+            )}
+            {bottomBadge === "no-exe" && (
               <div
                 className="absolute bottom-2 left-2 z-[3] inline-flex items-center px-1.5 py-[2px] border border-line-strong bg-black/55 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-2 backdrop-blur"
                 style={{ borderRadius: "var(--r-sm)" }}
