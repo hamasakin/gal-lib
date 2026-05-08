@@ -404,6 +404,42 @@ pub async fn add_game(
     ingest_one_dir(&*pool, &data_dir, &dg).await
 }
 
+/// Wipe all game-related data — for debugging only. Clears the games table
+/// (and its child rows in screenshots / save_backups / sessions / game_tags)
+/// plus scan_roots, then best-effort removes the on-disk cover, screenshot,
+/// and save-backup subdirectories. Tags definitions and config (LE path,
+/// per-game screenshot interval defaults from migration) are preserved.
+#[tauri::command]
+pub async fn clear_all_data(state: State<'_, AppPaths>) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+
+    // Delete child tables first so this works regardless of the connection's
+    // `PRAGMA foreign_keys` state (sqlx doesn't auto-enable it per connection).
+    for table in [
+        "screenshots",
+        "save_backups",
+        "sessions",
+        "game_tags",
+        "games",
+        "scan_roots",
+    ] {
+        sqlx::query(&format!("DELETE FROM {}", table))
+            .execute(&*pool)
+            .await
+            .map_err(err_str)?;
+    }
+
+    for sub in ["covers", "screenshots", "saves"] {
+        let dir = data_dir.join(sub);
+        if dir.exists() {
+            let _ = std::fs::remove_dir_all(&dir);
+        }
+    }
+
+    Ok(())
+}
+
 // ── metadata search / bind / refresh ────────────────────────────────────────
 
 #[tauri::command]

@@ -29,6 +29,7 @@ import { toast } from "sonner";
 import {
   addGame,
   addScanRoot,
+  clearAllData,
   listScanRoots,
   removeScanRoot,
   startScan,
@@ -75,6 +76,7 @@ export function Settings() {
   // `get_le_path` stale-fallback). UI renders the locked copy "未检测到"
   // in that case.
   const [lePath, setLePath] = useState<string | null>(null);
+  const [isAddingGame, setIsAddingGame] = useState(false);
 
   // Initial load — refresh on mount so Settings always shows DB truth (e.g.
   // user opens Settings the first time, or after a hot-reload).
@@ -151,17 +153,32 @@ export function Settings() {
       return;
     }
     if (typeof picked !== "string") return;
-    try {
-      await addGame(picked);
+    // Display the dir basename in the loading toast so the user knows which
+    // game is being added (the metadata fetch can take 5-30s on a fresh app
+    // due to Bangumi's 1 req/s rate limit).
+    const basename = picked.split(/[\\/]/).pop() || picked;
+    setIsAddingGame(true);
+    const job = (async () => {
+      await addGame(picked as string);
       const [games, sidebar] = await Promise.all([
         searchGames(null, "last_played", null),
         getSidebarCategories(),
       ]);
       useLibraryStore.getState().setGames(games);
       useLibraryStore.getState().setSidebar(sidebar);
-      toast.success("已添加游戏");
-    } catch (e: unknown) {
-      toast.error(`添加失败 — ${String(e)}`);
+    })();
+    toast.promise(job, {
+      loading: `正在添加 ${basename} ...`,
+      success: "已添加游戏",
+      error: (e) => `添加失败 — ${String(e)}`,
+    });
+    try {
+      await job;
+    } catch {
+      // Error already surfaced via toast.promise; swallow so the catch
+      // doesn't bubble to React's unhandled-rejection handler.
+    } finally {
+      setIsAddingGame(false);
     }
   }
 
@@ -191,6 +208,23 @@ export function Settings() {
       setScanRoots(rs);
     } catch (e: unknown) {
       toast.error(`修改深度失败 — ${String(e)}`);
+    }
+  }
+
+  async function onClearAllData() {
+    try {
+      await clearAllData();
+      const [games, sidebar, roots] = await Promise.all([
+        searchGames(null, "last_played", null),
+        getSidebarCategories(),
+        listScanRoots(),
+      ]);
+      useLibraryStore.getState().setGames(games);
+      useLibraryStore.getState().setSidebar(sidebar);
+      setScanRoots(roots);
+      toast.success("已清除所有数据");
+    } catch (e: unknown) {
+      toast.error(`清除失败 — ${String(e)}`);
     }
   }
 
@@ -299,7 +333,12 @@ export function Settings() {
               跳过扫描，直接选择某个游戏目录加入库
             </p>
           </div>
-          <Button onClick={() => void onAddSingleGame()}>选择游戏目录</Button>
+          <Button
+            onClick={() => void onAddSingleGame()}
+            disabled={isAddingGame}
+          >
+            {isAddingGame ? "正在添加..." : "选择游戏目录"}
+          </Button>
         </section>
 
         {/* ─── Locale Emulator section (03f) ─────────────────────────── */}
@@ -344,6 +383,35 @@ export function Settings() {
 
         {/* ─── 04f: UI 偏好 section ──────────────────────────────────── */}
         <UIPreferences />
+
+        {/* ─── 调试 section ─────────────────────────────────────────── */}
+        <section className="space-y-4">
+          <div className="space-y-1">
+            <h2 className="text-base font-semibold text-foreground">调试</h2>
+            <p className="text-body text-muted-foreground">
+              清除所有游戏、扫描根、会话与封面/截图/存档备份文件（保留标签与 LE 路径）
+            </p>
+          </div>
+          <AlertDialog>
+            <AlertDialogTrigger asChild>
+              <Button variant="destructive">清除所有数据</Button>
+            </AlertDialogTrigger>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>确定清除所有数据？</AlertDialogTitle>
+                <AlertDialogDescription>
+                  此操作不可撤销，将删除全部游戏、扫描根、会话历史与缓存文件
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>取消</AlertDialogCancel>
+                <AlertDialogAction onClick={() => void onClearAllData()}>
+                  清除
+                </AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
+        </section>
       </div>
     </ScrollArea>
   );

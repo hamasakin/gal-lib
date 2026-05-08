@@ -71,6 +71,15 @@ export async function addGame(dirPath: string): Promise<number> {
 }
 
 /**
+ * Debug-only: wipe all games, scan_roots, sessions, screenshots, save
+ * backups, and the on-disk cover/screenshot/save directories. Tags
+ * definitions and LE path are preserved.
+ */
+export async function clearAllData(): Promise<void> {
+  await invoke("clear_all_data");
+}
+
+/**
  * Subscribe to the `scan-progress` event stream.
  *
  * Returns an `UnlistenFn` — caller MUST invoke on cleanup (e.g. inside a

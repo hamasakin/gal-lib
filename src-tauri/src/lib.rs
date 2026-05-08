@@ -135,6 +135,7 @@ pub fn run() {
             commands::cancel_scan,
             commands::mark_skip_dir,
             commands::add_game,
+            commands::clear_all_data,
             commands::search_metadata,
             commands::bind_metadata,
             commands::refresh_metadata,
