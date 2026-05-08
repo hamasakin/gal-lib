@@ -1079,7 +1079,7 @@ pub async fn search_games(
     let where_sql = if where_clauses.is_empty() {
         String::new()
     } else {
-        format!(" WHERE {}", where_clauses.join(" AND "))
+        format!("WHERE {}", where_clauses.join(" AND "))
     };
 
     let sql = format!(
@@ -1088,8 +1088,7 @@ pub async fn search_games(
                 g.rating, g.notes, g.metadata_source, g.match_confidence, g.last_scanned_at, \
                 g.brand, g.release_year, g.is_favorite, \
                 g.created_at, g.updated_at \
-         FROM games g{}\
-         ORDER BY {}",
+         FROM games g {} ORDER BY {}",
         where_sql, order_by
     );
 
