@@ -69,8 +69,11 @@ impl Default for ScanContext {
 ///
 /// On cancellation, emits one final `ScanStatus::Cancelled` event with the
 /// current `completed` count and returns `Err(ScanError::Cancelled)`.
-/// On clean completion, emits one final `ScanStatus::Completed` event with
-/// `completed == total`.
+///
+/// On clean completion, `run_scan` emits only `Running` events — it does NOT
+/// emit a terminal `Completed` event, because discovery finishing is not the
+/// same as the pipeline finishing. The caller (commands.rs::start_scan) owns
+/// the terminal event after the ingest loop drains.
 pub async fn run_scan<F>(
     roots: Vec<(PathBuf, u8)>,
     existing_paths: HashSet<PathBuf>,
@@ -149,14 +152,6 @@ where
         });
     }
 
-    // Terminal Completed event — clears UI "scanning..." indicator.
-    on_progress(ScanProgress {
-        current_dir: String::new(),
-        completed: total,
-        total,
-        status: ScanStatus::Completed,
-    });
-
     Ok(discovered)
 }
 
@@ -217,13 +212,19 @@ mod tests {
         }
 
         let events = buf.lock().unwrap();
-        // Exactly 2 Running events + 1 terminal Completed event.
-        assert_eq!(events.len(), 3, "events: {:?}", *events);
-        assert!(matches!(events[0].status, ScanStatus::Running));
-        assert!(matches!(events[1].status, ScanStatus::Running));
-        assert!(matches!(events[2].status, ScanStatus::Completed));
-        assert_eq!(events[2].completed, 2);
-        assert_eq!(events[2].total, 2);
+        // run_scan no longer emits a terminal Completed event — that's the
+        // caller's responsibility (commands.rs::start_scan, after ingest).
+        // Expect exactly one Running event per discovered dir, nothing else.
+        assert_eq!(events.len(), 2, "events: {:?}", *events);
+        for ev in events.iter() {
+            assert!(
+                matches!(ev.status, ScanStatus::Running),
+                "expected only Running events, got {:?}",
+                ev.status
+            );
+        }
+        assert_eq!(events[1].completed, 2);
+        assert_eq!(events[1].total, 2);
     }
 
     #[tokio::test]

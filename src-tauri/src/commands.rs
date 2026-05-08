@@ -196,6 +196,8 @@ pub async fn start_scan(
     let pool_for_task = pool.clone();
     tokio::spawn(async move {
         // Progress callback: forward each ScanProgress to the frontend.
+        // run_scan emits only Running events; the terminal Completed/Failed
+        // event is emitted below, AFTER the ingest loop drains.
         let app_progress = app_for_emit.clone();
         let on_progress = move |p: scan::ScanProgress| {
             let _ = app_progress.emit("scan-progress", p);
@@ -229,10 +231,39 @@ pub async fn start_scan(
             }
         };
 
+        let total = discovered.len();
+
+        // Edge case: nothing to ingest (incremental mode with all skips, or
+        // empty roots). Emit a terminal Completed so the UI clears its
+        // "scanning..." indicator instead of getting stuck on the last Running.
+        if total == 0 {
+            let _ = app_for_emit.emit(
+                "scan-progress",
+                scan::ScanProgress {
+                    current_dir: String::new(),
+                    completed: 0,
+                    total: 0,
+                    status: scan::ScanStatus::Completed,
+                },
+            );
+            return;
+        }
+
+        // Transition event — reset the progress bar to phase 2 (ingest).
+        let _ = app_for_emit.emit(
+            "scan-progress",
+            scan::ScanProgress {
+                current_dir: String::new(),
+                completed: 0,
+                total,
+                status: scan::ScanStatus::Running,
+            },
+        );
+
         // Ingest each discovered game sequentially (intentional — Bangumi
         // limiter is 1 req/s, parallelism wouldn't help and would garble
         // the per-game progress reporting).
-        for dg in discovered {
+        for (i, dg) in discovered.into_iter().enumerate() {
             // INSERT base row to obtain rowid for cover filename.
             let path_str = dg.path.to_string_lossy().to_string();
             let exec_str = dg.executable.as_ref().map(|p| p.to_string_lossy().to_string());
@@ -259,7 +290,20 @@ pub async fn start_scan(
                         .and_then(|r| r.try_get::<i64, _>("id"))
                     {
                         Ok(id) => id,
-                        Err(_) => continue, // row gone / DB error — skip
+                        Err(_) => {
+                            // row gone / DB error — still advance progress so
+                            // the bar doesn't stall on this index.
+                            let _ = app_for_emit.emit(
+                                "scan-progress",
+                                scan::ScanProgress {
+                                    current_dir: path_str.clone(),
+                                    completed: i + 1,
+                                    total,
+                                    status: scan::ScanStatus::Running,
+                                },
+                            );
+                            continue;
+                        }
                     }
                 }
             };
@@ -285,7 +329,30 @@ pub async fn start_scan(
             .bind(game_id)
             .execute(&*pool_for_task)
             .await;
+
+            // Per-game ingest-phase progress event.
+            let _ = app_for_emit.emit(
+                "scan-progress",
+                scan::ScanProgress {
+                    current_dir: path_str,
+                    completed: i + 1,
+                    total,
+                    status: scan::ScanStatus::Running,
+                },
+            );
         }
+
+        // Terminal Completed — emitted AFTER all ingest work is durable in DB,
+        // so the frontend's status==="completed" → refetch sees the rows.
+        let _ = app_for_emit.emit(
+            "scan-progress",
+            scan::ScanProgress {
+                current_dir: String::new(),
+                completed: total,
+                total,
+                status: scan::ScanStatus::Completed,
+            },
+        );
     });
 
     Ok(())
