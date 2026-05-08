@@ -78,22 +78,35 @@ pub enum OrchError {
     AlreadyActive,
 }
 
+/// Internal: the spawn step yields either a known game PID (direct launch)
+/// or a marker that the caller must discover the PID via `find_game_pid`
+/// (LE launch — `LEProc.exe` exits before forking the real game process).
+enum SpawnedPid {
+    Known(u32),
+    NeedsLookup,
+}
+
 /// Inputs the command layer must supply per-launch. `pool` and `data_dir`
-/// come from `AppPaths`; `game_id` comes from the frontend.
+/// come from `AppPaths`; `game_id` comes from the frontend. `use_le`
+/// distinguishes the two launch modes: false (default) spawns the game
+/// directly; true spawns through `LEProc.exe -runas <profile>` for
+/// transcoded-locale launching.
 pub struct LaunchInputs {
     pub data_dir: PathBuf,
     pub pool: SqlitePool,
     pub game_id: i64,
+    pub use_le: bool,
 }
 
-/// Synchronous prep step (DB read + LE resolve). Split out so command-layer
-/// validation can fail fast — before a `sessions` row is created — when the
-/// game has no executable or LE is missing.
+/// Synchronous prep step (DB read + optional LE resolve). Split out so
+/// command-layer validation can fail fast — before a `sessions` row is
+/// created — when the game has no executable or LE is missing.
 ///
-/// Returns: (le_path, le_profile, exe_path, args_vec, cwd_path, game_name).
+/// Returns: (le_path_opt, le_profile, exe_path, args_vec, cwd_path,
+/// game_name). `le_path_opt` is `Some` only when `inputs.use_le` is true.
 pub async fn prepare_launch(
     inputs: &LaunchInputs,
-) -> Result<(PathBuf, String, PathBuf, Vec<String>, PathBuf, String), OrchError> {
+) -> Result<(Option<PathBuf>, String, PathBuf, Vec<String>, PathBuf, String), OrchError> {
     // Single round-trip — touched columns mirror the games-table additions
     // from 03a's schema-v3 migration (`le_profile`, `launch_args`, `cwd`).
     let row: (String, Option<String>, String, Option<String>, Option<String>) = sqlx::query_as(
@@ -128,8 +141,13 @@ pub async fn prepare_launch(
 
     // Resolve LE last — it's the most likely failure point on a fresh install,
     // and we want the games-table read to validate first so a missing-exe
-    // game surfaces NoExecutable instead of LE::NotFound.
-    let le_path = le::resolve_le_path(&inputs.data_dir)?;
+    // game surfaces NoExecutable instead of LE::NotFound. Only resolved when
+    // the caller actually intends to launch through LE.
+    let le_path = if inputs.use_le {
+        Some(le::resolve_le_path(&inputs.data_dir)?)
+    } else {
+        None
+    };
     Ok((le_path, profile, exe_path, args, cwd_path, name))
 }
 
@@ -175,7 +193,7 @@ pub type LaunchHandle = (
 /// the abort path is a small leak (one extra capture before the loop notices),
 /// which we accept — the cost is < 100ms of CPU and one stale PNG on disk.
 pub async fn launch_game(inputs: LaunchInputs) -> Result<LaunchHandle, OrchError> {
-    let (le_path, profile, exe_path, args, cwd, game_name) = prepare_launch(&inputs).await?;
+    let (le_path_opt, profile, exe_path, args, cwd, game_name) = prepare_launch(&inputs).await?;
 
     let session_id = session::start_session(&inputs.pool, inputs.game_id).await?;
     let started_at = chrono::Utc::now().to_rfc3339();
@@ -201,43 +219,42 @@ pub async fn launch_game(inputs: LaunchInputs) -> Result<LaunchHandle, OrchError
     // no async surface, suitable for a flag that only flips once.
     let cancel_flag = Arc::new(AtomicBool::new(false));
 
-    // Spawn LEProc synchronously so we know upfront whether the launch
-    // command itself failed (bad LE path, OS-level spawn failure). On
-    // failure we still mark the session and surface the IO error — the
-    // session row is the single source of truth for failed launches.
+    // Spawn synchronously (LE or direct) so an immediate failure surfaces
+    // before the wait task is dispatched. The session row remains the source
+    // of truth for failed launches — we still flip status to launch_failed
+    // from inside the task on spawn error.
     let pool = inputs.pool.clone();
     let arg_refs: Vec<&str> = args.iter().map(|s| s.as_str()).collect();
-    let spawn_result = process_track::spawn_le(&le_path, &profile, &exe_path, &arg_refs, &cwd);
+    // For LE: spawn_le returns LEProc's PID; the real game PID has to be
+    // discovered via find_game_pid. For direct: spawn_direct returns the
+    // game's own PID — no polling needed.
+    let spawn_kind: Result<SpawnedPid, std::io::Error> = match &le_path_opt {
+        Some(le_path) => process_track::spawn_le(le_path, &profile, &exe_path, &arg_refs, &cwd)
+            .map(|_le_pid| SpawnedPid::NeedsLookup),
+        None => process_track::spawn_direct(&exe_path, &arg_refs, &cwd).map(SpawnedPid::Known),
+    };
 
     let exe_for_pid = exe_path.clone();
     let cancel_for_wait = cancel_flag.clone();
     let join: tokio::task::JoinHandle<Result<(), OrchError>> = tokio::spawn(async move {
-        match spawn_result {
-            Ok(_le_pid) => {
-                // Find the real game PID (LEProc exits ~immediately after
-                // forking; we poll for the descendant matching exe basename).
-                match process_track::find_game_pid(&exe_for_pid).await {
-                    Ok(game_pid) => {
-                        session::mark_running(&pool, session_id).await?;
-                        // wait_for_exit is INFINITE; its only failure mode
-                        // is OpenProcess (process gone before we attached).
-                        // Default to -1 in that case; lifecycle still finalizes.
-                        let exit_code =
-                            process_track::wait_for_exit(game_pid).await.unwrap_or(-1);
-                        // Tell the screenshot task to stop BEFORE finalizing.
-                        cancel_for_wait.store(true, Ordering::Relaxed);
-                        session::end_session(&pool, session_id, exit_code).await?;
-                    }
-                    Err(_) => {
-                        // 30s polling timed out (or PID resolution failed).
-                        // Caller's UI sees status='launch_failed' on next read.
-                        cancel_for_wait.store(true, Ordering::Relaxed);
-                        session::mark_failed(&pool, session_id).await?;
-                    }
-                }
+        let pid_resolved: Result<u32, ()> = match spawn_kind {
+            Ok(SpawnedPid::Known(pid)) => Ok(pid),
+            Ok(SpawnedPid::NeedsLookup) => {
+                process_track::find_game_pid(&exe_for_pid).await.map_err(|_| ())
+            }
+            Err(_) => Err(()),
+        };
+        match pid_resolved {
+            Ok(game_pid) => {
+                session::mark_running(&pool, session_id).await?;
+                // wait_for_exit is INFINITE; its only failure mode is
+                // OpenProcess (process gone before we attached). Default to
+                // -1 in that case; lifecycle still finalizes.
+                let exit_code = process_track::wait_for_exit(game_pid).await.unwrap_or(-1);
+                cancel_for_wait.store(true, Ordering::Relaxed);
+                session::end_session(&pool, session_id, exit_code).await?;
             }
             Err(_) => {
-                // LEProc spawn failed (binary missing, permission denied, etc.).
                 cancel_for_wait.store(true, Ordering::Relaxed);
                 session::mark_failed(&pool, session_id).await?;
             }
@@ -301,12 +318,14 @@ mod tests {
             data_dir: data_dir.clone(),
             pool: pool.clone(),
             game_id: 1,
+            use_le: false,
         };
         let _ = prepare_launch(&inputs);
         let _ = launch_game(LaunchInputs {
             data_dir,
             pool: pool.clone(),
             game_id: 1,
+            use_le: false,
         });
     }
 }

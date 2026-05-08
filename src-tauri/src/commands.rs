@@ -700,6 +700,7 @@ pub const ACTIVE_SESSION_EVENT: &str = "active-session-changed";
 #[tauri::command]
 pub async fn launch_game(
     game_id: i64,
+    use_le: Option<bool>,
     app: AppHandle,
     state: State<'_, AppPaths>,
     active_state: State<'_, ActiveSessionState>,
@@ -723,6 +724,7 @@ pub async fn launch_game(
         data_dir,
         pool: (*pool).clone(),
         game_id,
+        use_le: use_le.unwrap_or(false),
     })
     .await
     .map_err(err_str)?;

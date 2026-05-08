@@ -62,14 +62,20 @@ export interface SessionRow {
 /**
  * Begin a new game session. Backend pre-checks that no other session is
  * active; returns the freshly-created `ActiveSession` (also emitted via
- * `active-session-changed`). Throws when:
+ * `active-session-changed`). Pass `useLe: true` to launch through Locale
+ * Emulator (`LEProc.exe -runas <profile>`); default is direct launch.
+ *
+ * Throws when:
  *   - another session is active
  *   - the game row is missing / has no executable_path
- *   - LE path can't be resolved
- *   - LEProc spawn fails (pre-launch IO error)
+ *   - (useLe only) LE path can't be resolved
+ *   - process spawn fails (pre-launch IO error)
  */
-export async function launchGame(gameId: number): Promise<ActiveSession> {
-  return invoke<ActiveSession>("launch_game", { gameId });
+export async function launchGame(
+  gameId: number,
+  useLe: boolean = false,
+): Promise<ActiveSession> {
+  return invoke<ActiveSession>("launch_game", { gameId, useLe });
 }
 
 /**

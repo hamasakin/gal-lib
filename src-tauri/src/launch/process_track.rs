@@ -76,6 +76,23 @@ pub fn spawn_le(
     Ok(child.id())
 }
 
+/// Spawn the game executable directly (no LE wrapper). Returns the game's
+/// own PID — caller can pass it straight to `wait_for_exit`, no
+/// `find_game_pid` polling needed since there is no launcher fork in the way.
+pub fn spawn_direct(
+    game_exe: &Path,
+    args: &[&str],
+    cwd: &Path,
+) -> std::io::Result<u32> {
+    let mut cmd = std::process::Command::new(game_exe);
+    for a in args {
+        cmd.arg(a);
+    }
+    cmd.current_dir(cwd);
+    let child = cmd.spawn()?;
+    Ok(child.id())
+}
+
 /// Poll the process table until a process with basename matching
 /// `game_exe.file_name()` appears (case-insensitive). Returns its PID.
 ///

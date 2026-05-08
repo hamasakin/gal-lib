@@ -164,15 +164,15 @@ export function GameCard({
     onPickMetadata(game);
   }
 
-  async function onLaunch(e?: React.MouseEvent) {
+  async function onLaunch(useLe: boolean = false, e?: React.MouseEvent) {
     e?.stopPropagation();
     if (otherActive) {
       toast.error("已有活动游戏 — 请先结束当前会话");
       return;
     }
     try {
-      await launchGame(game.id);
-      toast.info(`正在启动 — ${displayName}`);
+      await launchGame(game.id, useLe);
+      toast.info(`正在启动 — ${displayName}${useLe ? "（LE）" : ""}`);
     } catch (err: unknown) {
       toast.error(`启动失败 — ${String(err)}`);
     }
@@ -318,7 +318,7 @@ export function GameCard({
                   variant="default"
                   disabled={launchDisabled}
                   className="absolute bottom-2 right-2 opacity-0 group-hover:opacity-100 transition-opacity shadow"
-                  onClick={(e) => void onLaunch(e)}
+                  onClick={(e) => void onLaunch(false, e)}
                   aria-label="启动"
                   title="启动"
                 >
@@ -346,7 +346,14 @@ export function GameCard({
 
       <DropdownMenuContent align="start" className="w-44">
         {!activeSession && !noExe && (
-          <DropdownMenuItem onClick={() => void onLaunch()}>启动</DropdownMenuItem>
+          <>
+            <DropdownMenuItem onClick={() => void onLaunch(false)}>
+              启动
+            </DropdownMenuItem>
+            <DropdownMenuItem onClick={() => void onLaunch(true)}>
+              用 LE 启动
+            </DropdownMenuItem>
+          </>
         )}
         {isActive && (
           <DropdownMenuItem

@@ -452,7 +452,7 @@ export default function Detail() {
    * the P3 minimal Detail (cwd empty-string → undefined so backend re-evals
    * the default; launch_args empty-string sent verbatim).
    */
-  async function onLaunch() {
+  async function onLaunch(useLe: boolean = false) {
     if (otherActive) {
       toast.error("已有活动游戏 — 请先结束当前会话");
       return;
@@ -465,8 +465,8 @@ export default function Detail() {
         cwd: cwd.length > 0 ? cwd : undefined,
         executable_path: exePath.length > 0 ? exePath : undefined,
       });
-      await launchGame(gameId);
-      toast.info(`正在启动 — ${displayName}`);
+      await launchGame(gameId, useLe);
+      toast.info(`正在启动 — ${displayName}${useLe ? "（LE）" : ""}`);
     } catch (e: unknown) {
       toast.error(`启动失败 — ${String(e)}`);
     }
@@ -614,10 +614,21 @@ export default function Detail() {
               </div>
             )}
 
-            <div>
-              <Button onClick={() => void onLaunch()} disabled={launchDisabled}>
+            <div className="flex items-center gap-2">
+              <Button
+                onClick={() => void onLaunch(false)}
+                disabled={launchDisabled}
+              >
                 <Play className="mr-1 size-4" />
                 {isActive ? "游戏中" : "启动"}
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => void onLaunch(true)}
+                disabled={launchDisabled}
+                title="使用 Locale Emulator 转区启动"
+              >
+                用 LE 启动
               </Button>
             </div>
           </div>
