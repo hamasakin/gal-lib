@@ -127,7 +127,15 @@ export function LaunchButton({
         }}
       >
         <span className="grid h-11 w-11 flex-shrink-0 place-items-center">
-          <Play size={16} fill="currentColor" strokeWidth={1} />
+          {/* Right-pointing Play has its visual centroid offset to the
+              left of its bounding box (more mass on the wide-base side).
+              translateX nudges it back to perceived center. */}
+          <Play
+            size={16}
+            fill="currentColor"
+            strokeWidth={1}
+            style={{ transform: "translateX(1.5px)" }}
+          />
         </span>
         <span
           className="pr-4 font-mono text-[11px] uppercase tracking-[0.14em] transition-opacity duration-150"

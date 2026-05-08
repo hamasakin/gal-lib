@@ -318,7 +318,12 @@ export function GameCard({
                       : "bg-ink-0 hover:scale-110",
                   )}
                 >
-                  <Play size={14} fill="currentColor" strokeWidth={1} />
+                  <Play
+                    size={14}
+                    fill="currentColor"
+                    strokeWidth={1}
+                    style={{ transform: "translateX(1px)" }}
+                  />
                 </button>
               )}
             </div>
