@@ -124,10 +124,15 @@ pub async fn process_game(
         result.cover_url = c.cover_url.clone();
 
         // 3. Cover cache (best-effort; failure leaves cover_path NULL,
-        //    UI shows placeholder per 02-CONTEXT § Cover Cache).
+        //    frontend falls back to the remote cover_url which we always
+        //    persist on the row regardless of cache outcome).
         if let Some(url) = &c.cover_url {
-            if let Ok(rel) = cover_cache::cache_cover(data_dir, game_id_for_cover, url).await {
-                result.cover_path = Some(rel.to_string_lossy().into_owned());
+            match cover_cache::cache_cover(data_dir, game_id_for_cover, url).await {
+                Ok(rel) => result.cover_path = Some(rel.to_string_lossy().into_owned()),
+                Err(e) => eprintln!(
+                    "[ingest] cover cache failed for game {} ({}): {}",
+                    game_id_for_cover, url, e
+                ),
             }
         }
     }

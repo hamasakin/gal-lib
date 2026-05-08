@@ -192,31 +192,45 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
         if (!o) onClose();
       }}
     >
-      <DialogContent className="max-w-2xl">
+      <DialogContent className="sm:max-w-2xl">
         <DialogHeader>
-          <DialogTitle>
-            {game ? `重新匹配元数据 — ${game.name_cn ?? game.name}` : "重新匹配元数据"}
+          <DialogTitle className="pr-8 truncate">
+            {(() => {
+              if (!game) return "重新匹配元数据";
+              const display =
+                (game.name_cn && game.name_cn.length > 0 && game.name_cn) ||
+                (game.name && game.name.length > 0 && game.name) ||
+                "";
+              return display ? `重新匹配元数据 — ${display}` : "重新匹配元数据";
+            })()}
           </DialogTitle>
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
           {/* Search input + source toggle */}
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2">
             <Input
               placeholder="搜索 Bangumi 或 VNDB"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              className="flex-1"
+              className="flex-1 min-w-0"
             />
             <ToggleGroup
               type="single"
               value={source}
+              variant="outline"
+              size="sm"
               onValueChange={(v) => {
                 if (v === "bangumi" || v === "vndb") setSource(v);
               }}
+              className="shrink-0"
             >
-              <ToggleGroupItem value="bangumi">Bangumi</ToggleGroupItem>
-              <ToggleGroupItem value="vndb">VNDB</ToggleGroupItem>
+              <ToggleGroupItem value="bangumi" variant="outline" size="sm">
+                Bangumi
+              </ToggleGroupItem>
+              <ToggleGroupItem value="vndb" variant="outline" size="sm">
+                VNDB
+              </ToggleGroupItem>
             </ToggleGroup>
           </div>
 

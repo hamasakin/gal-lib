@@ -471,12 +471,21 @@ pub async fn bind_metadata(
         other => return Err(format!("source must be 'bangumi' or 'vndb' (got '{}')", other)),
     };
 
-    // Cache cover (best-effort).
+    // Cache cover (best-effort). Surface failures via stderr so a user
+    // reporting "no cover after bind" has a log line to grep — the row's
+    // cover_url is still set from the bind, and the frontend falls back to
+    // it when cover_path is null.
     let cover_path = if let Some(url) = &detail.cover_url {
-        crate::cover_cache::cache_cover(&data_dir, game_id, url)
-            .await
-            .ok()
-            .map(|p| p.to_string_lossy().into_owned())
+        match crate::cover_cache::cache_cover(&data_dir, game_id, url).await {
+            Ok(p) => Some(p.to_string_lossy().into_owned()),
+            Err(e) => {
+                eprintln!(
+                    "[bind_metadata] cover cache failed for game {} ({}): {}",
+                    game_id, url, e
+                );
+                None
+            }
+        }
     } else {
         None
     };

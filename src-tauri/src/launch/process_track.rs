@@ -73,7 +73,12 @@ pub fn spawn_le(
     }
     cmd.current_dir(cwd);
     let child = cmd.spawn()?;
-    Ok(child.id())
+    let pid = child.id();
+    eprintln!(
+        "[launch] LEProc spawned: pid={} le_path={:?} profile={:?} game_exe={:?} cwd={:?}",
+        pid, le_path, profile, game_exe, cwd
+    );
+    Ok(pid)
 }
 
 /// Spawn the game executable directly (no LE wrapper). Returns the game's
@@ -109,23 +114,58 @@ pub async fn find_game_pid(game_exe: &Path) -> Result<u32, ProcessError> {
         return Err(ProcessError::Win32("empty game_exe basename".into()));
     }
     let target_stem = target_name.trim_end_matches(".exe").to_string();
+    eprintln!(
+        "[launch] find_game_pid target_name={:?} target_stem={:?}",
+        target_name, target_stem
+    );
 
     // Brief grace window so LE has a chance to fork before our first scan.
     tokio::time::sleep(Duration::from_millis(LE_GRACE_MS)).await;
 
     let mut sys = System::new();
-    for _ in 0..MAX_POLL_ATTEMPTS {
+    for attempt in 0..MAX_POLL_ATTEMPTS {
         sys.refresh_processes(ProcessesToUpdate::All, true);
         for (pid, proc) in sys.processes() {
             let name = proc.name().to_string_lossy().to_lowercase();
             // Exact match first; fall back to stem-prefix to tolerate
             // versioned/aliased binaries.
             if name == target_name || (!target_stem.is_empty() && name.starts_with(&target_stem)) {
+                eprintln!(
+                    "[launch] find_game_pid hit at attempt {}: pid={} name={:?}",
+                    attempt + 1,
+                    pid.as_u32(),
+                    name
+                );
                 return Ok(pid.as_u32());
             }
         }
+        // Every ~5s of polling, dump the process table snapshot so the user
+        // can see what processes ARE running and diagnose why no match.
+        if attempt > 0 && attempt % 10 == 0 {
+            let mut names: Vec<String> = sys
+                .processes()
+                .values()
+                .map(|p| p.name().to_string_lossy().to_lowercase())
+                .collect();
+            names.sort();
+            names.dedup();
+            eprintln!(
+                "[launch] find_game_pid still searching for {:?} after {}s — sample running .exe names: {:?}",
+                target_name,
+                (attempt as u64 * POLL_INTERVAL_MS) / 1000,
+                names
+                    .iter()
+                    .filter(|n| n.ends_with(".exe"))
+                    .take(20)
+                    .collect::<Vec<_>>()
+            );
+        }
         tokio::time::sleep(Duration::from_millis(POLL_INTERVAL_MS)).await;
     }
+    eprintln!(
+        "[launch] find_game_pid timed out after 30s for target {:?}",
+        target_name
+    );
     Err(ProcessError::Timeout)
 }
 

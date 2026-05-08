@@ -41,16 +41,16 @@ import { ImageOff, Play, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import {
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuPortal,
-  DropdownMenuSeparator,
-  DropdownMenuSub,
-  DropdownMenuSubContent,
-  DropdownMenuSubTrigger,
-  DropdownMenuTrigger,
-} from "@/components/ui/dropdown-menu";
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuPortal,
+  ContextMenuSeparator,
+  ContextMenuSub,
+  ContextMenuSubContent,
+  ContextMenuSubTrigger,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import type { Game } from "@/lib/games";
@@ -221,25 +221,15 @@ export function GameCard({
   }
 
   return (
-    <DropdownMenu>
-      {/* Right-click target: the entire card. Radix DropdownMenuTrigger fires
-          on the configured event; we override to "contextmenu" via asChild +
-          a wrapper that calls e.preventDefault on contextmenu and dispatches
-          the open event. The simpler shadcn pattern is the ContextMenu
-          primitive — but UI-SPEC explicitly says "DropdownMenu", so we wire
-          contextmenu manually below via onContextMenu on the inner button. */}
-      <DropdownMenuTrigger asChild>
+    <ContextMenu>
+      {/* Left-click on the card body navigates to the detail page;
+          right-click is intercepted by Radix's ContextMenuTrigger and opens
+          ContextMenuContent at the cursor position (anchored over the card,
+          not below it). */}
+      <ContextMenuTrigger asChild>
         <button
           type="button"
           onClick={onCardClick}
-          onContextMenu={(e) => {
-            // Prevent native context menu — Radix handles open via the
-            // trigger's onPointerDown when fired with right-button, but we
-            // additionally forward a synthetic click with the same currentTarget
-            // to ensure the menu opens reliably across browsers (webview2).
-            e.preventDefault();
-            (e.currentTarget as HTMLButtonElement).click();
-          }}
           className="group flex flex-col gap-2 text-left focus:outline-none focus-visible:ring-1 focus-visible:ring-ring rounded-md"
           aria-label={displayName}
         >
@@ -342,59 +332,55 @@ export function GameCard({
             </div>
           </div>
         </button>
-      </DropdownMenuTrigger>
+      </ContextMenuTrigger>
 
-      <DropdownMenuContent align="start" className="w-44">
+      <ContextMenuContent className="w-44">
         {!activeSession && !noExe && (
           <>
-            <DropdownMenuItem onClick={() => void onLaunch(false)}>
+            <ContextMenuItem onClick={() => void onLaunch(false)}>
               启动
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => void onLaunch(true)}>
+            </ContextMenuItem>
+            <ContextMenuItem onClick={() => void onLaunch(true)}>
               用 LE 启动
-            </DropdownMenuItem>
+            </ContextMenuItem>
           </>
         )}
         {isActive && (
-          <DropdownMenuItem
+          <ContextMenuItem
             onClick={() => void onForceEnd()}
             className="text-destructive focus:text-destructive"
           >
             强制结束
-          </DropdownMenuItem>
+          </ContextMenuItem>
         )}
-        {(!activeSession || isActive) && <DropdownMenuSeparator />}
-        {/* 收藏 toggle (Phase 4 / 04d). Label flips based on current state. */}
-        <DropdownMenuItem onClick={() => void onToggleFavorite()}>
+        {(!activeSession || isActive) && <ContextMenuSeparator />}
+        <ContextMenuItem onClick={() => void onToggleFavorite()}>
           {game.is_favorite ? "取消收藏" : "收藏"}
-        </DropdownMenuItem>
-        {/* 通关状态 — submenu with 4 status options. The current status is
-            disabled (it's a no-op anyway) so the user gets a visual cue of
-            what the row is set to without the menu acting like a toggle. */}
-        <DropdownMenuSub>
-          <DropdownMenuSubTrigger>通关状态</DropdownMenuSubTrigger>
-          <DropdownMenuPortal>
-            <DropdownMenuSubContent>
+        </ContextMenuItem>
+        <ContextMenuSub>
+          <ContextMenuSubTrigger>通关状态</ContextMenuSubTrigger>
+          <ContextMenuPortal>
+            <ContextMenuSubContent>
               {STATUS_SUBMENU.map(({ value, label }) => (
-                <DropdownMenuItem
+                <ContextMenuItem
                   key={value}
                   disabled={value === game.status}
                   onClick={() => void onSetStatus(value)}
                 >
                   {label}
-                </DropdownMenuItem>
+                </ContextMenuItem>
               ))}
-            </DropdownMenuSubContent>
-          </DropdownMenuPortal>
-        </DropdownMenuSub>
-        <DropdownMenuSeparator />
-        <DropdownMenuItem onClick={() => onPickMetadata(game)}>
+            </ContextMenuSubContent>
+          </ContextMenuPortal>
+        </ContextMenuSub>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => onPickMetadata(game)}>
           重新匹配元数据
-        </DropdownMenuItem>
-        <DropdownMenuItem onClick={() => onRefreshCover(game)}>
+        </ContextMenuItem>
+        <ContextMenuItem onClick={() => onRefreshCover(game)}>
           重新抓取封面
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
+        </ContextMenuItem>
+      </ContextMenuContent>
+    </ContextMenu>
   );
 }

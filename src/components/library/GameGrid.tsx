@@ -104,15 +104,19 @@ export function GameGrid({
   });
 
   // ── Memoized cover-URL resolver (one closure per dataDir) ──────────────
+  // Prefer the locally-cached file (cover_path) — fast, offline, no CSP
+  // worries. Fall back to the remote cover_url when the local cache is
+  // missing (e.g. ingest's network fetch was rate-limited or the
+  // bind_metadata cover-cache step failed silently). The remote URL is
+  // safe to render in the Tauri webview because tauri.conf.json's default
+  // img-src CSP includes `https:`.
   const resolveCover = useMemo(() => {
-    if (!dataDir) return () => null;
     return (game: Game): string | null => {
-      if (!game.cover_path) return null;
-      // Use forward-slashes; convertFileSrc handles platform mapping. The
-      // backend stores paths like "covers/42.jpg"; combine with the absolute
-      // dataDir then run convertFileSrc.
-      const abs = `${dataDir.replace(/\\/g, "/")}/${game.cover_path}`;
-      return convertFileSrc(abs);
+      if (game.cover_path && dataDir) {
+        const abs = `${dataDir.replace(/\\/g, "/")}/${game.cover_path}`;
+        return convertFileSrc(abs);
+      }
+      return game.cover_url ?? null;
     };
   }, [dataDir]);
 
