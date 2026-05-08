@@ -1,56 +1,32 @@
 /**
- * GameGrid — virtualized 2D grid of GameCard tiles.
+ * GameGrid — magazine-asymmetric library grid.
  *
- * 02-UI-SPEC §Cover Grid contract:
- *   - Layout: responsive `repeat(auto-fill, minmax(200px, 1fr))` columns
- *     (we approximate via measured columnCount; minmax CSS works visually
- *     but virtualization needs explicit lane count)
- *   - p-6 (24px) outer padding
- *   - @tanstack/react-virtual `useVirtualizer` 2D mode (count = totalRows,
- *     lanes = columnCount); recompute on container resize
- *   - 16px gap (gap-4) between cards
- *   - Over-render buffer ~30 cards (overscan 6 rows × 5 cols ≈ 30)
+ * v1.1 redesign:
+ *   - Top row (only when there ARE recent games): hero band
+ *     `1.6fr 1fr 1fr 1fr` — first card is a large HeroCard with cover
+ *     background, the next 3 are regular GameCards.
+ *   - section-rule: serif "藏书 · Stacks" + count + ruled line
+ *   - Rest: equal-density grid driven by `--card-w` (which the Tweaks panel
+ *     sets via `[data-density]`), so card size scales with user preference.
  *
- * Cover URL resolution:
- *   - Once per render, resolve dataDir via `get_data_dir` Tauri command
- *     (cached in a useRef to avoid re-fetching). Combined with each game's
- *     `cover_path` (relative, e.g. "covers/42.jpg") via convertFileSrc to
- *     produce a webview-safe `src` URL.
- *   - convertFileSrc handles tauri:// / asset:// / http://localhost:port
- *     transport per platform / dev-vs-prod automatically.
- *
- * Refetch trigger:
- *   - After user-initiated metadata refresh (rebind/cover-only), parent
- *     calls `listGames()` then setGames; GameGrid re-renders with the new
- *     row data. No internal cache here.
+ * Drops the v1.0 react-virtual virtualization. Galgame collections are
+ * typically 50-300 games; modern browsers render that as plain DOM at 60fps.
+ * Re-add virtualization if the library hits 1000+ games and scrolling stutters.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { useVirtualizer } from "@tanstack/react-virtual";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { GameCard } from "./GameCard";
+import { HeroCard } from "./HeroCard";
 import { refreshMetadata } from "@/lib/metadata";
 import { listGames, type Game } from "@/lib/games";
 import { useLibraryStore } from "@/store/library";
 import { searchGames } from "@/lib/search";
 
-const CARD_MIN_WIDTH = 200; // px — UI-SPEC §Cover Grid minmax(200px,1fr)
-const GAP = 16; // px — Tailwind gap-4
-const ROW_HEIGHT = 340; // px — 200×4/3 cover + ~52 title row + 16 gap below = 343
-const PADDING = 24; // px — Tailwind p-6
-
 interface GameGridProps {
   games: Game[];
   onPickMetadata: (game: Game) => void;
-  /**
-   * Phase 4 / 04d: a child mutation (favorite toggle / status change) just
-   * landed — refresh the grid + sidebar. Owner (Library route) decides how
-   * to refresh (searchGames vs listGames depending on whether search/sort/
-   * filter is active). Optional — falls back to a local listGames() refetch
-   * when not provided (preserves backwards compat with any callers from
-   * earlier phases).
-   */
   onChildMutation?: () => void;
 }
 
@@ -61,7 +37,7 @@ export function GameGrid({
 }: GameGridProps) {
   const setGames = useLibraryStore((s) => s.setGames);
 
-  // ── Resolve data_dir once for cover-URL composition ────────────────────
+  // Resolve dataDir once for cover-URL composition.
   const [dataDir, setDataDir] = useState<string | null>(null);
   useEffect(() => {
     invoke<string>("get_data_dir")
@@ -72,44 +48,6 @@ export function GameGrid({
       });
   }, []);
 
-  // ── Measure container to derive columnCount on resize ──────────────────
-  const scrollRef = useRef<HTMLDivElement | null>(null);
-  const [columnCount, setColumnCount] = useState(1);
-
-  useEffect(() => {
-    const el = scrollRef.current;
-    if (!el) return;
-
-    function recompute() {
-      if (!el) return;
-      const w = el.clientWidth - PADDING * 2;
-      // floor((w + gap) / (cardMin + gap)) — derive how many minmax lanes fit.
-      const cols = Math.max(1, Math.floor((w + GAP) / (CARD_MIN_WIDTH + GAP)));
-      setColumnCount(cols);
-    }
-    recompute();
-
-    const ro = new ResizeObserver(recompute);
-    ro.observe(el);
-    return () => ro.disconnect();
-  }, []);
-
-  // ── Virtualization (rows only; lanes = columnCount handled by manual indexing) ──
-  const rowCount = Math.ceil(games.length / Math.max(1, columnCount));
-  const rowVirtualizer = useVirtualizer({
-    count: rowCount,
-    getScrollElement: () => scrollRef.current,
-    estimateSize: () => ROW_HEIGHT,
-    overscan: 6,
-  });
-
-  // ── Memoized cover-URL resolver (one closure per dataDir) ──────────────
-  // Prefer the locally-cached file (cover_path) — fast, offline, no CSP
-  // worries. Fall back to the remote cover_url when the local cache is
-  // missing (e.g. ingest's network fetch was rate-limited or the
-  // bind_metadata cover-cache step failed silently). The remote URL is
-  // safe to render in the Tauri webview because tauri.conf.json's default
-  // img-src CSP includes `https:`.
   const resolveCover = useMemo(() => {
     return (game: Game): string | null => {
       if (game.cover_path && dataDir) {
@@ -120,12 +58,6 @@ export function GameGrid({
     };
   }, [dataDir]);
 
-  // ── Refresh-cover handler (delegates to refresh_metadata then refetches list) ──
-  // 04d: prefer the parent's onChildMutation (it knows the active
-  // search/sort/filter triple). Fall back to searchGames with the current
-  // store state — this preserves the user's filter view across cover
-  // refreshes (pre-04d listGames() would have replaced the grid with the
-  // unfiltered set).
   const onRefreshCover = useCallback(
     async (game: Game) => {
       try {
@@ -133,10 +65,6 @@ export function GameGrid({
         if (onChildMutation) {
           onChildMutation();
         } else {
-          // No parent hook (legacy callers): re-issue searchGames using the
-          // current store snapshot. Reading the store imperatively avoids
-          // the useCallback dep churn that would otherwise re-recreate
-          // this callback on every keystroke.
           const st = useLibraryStore.getState();
           const trimmed = st.searchQuery.trim();
           const queryArg = trimmed === "" ? null : trimmed;
@@ -152,7 +80,6 @@ export function GameGrid({
             const fresh = await searchGames(queryArg, st.sortBy, filterArg);
             setGames(fresh);
           } catch {
-            // Last-resort fallback so the grid doesn't get stuck on stale data.
             const fresh = await listGames();
             setGames(fresh);
           }
@@ -165,11 +92,6 @@ export function GameGrid({
     [setGames, onChildMutation],
   );
 
-  // ── Child-mutation handler (favorite / status). Defer to the parent
-  //    (Library route) when it provided onChildMutation — that's the only
-  //    place that knows the current search/sort/filter triple. When the
-  //    parent doesn't wire it, fall back to a plain listGames() refetch so
-  //    any earlier (P2/P3) caller still works.
   const onChildMutated = useCallback(async () => {
     if (onChildMutation) {
       onChildMutation();
@@ -184,51 +106,87 @@ export function GameGrid({
     }
   }, [onChildMutation, setGames]);
 
-  // ── Render ────────────────────────────────────────────────────────────
-  const totalHeight = rowVirtualizer.getTotalSize();
-  const virtualRows = rowVirtualizer.getVirtualItems();
-  const colTemplate = `repeat(${columnCount}, minmax(0, 1fr))`;
+  // Magazine split — first 4 with last_played form the hero band.
+  // Bare libraries (zero recent games) skip the hero band entirely.
+  const recent = useMemo(() => {
+    return games.filter((g) => g.last_played_at != null).slice(0, 4);
+  }, [games]);
+
+  const heroGame = recent[0] ?? null;
+  const sideGames = recent.slice(1, 4);
+  const heroIds = new Set(recent.map((g) => g.id));
+  const stack = useMemo(
+    () => games.filter((g) => !heroIds.has(g.id)),
+    [games, heroIds],
+  );
 
   return (
-    <div ref={scrollRef} className="h-full w-full overflow-auto">
-      <div className="p-6">
-        <div
-          style={{ height: totalHeight, position: "relative", width: "100%" }}
-        >
-          {virtualRows.map((vrow) => {
-            const startIdx = vrow.index * columnCount;
-            const rowGames = games.slice(startIdx, startIdx + columnCount);
-            return (
-              <div
-                key={vrow.key}
-                style={{
-                  position: "absolute",
-                  top: 0,
-                  left: 0,
-                  width: "100%",
-                  transform: `translateY(${vrow.start}px)`,
-                  display: "grid",
-                  gridTemplateColumns: colTemplate,
-                  gap: `${GAP}px`,
-                  // Reserve the row height so cards don't overflow the row band.
-                  height: ROW_HEIGHT,
-                  paddingBottom: GAP,
-                }}
-              >
-                {rowGames.map((g) => (
-                  <GameCard
-                    key={g.id}
-                    game={g}
-                    coverDataUrl={resolveCover(g)}
-                    onPickMetadata={onPickMetadata}
-                    onRefreshCover={onRefreshCover}
-                    onMutated={onChildMutated}
-                  />
-                ))}
-              </div>
-            );
-          })}
-        </div>
+    <div className="h-full w-full overflow-auto">
+      <div
+        className="px-8 pb-20 pt-7"
+        style={{ display: "flex", flexDirection: "column", gap: 28 }}
+      >
+        {heroGame && (
+          <div
+            className="grid gap-[22px]"
+            style={{
+              gridTemplateColumns:
+                sideGames.length >= 3
+                  ? "1.6fr 1fr 1fr 1fr"
+                  : sideGames.length === 2
+                    ? "1.6fr 1fr 1fr"
+                    : sideGames.length === 1
+                      ? "1.6fr 1fr"
+                      : "1fr",
+            }}
+          >
+            <HeroCard game={heroGame} coverDataUrl={resolveCover(heroGame)} />
+            {sideGames.map((g) => (
+              <GameCard
+                key={g.id}
+                game={g}
+                coverDataUrl={resolveCover(g)}
+                onPickMetadata={onPickMetadata}
+                onRefreshCover={onRefreshCover}
+                onMutated={onChildMutated}
+              />
+            ))}
+          </div>
+        )}
+
+        {stack.length > 0 && (
+          <>
+            <div className="flex items-center gap-3.5 pb-1 pt-2">
+              <span className="font-serif text-[14px] uppercase tracking-[0.12em] text-ink-2">
+                藏书 · Stacks
+              </span>
+              <hr className="flex-1 border-0 border-t border-line" />
+              <span className="font-mono text-[10.5px] text-ink-3">
+                — {stack.length} 部 ——
+              </span>
+            </div>
+
+            <div
+              className="grid items-end"
+              style={{
+                gridTemplateColumns:
+                  "repeat(auto-fill, minmax(var(--card-w, 172px), 1fr))",
+                gap: "28px 22px",
+              }}
+            >
+              {stack.map((g) => (
+                <GameCard
+                  key={g.id}
+                  game={g}
+                  coverDataUrl={resolveCover(g)}
+                  onPickMetadata={onPickMetadata}
+                  onRefreshCover={onRefreshCover}
+                  onMutated={onChildMutated}
+                />
+              ))}
+            </div>
+          </>
+        )}
       </div>
     </div>
   );

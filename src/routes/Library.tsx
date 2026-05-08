@@ -1,45 +1,26 @@
 /**
- * Library route ("/") — Phase 4 (04d) implementation.
+ * Library route ("/") — v1.1 redesign.
  *
- * Builds on the Phase 2/3 layout (ScanProgressBar + ActiveSessionBar +
- * GameGrid + MetadataPicker) and adds the Phase-4 search/sort/filter top
- * bar. The grid is now driven by `searchGames(query, sortBy, filter)` —
- * sort/filter come from the Zustand store, search comes from the
- * SearchBar's debounced commit into the same store.
+ * Layout (top → bottom):
+ *   <ScanProgressBar/>          — sticky top, auto-hides on idle/terminal
+ *   <PageHeader>                — breadcrumb · serif H1 · sub · actions
+ *   <ActiveSessionBar/>         — present iff active session
+ *   <Toolbar row>               — StatusFilterChips · FilterChip
+ *                                 · spacer · SearchBar · DensityToggle · SortSelect
+ *   <GameGrid/> | <empty>       — magazine grid (hero band + stacks)
+ *   <MetadataPicker/>           — controlled dialog
  *
- * Rendering tree (top → bottom):
- *   1. <ScanProgressBar />            — sticky top, auto-hides when idle
- *   2. <ActiveSessionBar />           — sticky top below scan bar
- *   3. <Top bar>                      — SearchBar (flex-1) + FilterChip + SortSelect (w-40)
- *   4. <GameGrid />                   — virtualized cover grid (or empty states)
- *   5. <MetadataPicker />             — controlled dialog
+ * Functional logic preserved from v1.0:
+ *   - Single useEffect subscribed to (searchQuery, sortBy, filter) issues
+ *     searchGames; sidebar / chip / chips / search-bar all just mutate the store.
+ *   - Empty-state classification: noScanYet / scanFinishedZeroResults / filterFoundNothing.
  *
- * Empty-state handling: pre-Phase-4 the grid was hidden when `games.length
- * === 0`. We preserve the same UX but distinguish more carefully:
- *   - 0 games + no scan ever          → "还没有游戏" (P1/P2 reuse)
- *   - 0 games + scan completed        → "未识别到游戏" (P2 reuse)
- *   - 0 games + active search/filter  → "无匹配结果" (P4 new)
- *   - games > 0                       → <GameGrid />
- *
- * Search/sort/filter loop (the heart of 04d):
- *   - Single useEffect subscribes to (searchQuery, sortBy, filter) from
- *     the store and calls `searchGames(...)`. This is the ONLY place that
- *     issues the search invoke — sidebar / chip / search-bar all just
- *     mutate the store, never call searchGames directly.
- *   - Initial load also runs through this effect (first render with
- *     defaults → searchGames(null, "last_played", null)).
- *   - Scan completion still triggers an extra refetch (covers the case
- *     where a scan ends while no search/filter is active and we want the
- *     newly ingested rows to appear without user input).
- *
- * Routing-export note: `router.tsx` uses `import { Library }` — keep
- * NAMED export.
+ * Routing-export note: router.tsx uses `import { Library }` — keep NAMED export.
  */
 
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { ScrollArea } from "@/components/ui/scroll-area";
-import { Button } from "@/components/ui/button";
+import { toast } from "sonner";
 import { useLibraryStore } from "@/store/library";
 import {
   getSidebarCategories,
@@ -47,6 +28,7 @@ import {
   type SearchFilter,
 } from "@/lib/search";
 import type { Game } from "@/lib/games";
+import { startScan, listScanRoots } from "@/lib/scan";
 import { GameGrid } from "@/components/library/GameGrid";
 import { ScanProgressBar } from "@/components/library/ScanProgressBar";
 import { ActiveSessionBar } from "@/components/library/ActiveSessionBar";
@@ -54,12 +36,12 @@ import { MetadataPicker } from "@/components/library/MetadataPicker";
 import { SearchBar } from "@/components/library/SearchBar";
 import { SortSelect } from "@/components/library/SortSelect";
 import { FilterChip } from "@/components/library/FilterChip";
+import { StatusFilterChips } from "@/components/library/StatusFilterChips";
+import { DensityToggle } from "@/components/library/DensityToggle";
+import { PageHeader } from "@/components/library/PageHeader";
+import { RefreshCw, FolderPlus } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-/**
- * "Empty filter" detection — a SearchFilter is empty when none of its
- * slice fields are populated AND favorite is not explicitly true. Used to
- * disambiguate "library is genuinely empty" vs. "filter narrowed to zero".
- */
 function isFilterEmpty(f: SearchFilter): boolean {
   return (
     f.tag_id == null &&
@@ -69,6 +51,9 @@ function isFilterEmpty(f: SearchFilter): boolean {
     f.year_decade == null
   );
 }
+
+const TOOLBAR_BTN =
+  "inline-flex h-8 items-center gap-2 border border-line bg-bg-1 px-3.5 text-[12.5px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-ink-0";
 
 export function Library() {
   const games = useLibraryStore((s) => s.games);
@@ -84,12 +69,6 @@ export function Library() {
   const [pickerGame, setPickerGame] = useState<Game | null>(null);
   const navigate = useNavigate();
 
-  /**
-   * Single re-fetch path: builds the (query, sort, filter) triple from the
-   * store and calls searchGames. Empty searchQuery becomes `null` per the
-   * `searchGames` wrapper contract (no LIKE clause). Empty filter object
-   * is forwarded as-is — backend treats all-undefined as "no clauses".
-   */
   const refetchGrid = useCallback(async () => {
     const trimmedQuery = searchQuery.trim();
     const queryArg = trimmedQuery === "" ? null : trimmedQuery;
@@ -103,13 +82,6 @@ export function Library() {
     }
   }, [searchQuery, sortBy, filter, setGames]);
 
-  /**
-   * Sidebar refresh — called after mutations that change the aggregate
-   * counts (favorite toggle / status update / scan completion / metadata
-   * refresh). We KEEP the sidebar fetch separate from refetchGrid because
-   * search/sort/filter changes do NOT change the underlying counts (just
-   * which subset is shown).
-   */
   const refreshSidebar = useCallback(async () => {
     try {
       const cats = await getSidebarCategories();
@@ -120,15 +92,10 @@ export function Library() {
     }
   }, [setSidebar]);
 
-  // Re-run searchGames whenever the (query, sort, filter) triple changes.
-  // Initial render uses store defaults → searchGames(null, "last_played",
-  // null), giving the same boot output as the pre-04d listGames() call.
   useEffect(() => {
     void refetchGrid();
   }, [refetchGrid]);
 
-  // Refetch grid + sidebar after a scan finishes — newly ingested rows
-  // surface in the grid AND the sidebar counts update (new brands / years).
   useEffect(() => {
     if (scanProgress?.status === "completed") {
       void refetchGrid();
@@ -136,99 +103,136 @@ export function Library() {
     }
   }, [scanProgress?.status, refetchGrid, refreshSidebar]);
 
-  /**
-   * Mutation hook handed to GameGrid — fired when a card-level toggle
-   * (favorite / status) succeeds. Re-fetch BOTH the grid (search/filter
-   * may now exclude the row) AND the sidebar (counts shift).
-   */
   const onChildMutation = useCallback(() => {
     void refetchGrid();
     void refreshSidebar();
   }, [refetchGrid, refreshSidebar]);
 
-  // Empty-state classification. We treat "filter or search active" as a
-  // stronger signal than "scan ever ran" — if the user is actively
-  // narrowing and got zero hits, they want to see "无匹配结果", not the
-  // scan-onboarding placeholder.
   const isEmpty = games.length === 0;
   const hasActiveSearch = searchQuery.trim() !== "";
   const hasActiveFilter = !isFilterEmpty(filter);
   const scanCompleted = scanProgress?.status === "completed";
-  const noScanYet = isEmpty && !scanProgress && !hasActiveSearch && !hasActiveFilter;
+  const noScanYet =
+    isEmpty && !scanProgress && !hasActiveSearch && !hasActiveFilter;
   const scanFinishedZeroResults =
     isEmpty && scanCompleted && !hasActiveSearch && !hasActiveFilter;
   const filterFoundNothing = isEmpty && (hasActiveSearch || hasActiveFilter);
+  const scanRunning = scanProgress?.status === "running";
 
-  /** Reset both axes to recover from a "no results" filter state. */
   function clearAllFilters() {
     setFilter({});
     setSearchQuery("");
   }
 
+  async function onRescan() {
+    if (scanRunning) return;
+    try {
+      const roots = await listScanRoots();
+      if (roots.length === 0) {
+        toast.error("还没有扫描根目录 — 请先到设置页添加");
+        navigate("/settings");
+        return;
+      }
+      await startScan("incremental");
+      toast.info("已开始扫描");
+    } catch (e: unknown) {
+      toast.error(`扫描失败 — ${String(e)}`);
+    }
+  }
+
+  // Page-header sub line — derive from latest game's last_scanned_at when
+  // available; otherwise show a neutral message.
+  const latestScan = games.reduce<string | null>((acc, g) => {
+    if (!g.last_scanned_at) return acc;
+    if (!acc || g.last_scanned_at > acc) return g.last_scanned_at;
+    return acc;
+  }, null);
+  const subLine = latestScan
+    ? `最近一次扫描 · ${new Date(latestScan).toLocaleString("zh-CN")} · ${games.length} 部作品`
+    : games.length > 0
+      ? `共 ${games.length} 部作品`
+      : "尚未扫描";
+
   return (
     <div className="flex h-full w-full flex-col">
       <ScanProgressBar />
-      {/* 03f: ActiveSessionBar renders below ScanProgressBar; both are
-          sticky top-0 inside the same flex column, so when both are visible
-          simultaneously (rare) ScanProgressBar wins the top slot and
-          ActiveSessionBar stacks below it. ActiveSessionBar self-hides
-          when activeSession is null. */}
-      <ActiveSessionBar />
 
-      {/* 04d top bar: SearchBar (flex-1) + FilterChip + SortSelect (w-40). */}
-      <div className="flex items-center gap-3 px-6 pt-4 pb-3">
-        <SearchBar />
-        <FilterChip />
-        <SortSelect />
-      </div>
+      <div className="flex-1 overflow-auto">
+        <PageHeader
+          crumb="图书馆"
+          badge={`${games.length} 部作品`}
+          title={
+            <>
+              本月你的<span className="text-brand italic">私人书架</span>
+            </>
+          }
+          sub={subLine}
+          actions={
+            <>
+              <button
+                type="button"
+                onClick={() => void onRescan()}
+                disabled={scanRunning}
+                className={cn(
+                  TOOLBAR_BTN,
+                  scanRunning && "cursor-not-allowed opacity-60",
+                )}
+                style={{ borderRadius: "var(--r-md)" }}
+              >
+                <RefreshCw size={14} strokeWidth={1.7} />
+                <span>重新扫描</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => navigate("/settings")}
+                className={TOOLBAR_BTN}
+                style={{ borderRadius: "var(--r-md)" }}
+              >
+                <FolderPlus size={14} strokeWidth={1.7} />
+                <span>添加根目录</span>
+              </button>
+            </>
+          }
+        />
 
-      <div className="flex-1 overflow-hidden">
+        <ActiveSessionBar />
+
+        {/* Toolbar row — chips · filters | searchbar · density · sort */}
+        <div className="flex flex-wrap items-center gap-3 border-b border-line px-8 py-3.5">
+          <StatusFilterChips />
+          <FilterChip />
+          <span className="flex-1" />
+          <SearchBar />
+          <DensityToggle />
+          <SortSelect />
+        </div>
+
+        {/* Grid + empty states */}
         {noScanYet && (
-          <ScrollArea className="h-full w-full">
-            <div className="flex h-full min-h-full w-full items-center justify-center px-8 py-12">
-              <div className="flex flex-col items-center gap-6 text-center">
-                <h2 className="text-h2 text-foreground">还没有游戏</h2>
-                <p className="text-body text-muted-foreground">
-                  请到设置页添加扫描根目录
-                </p>
-                <Button variant="ghost" onClick={() => navigate("/settings")}>
-                  打开设置
-                </Button>
-              </div>
-            </div>
-          </ScrollArea>
+          <EmptyPanel
+            title="还没有游戏"
+            sub="请到设置页添加扫描根目录"
+            actionLabel="打开设置"
+            onAction={() => navigate("/settings")}
+          />
         )}
 
         {scanFinishedZeroResults && (
-          <ScrollArea className="h-full w-full">
-            <div className="flex h-full min-h-full w-full items-center justify-center px-8 py-12">
-              <div className="flex flex-col items-center gap-6 text-center">
-                <h2 className="text-h2 text-foreground">未识别到游戏</h2>
-                <p className="text-body text-muted-foreground">
-                  请检查根目录扫描深度配置
-                </p>
-                <Button variant="ghost" onClick={() => navigate("/settings")}>
-                  回到设置
-                </Button>
-              </div>
-            </div>
-          </ScrollArea>
+          <EmptyPanel
+            title="未识别到游戏"
+            sub="请检查根目录扫描深度配置"
+            actionLabel="回到设置"
+            onAction={() => navigate("/settings")}
+          />
         )}
 
         {filterFoundNothing && (
-          <ScrollArea className="h-full w-full">
-            <div className="flex h-full min-h-full w-full items-center justify-center px-8 py-12">
-              <div className="flex flex-col items-center gap-6 text-center">
-                <h2 className="text-h2 text-foreground">无匹配结果</h2>
-                <p className="text-body text-muted-foreground">
-                  尝试调整搜索或清除筛选条件
-                </p>
-                <Button variant="ghost" onClick={clearAllFilters}>
-                  清除筛选
-                </Button>
-              </div>
-            </div>
-          </ScrollArea>
+          <EmptyPanel
+            title="无匹配结果"
+            sub="尝试调整搜索或清除筛选条件"
+            actionLabel="清除筛选"
+            onAction={clearAllFilters}
+          />
         )}
 
         {!isEmpty && (
@@ -241,6 +245,32 @@ export function Library() {
       </div>
 
       <MetadataPicker game={pickerGame} onClose={() => setPickerGame(null)} />
+    </div>
+  );
+}
+
+interface EmptyPanelProps {
+  title: string;
+  sub: string;
+  actionLabel: string;
+  onAction: () => void;
+}
+
+function EmptyPanel({ title, sub, actionLabel, onAction }: EmptyPanelProps) {
+  return (
+    <div className="flex w-full items-center justify-center px-8 py-24">
+      <div className="flex max-w-md flex-col items-center gap-4 text-center">
+        <h2 className="font-serif text-[28px] font-medium text-ink-0">{title}</h2>
+        <p className="font-mono text-[12px] text-ink-2">{sub}</p>
+        <button
+          type="button"
+          onClick={onAction}
+          className="inline-flex h-8 items-center border border-line bg-bg-1 px-4 text-[12.5px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-ink-0"
+          style={{ borderRadius: "var(--r-md)" }}
+        >
+          {actionLabel}
+        </button>
+      </div>
     </div>
   );
 }

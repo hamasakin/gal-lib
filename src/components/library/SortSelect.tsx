@@ -1,34 +1,10 @@
 /**
- * SortSelect — Library top-bar sort-key dropdown.
+ * SortSelect — Library top-bar sort-key selector.
  *
- * Wraps shadcn `Select` with the 5 sort options whitelisted by the backend
- * (`search_games` ORDER BY mapping in 04b commands.rs):
- *   - last_played → 最近游玩 (NULLS LAST DESC; default)
- *   - created_at  → 添加日期 (DESC)
- *   - name        → 字母 (NOCASE ASC)
- *   - playtime    → 时长 (DESC)
- *   - rating      → 评分 (NULLS LAST DESC)
- *
- * Copy is LOCKED by 04d execution context — do not rename without a
- * coordinated UI-SPEC update.
- *
- * Mutation flow:
- *   - User picks an option → `onValueChange` writes the new SortBy value
- *     into `useLibraryStore.sortBy`.
- *   - Library.tsx subscribes to `sortBy` and re-runs `searchGames(...)`.
- *   - The store does NOT re-fetch automatically (state-only) — keeps this
- *     component dumb and the side-effect localized to one place.
- *
- * w-40 (160px) matches the locked top-bar width from 04d context.
+ * v1.1 visual: native styled `<select>` matching design's `.sort-sel`
+ * (28px height, mono ↓ caret hint, line-strong border on hover).
  */
 
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
 import { useLibraryStore } from "@/store/library";
 import type { SortBy } from "@/lib/search";
 
@@ -37,7 +13,6 @@ interface SortOption {
   label: string;
 }
 
-// Order matches the 04d locked copy: 最近游玩 / 添加日期 / 字母 / 时长 / 评分.
 const SORT_OPTIONS: readonly SortOption[] = [
   { value: "last_played", label: "最近游玩" },
   { value: "created_at", label: "添加日期" },
@@ -51,17 +26,33 @@ export function SortSelect() {
   const setSortBy = useLibraryStore((s) => s.setSortBy);
 
   return (
-    <Select value={sortBy} onValueChange={(v) => setSortBy(v as SortBy)}>
-      <SelectTrigger className="w-40" aria-label="排序方式">
-        <SelectValue />
-      </SelectTrigger>
-      <SelectContent>
+    <div className="flex items-center gap-2">
+      <span className="font-mono text-[10px] uppercase tracking-[0.12em] text-ink-3">
+        排序
+      </span>
+      <select
+        value={sortBy}
+        onChange={(e) => setSortBy(e.currentTarget.value as SortBy)}
+        aria-label="排序方式"
+        className="h-7 cursor-pointer appearance-none border border-line bg-bg-1 pr-7 pl-2.5 text-[11.5px] text-ink-1 outline-none transition-colors hover:border-line-strong hover:bg-bg-2 focus:border-brand"
+        style={{
+          borderRadius: "var(--r-md)",
+          backgroundImage:
+            "url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'><path fill='rgba(255,255,255,.45)' d='M0 0h10L5 6z'/></svg>\")",
+          backgroundRepeat: "no-repeat",
+          backgroundPosition: "right 8px center",
+        }}
+      >
         {SORT_OPTIONS.map((opt) => (
-          <SelectItem key={opt.value} value={opt.value}>
+          <option
+            key={opt.value}
+            value={opt.value}
+            className="bg-bg-1 text-ink-0"
+          >
             {opt.label}
-          </SelectItem>
+          </option>
         ))}
-      </SelectContent>
-    </Select>
+      </select>
+    </div>
   );
 }

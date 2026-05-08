@@ -1,26 +1,12 @@
 /**
- * ScanProgressBar — sticky-top progress + cancel-button bar.
+ * ScanProgressBar — sticky-top scan progress + cancel.
  *
- * 02-UI-SPEC §Scan Progress Bar contract:
- *   - sticky top-0 z-10 bg-background/95 backdrop-blur border-b border-border h-14
- *   - 4px shadcn Progress block with track bg-secondary, indicator bg-ring (#7C5CFF — 3rd accent use)
- *   - Status text: "扫描中 ({current_dir}) — 已完成 {completed} / 共 {total}"
- *   - 取消 button (right) → AlertDialog "确定取消扫描？已扫描的游戏会保留" Yes/No
- *
- * Lifecycle behavior:
- *   - Hidden (returns null) when scanProgress is null OR after a 5s timeout
- *     following a terminal status (completed / cancelled / failed)
- *   - When the next "running" event arrives, the bar reappears and the
- *     auto-hide timer is cleared
- *
- * Throttle: per CONTEXT.md the consumer should throttle render to ~100ms.
- * For now we render every store change because the backend already emits
- * per-directory (not per-file), so update rate is naturally bounded.
+ * v1.1 restyle — preserves auto-hide + cancel-confirmation behavior, swaps
+ * shadcn Progress for a 2px gradient bar (var(--accent)→var(--accent-deep))
+ * and adopts mono-font status copy.
  */
 
 import { useEffect, useState } from "react";
-import { Progress } from "@/components/ui/progress";
-import { Button } from "@/components/ui/button";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -42,7 +28,6 @@ export function ScanProgressBar() {
   const scanProgress = useLibraryStore((s) => s.scanProgress);
   const [hidden, setHidden] = useState(false);
 
-  // Auto-hide after terminal status. Re-arm the timer on each terminal event.
   useEffect(() => {
     if (!scanProgress) {
       setHidden(false);
@@ -65,11 +50,10 @@ export function ScanProgressBar() {
   const { current_dir, completed, total, status } = scanProgress;
   const pct = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
 
-  // Status-specific summary line (running shows current_dir; terminal shows outcome)
   let summary: string;
   switch (status) {
     case "running":
-      summary = `扫描中 (${current_dir || "…"}) — 已完成 ${completed} / 共 ${total}`;
+      summary = `扫描中 — ${current_dir || "…"}`;
       break;
     case "completed":
       summary = `扫描完成 — 共 ${total} 款游戏`;
@@ -92,18 +76,40 @@ export function ScanProgressBar() {
   }
 
   return (
-    <div className="sticky top-0 z-10 h-14 border-b border-border bg-background/95 backdrop-blur">
-      <Progress value={pct} className="h-1 rounded-none" />
-      <div className="flex h-[calc(100%-4px)] items-center justify-between px-6">
-        <span className="truncate text-body text-foreground" title={summary}>
-          {summary}
-        </span>
+    <div className="sticky top-0 z-10 border-b border-line bg-bg-0/95 backdrop-blur">
+      {/* 2px gradient progress line */}
+      <div className="relative h-[2px] w-full bg-bg-2">
+        <div
+          className="absolute left-0 top-0 h-full transition-[width] duration-300"
+          style={{
+            width: `${pct}%`,
+            background: "linear-gradient(90deg, var(--accent), var(--accent-deep))",
+          }}
+        />
+      </div>
+      <div className="flex h-12 items-center justify-between px-8">
+        <div className="flex min-w-0 items-baseline gap-3">
+          <span
+            className="truncate font-mono text-[11.5px] text-ink-1"
+            title={summary}
+          >
+            {summary}
+          </span>
+          {status === "running" && (
+            <span className="font-mono text-[10.5px] text-ink-3">
+              {completed} / {total} · {pct}%
+            </span>
+          )}
+        </div>
         {status === "running" && (
           <AlertDialog>
             <AlertDialogTrigger asChild>
-              <Button variant="ghost" size="sm">
+              <button
+                type="button"
+                className="inline-flex h-7 items-center px-3 font-mono text-[10.5px] uppercase tracking-[0.1em] text-ink-2 transition-colors hover:text-ink-0"
+              >
                 取消
-              </Button>
+              </button>
             </AlertDialogTrigger>
             <AlertDialogContent>
               <AlertDialogHeader>
