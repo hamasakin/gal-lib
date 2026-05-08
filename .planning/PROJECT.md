@@ -1,5 +1,15 @@
 # gal-lib
 
+## Current Milestone: v1.1 UI Redesign (桌面应用原型)
+
+**Goal:** 把 Claude Design 交付的 gal-lib 桌面应用原型完整落地，替换现有 shadcn 默认深色 UI——让"图书馆/收藏"美学真正落到玩家眼前。
+
+**Target features:**
+- 设计令牌系统（3 主题 × 4 强调色 × 2 圆角 × 3 侧栏宽度 × 3 封面密度，全部通过 `<html data-*>` 实时切换）
+- 三套字体（Noto Serif SC 标题 + Noto Sans SC 正文 + JetBrains Mono 数字/路径）+ Tweaks 面板（右下浮动调样）
+- 6 个页面重塑：Library（杂志式不对称网格 + hero band）、Detail（封面背景模糊 + 沉浸式 hero + tabs）、Scan（双栏 feed + 待复核卡片）、Stats（KPI + 热力图 + Top 榜）、Settings（200px 左导航 + 七分区）、Screenshots（按游戏分组 masonry + lightbox）
+- 招牌细节：藏书章式状态戳（mono 大写小标 + 5 种状态色）、44px 圆形启动按钮 hover 展开 240px 含 LE Profile 弹层、现在游玩浮条带脉冲动画
+
 ## What This Is
 
 Galgame 收藏与启动管理器 —— 一个面向 Windows 用户的桌面应用，扫描本地游戏目录后自动从 Bangumi/VNDB 抓取元数据、用 Locale Emulator 一键转区启动游戏、自动累计游玩时长。面向中文圈 galgame 玩家本人收藏管理及向朋友/社区分发。
@@ -117,4 +127,4 @@ This document evolves at phase transitions and milestone boundaries.
 4. Update Context with current state
 
 ---
-*Last updated: 2026-05-06 after initialization*
+*Last updated: 2026-05-08 — v1.1 milestone (UI Redesign) started*

@@ -1,17 +1,16 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.0
-milestone_name: milestone
-status: completed
-stopped_at: "Completed 05-05e-PLAN.md (Phase 5 wave 5/5 FINAL — Detail page extensions: ScreenshotsTab + SavesTab + 截图间隔 select in 设置 tab); 29/29 plans done. **v1 milestone complete.**"
-last_updated: "2026-05-07T20:15:53.982Z"
-last_activity: 2026-05-07
+milestone: v1.1
+milestone_name: UI Redesign
+status: planning
+last_updated: "2026-05-08T15:19:03.782Z"
+last_activity: 2026-05-08
 progress:
-  total_phases: 5
-  completed_phases: 5
-  total_plans: 29
-  completed_plans: 29
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
@@ -39,12 +38,10 @@ See: .planning/PROJECT.md (updated 2026-05-06)
 
 ## Current Position
 
-Phase: 5 (stats-media) — COMPLETE
-Plan: 5 of 5 complete (05e done — Detail page extensions: ScreenshotsTab + SavesTab + 截图间隔 select)
-Status: v1 milestone complete
-Last activity: 2026-05-07
-
-Progress: [████████████████████] 100% (29/29 plans complete; Phase 5 5/5 complete; v1 milestone done)
+Phase: Not started (defining requirements)
+Plan: —
+Status: Defining requirements
+Last activity: 2026-05-08 — Milestone v1.1 started
 
 ## Performance Metrics
 
