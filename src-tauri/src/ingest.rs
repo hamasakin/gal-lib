@@ -111,7 +111,19 @@ pub async fn process_game(
     }
 
     // 1. Search BOTH sources in parallel, merge, pick best ≥ threshold.
-    let final_choice = pick_best_across_sources(&discovered.clean_name).await;
+    let mut final_choice = pick_best_across_sources(&discovered.clean_name).await;
+
+    // 1b. Cascade: if the standard clean missed both sources, retry once
+    //     with the aggressive clean (longest contiguous CJK run) — handles
+    //     scene-release directories like "[180216] [PULLTOP] ... 見上げて
+    //     ごらん、夜空の星を FINE DAYS (iso+mds)" where standard clean
+    //     leaves enough trailing noise to drive both APIs below threshold.
+    if final_choice.is_none() {
+        let aggressive = crate::title_clean::aggressive_clean(&discovered.raw_name);
+        if !aggressive.trim().is_empty() && aggressive != discovered.clean_name {
+            final_choice = pick_best_across_sources(&aggressive).await;
+        }
+    }
 
     if let Some(c) = final_choice {
         result.name = c.title.clone();
