@@ -83,6 +83,11 @@ export function Library() {
   const navigate = useNavigate();
   const viewMode = usePreferencesStore((s) => s.viewMode);
 
+  // 20260509g — 滚动容器 ref，下放到 GameGrid 给 useVirtualizer 的
+  // getScrollElement 用。Library 持有这个 ref 是因为 scroll 区是 toolbar
+  // 之外的 flex-1 那一层（见 line ~258），它不在 GameGrid 内部。
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+
   const refetchGrid = useCallback(async () => {
     const trimmedQuery = searchQuery.trim();
     const queryArg = trimmedQuery === "" ? null : trimmedQuery;
@@ -255,7 +260,10 @@ export function Library() {
         </div>
 
         {/* Grid + empty states — only this region scrolls; header/toolbar stay fixed above */}
-        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
+        <div
+          ref={scrollContainerRef}
+          className="flex min-h-0 flex-1 flex-col overflow-auto"
+        >
         {noScanYet && (
           <EmptyPanel
             icon={LibraryIcon}
@@ -295,6 +303,7 @@ export function Library() {
             games={visibleGames}
             onPickMetadata={setPickerGame}
             onChildMutation={onChildMutation}
+            scrollContainerRef={scrollContainerRef}
           />
         )}
         {!isEmpty && viewMode === "list" && <GameList games={visibleGames} />}

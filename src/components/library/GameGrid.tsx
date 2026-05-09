@@ -1,25 +1,33 @@
 /**
- * GameGrid — uniform density-controlled library grid.
+ * GameGrid — uniform density-controlled library grid using @tanstack/react-virtual
+ * row-mode virtualization with manual lane indexing.
  *
  * Single density grid driven by `--card-w` (which the Tweaks panel /
- * DensityToggle sets via `[data-density]`), so card size + column count
- * scale with user preference. 3:4 container matches typical portrait
- * covers; `object-cover` causes minimal cropping.
+ * DensityToggle sets via `[data-density]`). 3:4 cover container matches
+ * typical portrait covers; `object-cover` causes minimal cropping.
  *
- * The earlier magazine layout (hero band `1.6fr 1fr 1fr 1fr` + stack)
- * was dropped because (a) the hero band ignored density, and (b) when
- * the band was wider than tall, portrait covers got dramatically
- * cropped by `object-cover`. Recently-played emphasis is preserved by
- * GameCard's status stamp.
+ * 20260509g — Re-introduced react-virtual after the v1.0 removal:
+ *   - Scroll container is owned by Library.tsx (passed in via
+ *     `scrollContainerRef`); GameGrid no longer wraps itself in
+ *     `overflow-auto`. Single scrollable region (header + toolbar fixed,
+ *     grid scrolls beneath).
+ *   - Row-mode virtualization with `count = ceil(games.length / columnCount)`.
+ *     `columnCount` is derived from a ResizeObserver on the inner container,
+ *     reading `--card-w` from getComputedStyle so DensityToggle changes
+ *     trigger reflow naturally.
+ *   - Fixed `estimateSize = cardWidth * 4/3 + 56 (meta height) + 28 (row gap)`
+ *     so virtualizer doesn't need to measure each row.
+ *   - `overscan: 5` rows — default 1 leaves visible blank during fast scroll.
  *
- * Drops the v1.0 react-virtual virtualization. Galgame collections are
- * typically 50-300 games; modern browsers render that as plain DOM at 60fps.
- * Re-add virtualization if the library hits 1000+ games and scrolling stutters.
+ * The earlier magazine layout (hero band) was dropped earlier because it
+ * ignored density and cropped portrait covers. Density-uniform grid is
+ * preserved here.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
+import { useVirtualizer } from "@tanstack/react-virtual";
 import { GameCard } from "./GameCard";
 import { refreshMetadata } from "@/lib/metadata";
 import { listGames, type Game } from "@/lib/games";
@@ -30,12 +38,24 @@ interface GameGridProps {
   games: Game[];
   onPickMetadata: (game: Game) => void;
   onChildMutation?: () => void;
+  /**
+   * Scroll container owned by Library.tsx — useVirtualizer's `getScrollElement`
+   * target. Required: GameGrid no longer wraps itself in overflow-auto.
+   */
+  scrollContainerRef: React.RefObject<HTMLDivElement | null>;
 }
+
+// Layout constants — must stay in sync with the inline style on the row div
+// below. Any changes also touch the row-height estimate further down.
+const COLUMN_GAP = 22;
+const ROW_GAP = 28;
+const META_HEIGHT = 56; // GameCard meta block (title + sub line) + bottom gap
 
 export function GameGrid({
   games,
   onPickMetadata,
   onChildMutation,
+  scrollContainerRef,
 }: GameGridProps) {
   const setGames = useLibraryStore((s) => s.setGames);
 
@@ -60,6 +80,64 @@ export function GameGrid({
     };
   }, [dataDir]);
 
+  // ── ResizeObserver-driven columnCount + cardWidth ────────────────────────
+  // Measure the inner padded container (`px-8` = 32px each side), read
+  // `--card-w` from CSS (set by [data-density] on a parent), derive columns:
+  //   cols = floor((innerWidth + COLUMN_GAP) / (cardWidth + COLUMN_GAP))
+  // — this is the auto-fill equivalent for `repeat(auto-fill, minmax(W, 1fr))`.
+  const innerRef = useRef<HTMLDivElement>(null);
+  const [columnCount, setColumnCount] = useState(1);
+  const [cardWidth, setCardWidth] = useState(172);
+
+  useEffect(() => {
+    const el = innerRef.current;
+    if (!el) return;
+
+    const measure = () => {
+      const cssCardW = parseFloat(
+        getComputedStyle(el).getPropertyValue("--card-w").trim(),
+      );
+      const w = Number.isFinite(cssCardW) && cssCardW > 0 ? cssCardW : 172;
+      setCardWidth(w);
+
+      // px-8 → 32px left + 32px right = 64 total.
+      const inner = el.clientWidth - 64;
+      const cols = Math.max(
+        1,
+        Math.floor((inner + COLUMN_GAP) / (w + COLUMN_GAP)),
+      );
+      setColumnCount(cols);
+    };
+
+    measure();
+    const ro = new ResizeObserver(measure);
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+
+  // Estimated row height — cover (3:4) + meta + row gap.
+  // Used both for virtualizer estimateSize and for the absolute-positioned
+  // row layout below.
+  const coverHeight = cardWidth * (4 / 3);
+  const rowHeight = coverHeight + META_HEIGHT;
+  const rowStride = rowHeight + ROW_GAP;
+  const rowCount = Math.ceil(games.length / columnCount);
+
+  const virtualizer = useVirtualizer({
+    count: rowCount,
+    getScrollElement: () => scrollContainerRef.current,
+    estimateSize: () => rowStride,
+    overscan: 5,
+  });
+
+  // Re-measure on density changes — useVirtualizer needs to know rowStride
+  // changed so it re-positions virtual rows. Calling measure() (provided by
+  // react-virtual) invalidates its internal size cache.
+  useEffect(() => {
+    virtualizer.measure();
+  }, [rowStride, columnCount, virtualizer]);
+
+  // ── existing mutation callbacks (unchanged) ──────────────────────────────
   const onRefreshCover = useCallback(
     async (game: Game) => {
       try {
@@ -108,28 +186,58 @@ export function GameGrid({
     }
   }, [onChildMutation, setGames]);
 
+  // ── render ───────────────────────────────────────────────────────────────
+  // Inner padded container is the ResizeObserver target AND the virtualizer
+  // viewport-relative container. Total height = sum of row strides; rows
+  // are absolutely positioned by translateY at row.start (provided by the
+  // virtualizer in pixel coordinates relative to the inner container's
+  // start, not the scroll container — react-virtual handles that mapping).
+  const virtualRows = virtualizer.getVirtualItems();
+  const totalHeight = virtualizer.getTotalSize();
+
   return (
-    <div className="h-full w-full overflow-auto">
-      <div className="px-8 pb-20 pt-7">
-        <div
-          className="grid items-start"
-          style={{
-            gridTemplateColumns:
-              "repeat(auto-fill, minmax(var(--card-w, 172px), 1fr))",
-            gap: "28px 22px",
-          }}
-        >
-          {games.map((g) => (
-            <GameCard
-              key={g.id}
-              game={g}
-              coverDataUrl={resolveCover(g)}
-              onPickMetadata={onPickMetadata}
-              onRefreshCover={onRefreshCover}
-              onMutated={onChildMutated}
-            />
-          ))}
-        </div>
+    <div ref={innerRef} className="px-8 pb-20 pt-7">
+      <div
+        style={{
+          height: `${totalHeight}px`,
+          width: "100%",
+          position: "relative",
+        }}
+      >
+        {virtualRows.map((row) => {
+          const start = row.index * columnCount;
+          const end = Math.min(start + columnCount, games.length);
+          const rowGames = games.slice(start, end);
+          return (
+            <div
+              key={row.key}
+              data-row-index={row.index}
+              style={{
+                position: "absolute",
+                top: 0,
+                left: 0,
+                width: "100%",
+                transform: `translateY(${row.start}px)`,
+                display: "grid",
+                gridTemplateColumns: `repeat(${columnCount}, minmax(0, 1fr))`,
+                columnGap: `${COLUMN_GAP}px`,
+                rowGap: `${ROW_GAP}px`,
+                alignItems: "start",
+              }}
+            >
+              {rowGames.map((g) => (
+                <GameCard
+                  key={g.id}
+                  game={g}
+                  coverDataUrl={resolveCover(g)}
+                  onPickMetadata={onPickMetadata}
+                  onRefreshCover={onRefreshCover}
+                  onMutated={onChildMutated}
+                />
+              ))}
+            </div>
+          );
+        })}
       </div>
     </div>
   );
