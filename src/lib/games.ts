@@ -69,6 +69,15 @@ export interface Game {
    * can rely on `=== true` / `=== false`.
    */
   is_favorite: boolean;
+  // ── Phase 11 / schema v7 fields ──
+  /**
+   * Game synopsis from the metadata source (Bangumi `summary` or VNDB
+   * `description`). Multiline plain text; rendered as paragraphs in the
+   * Detail page summary section. `null` when the metadata source returned
+   * no description, when the game is unbound, or before the v7 backfill
+   * has reached this row.
+   */
+  summary: string | null;
   created_at: string;
   updated_at: string;
 }

@@ -36,9 +36,24 @@ import type { Tag } from "./tags";
  * - `status`: one of {unplayed, playing, cleared, dropped}.
  * - `favorite`: when `true`, only `is_favorite = 1` rows. `false` and
  *   `undefined` are equivalent (no filter applied).
- * - `brand`: exact match against `games.brand`. NULL brands never match.
+ * - `brand`: exact match against `games.brand` (single-brand sidebar nav).
+ *   NULL brands never match.
  * - `year_decade`: anchor year (e.g. 2020) → matches release_year in
  *   [year_decade, year_decade + 9].
+ *
+ * Phase 11 multi-dim facets (FilterPanel uses these instead of the legacy
+ * single-axis `brand`/`tag_id`):
+ * - `brands`: OR within — games whose brand matches any of these strings.
+ * - `staff_ids`: OR within — games where any of these `persons.id` rows
+ *   appear in `game_staff` (any role). For role-specific filtering, the UI
+ *   selects persons of that role from `getFilterOptions()` and passes
+ *   their ids; the backend doesn't filter by role here.
+ * - `official_tags`: OR within — games carrying any of these tag_name
+ *   strings in `game_official_tags`.
+ *
+ * Cross-axis combination is AND (intersect), within-axis is OR (union).
+ * This matches the FilterPanel intuition: "any of these brands AND any of
+ * these tags AND any of these staff".
  */
 export interface SearchFilter {
   tag_id?: number;
@@ -46,6 +61,10 @@ export interface SearchFilter {
   favorite?: boolean;
   brand?: string;
   year_decade?: number;
+  // Phase 11 multi-dim filters
+  brands?: string[];
+  staff_ids?: number[];
+  official_tags?: string[];
 }
 
 /**

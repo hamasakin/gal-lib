@@ -62,6 +62,9 @@ function cloneFilter(f: AdvancedFilter): AdvancedFilter {
     years: new Set(f.years),
     durations: new Set(f.durations),
     reviewOnly: f.reviewOnly,
+    brands: new Set(f.brands),
+    staffIds: new Set(f.staffIds),
+    officialTags: new Set(f.officialTags),
   };
 }
 

@@ -34,6 +34,17 @@ export interface AdvancedFilter {
   durations: Set<DurationBucket>;
   /** Only games with `match_confidence < 80`. */
   reviewOnly: boolean;
+  // ── Phase 11 multi-dim facets ──
+  /** Brand set; empty = no constraint. Server-side filtered via `SearchFilter.brands`. */
+  brands: Set<string>;
+  /**
+   * Staff person-id set; empty = no constraint. Server-side filtered via
+   * `SearchFilter.staff_ids` (any role). Frontend tracks the role only for
+   * grouping in the panel UI.
+   */
+  staffIds: Set<number>;
+  /** Official tag-name set; empty = no constraint. */
+  officialTags: Set<string>;
 }
 
 export const EMPTY_ADV_FILTER: AdvancedFilter = {
@@ -43,6 +54,9 @@ export const EMPTY_ADV_FILTER: AdvancedFilter = {
   years: new Set(),
   durations: new Set(),
   reviewOnly: false,
+  brands: new Set(),
+  staffIds: new Set(),
+  officialTags: new Set(),
 };
 
 /** True iff the filter would narrow the input set. */
@@ -53,7 +67,10 @@ export function isAdvFilterActive(f: AdvancedFilter): boolean {
     f.ratingMax != null ||
     f.years.size > 0 ||
     f.durations.size > 0 ||
-    f.reviewOnly
+    f.reviewOnly ||
+    f.brands.size > 0 ||
+    f.staffIds.size > 0 ||
+    f.officialTags.size > 0
   );
 }
 
@@ -65,6 +82,9 @@ export function countActiveSlices(f: AdvancedFilter): number {
   if (f.years.size > 0) n++;
   if (f.durations.size > 0) n++;
   if (f.reviewOnly) n++;
+  if (f.brands.size > 0) n++;
+  if (f.staffIds.size > 0) n++;
+  if (f.officialTags.size > 0) n++;
   return n;
 }
 
