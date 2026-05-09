@@ -41,6 +41,7 @@ import { useNavigate, useParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowLeft,
+  Brush,
   ChevronLeft,
   ChevronRight,
   Copy,
@@ -48,11 +49,12 @@ import {
   FolderOpen,
   Heart,
   ImageOff,
+  Mic2,
   MoreHorizontal,
+  Music,
+  PenLine,
   Search,
 } from "lucide-react";
-import ReactMarkdown from "react-markdown";
-import remarkGfm from "remark-gfm";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { toast } from "sonner";
 import { toastLaunchSuccess } from "@/lib/toast";
@@ -93,6 +95,16 @@ import {
   type SessionRow,
 } from "@/lib/launch";
 import { listGameTags, listTags, type Tag } from "@/lib/tags";
+import {
+  bangumiSubjectUrl,
+  listOfficialTagsForGame,
+  listPersonsForGame,
+  openExternalUrl,
+  vndbVnUrl,
+  type GameStaffRow,
+  type OfficialTagRow,
+  type StaffRole,
+} from "@/lib/persons";
 import {
   getScreenshotSettings,
   setScreenshotInterval,
@@ -177,13 +189,120 @@ type LaunchExtras = {
   cwd?: string | null;
 };
 
-function buildSummary(game: Game): string | null {
-  const lines: string[] = [];
-  if (game.brand) lines.push(`**品牌**　${game.brand}`);
-  if (game.release_year) lines.push(`**发售年份**　${game.release_year}`);
-  if (game.bangumi_id) lines.push(`**Bangumi**　\`${game.bangumi_id}\``);
-  if (game.vndb_id) lines.push(`**VNDB**　\`${game.vndb_id}\``);
-  return lines.length > 0 ? lines.join("\n\n") : null;
+/** Display order for staff role groups in 总览 → 制作团队. */
+const STAFF_ROLE_ORDER: StaffRole[] = [
+  "scenario",
+  "artist",
+  "voice",
+  "music",
+];
+
+const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
+  scenario: "剧本 / 编剧",
+  artist: "原画 / 画师",
+  voice: "声优",
+  music: "音乐",
+};
+
+const STAFF_ROLE_ICONS: Record<
+  StaffRole,
+  React.ComponentType<{ size?: number; strokeWidth?: number; className?: string }>
+> = {
+  scenario: PenLine,
+  artist: Brush,
+  voice: Mic2,
+  music: Music,
+};
+
+/**
+ * Fetch + cache the staff list for a single game. Re-runs whenever `gameId`
+ * changes; consumers can call `refresh()` after a metadata refetch.
+ * Failures are toasted but don't crash the page (returns empty array).
+ */
+function useGameStaff(gameId: number): {
+  data: GameStaffRow[];
+  loading: boolean;
+  refresh: () => Promise<void>;
+} {
+  const [data, setData] = useState<GameStaffRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!Number.isFinite(gameId)) return;
+    setLoading(true);
+    try {
+      const rows = await listPersonsForGame(gameId);
+      setData(rows);
+    } catch (e: unknown) {
+      // eslint-disable-next-line no-console
+      console.error("[Detail] listPersonsForGame failed:", e);
+      toast.error(`加载制作团队失败 — ${String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [gameId]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  return { data, loading, refresh };
+}
+
+/**
+ * Fetch + cache official tags (Bangumi/VNDB) for a single game. Backend
+ * already returns rows sorted by weight DESC — UI preserves that order.
+ */
+function useGameOfficialTags(gameId: number): {
+  data: OfficialTagRow[];
+  loading: boolean;
+  refresh: () => Promise<void>;
+} {
+  const [data, setData] = useState<OfficialTagRow[]>([]);
+  const [loading, setLoading] = useState(false);
+
+  const refresh = useCallback(async () => {
+    if (!Number.isFinite(gameId)) return;
+    setLoading(true);
+    try {
+      const rows = await listOfficialTagsForGame(gameId);
+      setData(rows);
+    } catch (e: unknown) {
+      // eslint-disable-next-line no-console
+      console.error("[Detail] listOfficialTagsForGame failed:", e);
+      toast.error(`加载官方标签失败 — ${String(e)}`);
+    } finally {
+      setLoading(false);
+    }
+  }, [gameId]);
+
+  useEffect(() => {
+    void refresh();
+  }, [refresh]);
+
+  return { data, loading, refresh };
+}
+
+/**
+ * Group staff rows by role, preserving backend insertion order within each
+ * role bucket. Returns groups in `STAFF_ROLE_ORDER`; empty buckets omitted.
+ */
+function groupStaffByRole(
+  rows: GameStaffRow[],
+): Array<{ role: StaffRole; items: GameStaffRow[] }> {
+  const buckets: Record<StaffRole, GameStaffRow[]> = {
+    scenario: [],
+    artist: [],
+    voice: [],
+    music: [],
+  };
+  for (const r of rows) {
+    if (r.role in buckets) buckets[r.role].push(r);
+  }
+  return STAFF_ROLE_ORDER.filter((r) => buckets[r].length > 0).map((role) => ({
+    role,
+    items: buckets[role],
+  }));
 }
 
 export default function Detail() {
@@ -215,6 +334,16 @@ export default function Detail() {
   const [screenshotIntervalState, setScreenshotIntervalState] = useState<
     number | null
   >(null);
+
+  const {
+    data: staffRows,
+    refresh: refreshStaff,
+  } = useGameStaff(gameId);
+  const {
+    data: officialTags,
+    refresh: refreshOfficialTags,
+  } = useGameOfficialTags(gameId);
+  const staffGroups = groupStaffByRole(staffRows);
 
   const notesHydratedRef = useRef(false);
 
@@ -320,8 +449,19 @@ export default function Detail() {
           console.error("[Detail] post-session refetch failed:", e);
         });
       void refreshGame();
+      // Metadata may have been refreshed via context menu while the session
+      // was running — re-pull staff + official tags to stay in sync.
+      void refreshStaff();
+      void refreshOfficialTags();
     }
-  }, [activeSession, gameId, setSessionsForGame, refreshGame]);
+  }, [
+    activeSession,
+    gameId,
+    setSessionsForGame,
+    refreshGame,
+    refreshStaff,
+    refreshOfficialTags,
+  ]);
 
   // Esc → back. Window-level listener — Radix Dialog primitives (used by
   // every modal in the app) trap focus and call stopPropagation on their
@@ -496,7 +636,13 @@ export default function Detail() {
     }
   }
 
-  const summaryMd = buildSummary(game);
+  const summaryParagraphs = game.summary
+    ? game.summary
+        .replace(/\r\n/g, "\n")
+        .split(/\n{2,}/)
+        .map((para) => para.trim())
+        .filter((para) => para.length > 0)
+    : [];
   const lastSavedSeconds = lastSavedAt
     ? Math.max(0, Math.floor((Date.now() - lastSavedAt) / 1000))
     : null;
@@ -694,20 +840,18 @@ export default function Detail() {
                 </Pill>
               )}
               {game.bangumi_id ? (
-                <PillLink
-                  href={bangumiPageUrl(game.bangumi_id)}
-                  title="在 Bangumi 打开此条目"
-                >
-                  BGM · {game.bangumi_id}
-                </PillLink>
+                <ExtSourcePill
+                  label="在 Bangumi 看"
+                  url={bangumiSubjectUrl(game.bangumi_id)}
+                  title={`在 Bangumi 打开此条目 · ${game.bangumi_id}`}
+                />
               ) : null}
               {game.vndb_id ? (
-                <PillLink
-                  href={vndbPageUrl(game.vndb_id)}
-                  title="在 VNDB 打开此条目"
-                >
-                  VNDB · {game.vndb_id}
-                </PillLink>
+                <ExtSourcePill
+                  label="在 VNDB 看"
+                  url={vndbVnUrl(game.vndb_id)}
+                  title={`在 VNDB 打开此条目 · ${game.vndb_id}`}
+                />
               ) : null}
               {game.executable_path ? (
                 <Pill className="font-mono">
@@ -799,19 +943,59 @@ export default function Detail() {
 
             {/* 总览 */}
             <TabsContent value="overview" className="space-y-6 pt-1">
-              <DSection title="故事简介">
-                {summaryMd ? (
-                  <div className="prose prose-sm prose-invert max-w-none font-sans text-[13.5px] leading-[1.75] text-ink-1">
-                    <ReactMarkdown remarkPlugins={[remarkGfm]}>
-                      {summaryMd}
-                    </ReactMarkdown>
+              {summaryParagraphs.length > 0 ? (
+                <DSection title="故事简介">
+                  <div
+                    className="max-w-[68ch] font-serif text-[14px] text-ink-1"
+                    style={{ lineHeight: 1.7 }}
+                  >
+                    {summaryParagraphs.map((para, i) => {
+                      const lines = para.split("\n");
+                      return (
+                        <p key={i} className={i > 0 ? "mt-3" : undefined}>
+                          {lines.map((line, j) => (
+                            <span key={j}>
+                              {line}
+                              {j < lines.length - 1 ? <br /> : null}
+                            </span>
+                          ))}
+                        </p>
+                      );
+                    })}
                   </div>
-                ) : (
-                  <p className="font-mono text-[11.5px] text-ink-3">
-                    暂无简介 — 元数据填充后此处会有作品介绍
-                  </p>
-                )}
-              </DSection>
+                </DSection>
+              ) : null}
+
+              {staffGroups.length > 0 ? (
+                <DSection title="制作团队">
+                  <div className="flex flex-col gap-4">
+                    {staffGroups.map(({ role, items }) => {
+                      const Icon = STAFF_ROLE_ICONS[role];
+                      return (
+                        <div key={role}>
+                          <h3 className="mb-2 inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.12em] text-ink-3">
+                            <Icon size={11} strokeWidth={2} />
+                            <span>{STAFF_ROLE_LABELS[role]}</span>
+                            <span className="text-ink-3">·</span>
+                            <span>{items.length}</span>
+                          </h3>
+                          <div className="flex flex-wrap gap-1.5">
+                            {items.map((p, i) => (
+                              <PersonChip
+                                key={`${p.person_id}-${i}`}
+                                row={p}
+                                onOpen={() =>
+                                  navigate(`/persons/${p.person_id}`)
+                                }
+                              />
+                            ))}
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </DSection>
+              ) : null}
 
               <DSection title="常用操作">
                 <div className="flex flex-wrap items-center gap-3">
@@ -1046,6 +1230,20 @@ export default function Detail() {
             </div>
           </DSection>
 
+          {officialTags.length > 0 ? (
+            <DSection
+              title="官方标签"
+              hint={`${officialTags.length} 个`}
+              className="mt-6"
+            >
+              <div className="flex flex-wrap gap-1.5">
+                {officialTags.map((t, i) => (
+                  <OfficialTagChip key={`${t.source}-${t.tag_name}-${i}`} row={t} />
+                ))}
+              </div>
+            </DSection>
+          ) : null}
+
           <DSection title="路径" className="mt-6">
             <div
               className="font-mono text-[11px] leading-[1.7] text-ink-2"
@@ -1118,26 +1316,91 @@ function Pill({
   );
 }
 
-function PillLink({
-  href,
+/**
+ * Phase 11e — explicit "在 Bangumi 看 ↗" / "在 VNDB 看 ↗" pill in the hero
+ * pills row. Uses the Phase-11 `openExternalUrl` IPC (which validates
+ * scheme and shells out via `cmd /C start` on Windows).
+ */
+function ExtSourcePill({
+  label,
+  url,
   title,
-  children,
 }: {
-  href: string;
+  label: string;
+  url: string;
   title?: string;
-  children: React.ReactNode;
 }) {
   return (
     <button
       type="button"
-      onClick={() => openExternal(href)}
+      onClick={() => {
+        void openExternalUrl(url).catch((e: unknown) => {
+          toast.error(`打开失败 — ${String(e)}`);
+        });
+      }}
       title={title}
-      className="inline-flex h-6 cursor-pointer items-center gap-1.5 border border-line bg-black/35 px-2.5 font-mono text-[10.5px] text-ink-1 transition-colors hover:border-line-strong hover:text-ink-0"
+      className="inline-flex h-6 cursor-pointer items-center gap-1.5 border border-line bg-black/35 px-2.5 font-mono text-[10.5px] text-ink-1 transition-colors hover:border-line-strong hover:bg-black/55 hover:text-accent"
       style={{ borderRadius: "9999px" }}
     >
-      {children}
-      <ExternalLink size={10} strokeWidth={2} className="opacity-60" />
+      <span>{label}</span>
+      <ExternalLink size={10} strokeWidth={2} className="opacity-70" />
     </button>
+  );
+}
+
+/**
+ * Phase 11e — clickable person chip in the 制作团队 section. For voice
+ * roles it shows `角色 · 演员` so the user can read the CV→character
+ * mapping at a glance; other roles fall back to the localized name.
+ */
+function PersonChip({
+  row,
+  onOpen,
+}: {
+  row: GameStaffRow;
+  onOpen: () => void;
+}) {
+  const personName = row.name_cn ?? row.name;
+  const label =
+    row.role === "voice" && row.character_name
+      ? `${row.character_name} · ${personName}`
+      : personName;
+  const altTitle =
+    row.role === "voice" && row.character_name
+      ? `${personName} · 饰 ${row.character_name}`
+      : row.name_cn && row.name_cn !== row.name
+        ? `${personName} · ${row.name}`
+        : personName;
+  return (
+    <button
+      type="button"
+      onClick={onOpen}
+      title={altTitle}
+      className="inline-flex h-7 cursor-pointer items-center gap-1.5 border border-line bg-bg-1 px-2.5 font-serif text-[12px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-accent"
+      style={{ borderRadius: "9999px" }}
+    >
+      <span className="truncate max-w-[220px]">{label}</span>
+    </button>
+  );
+}
+
+/**
+ * Phase 11e — non-interactive chip showing one Bangumi/VNDB official tag
+ * in the 官方标签 sidebar section. The `title` exposes source + weight so
+ * the user can hover to see "bangumi · 234 用户".
+ */
+function OfficialTagChip({ row }: { row: OfficialTagRow }) {
+  const sourceLabel = row.source === "bangumi" ? "bangumi" : "vndb";
+  const weightLabel =
+    row.source === "bangumi" ? `${row.weight} 用户` : `权重 ${row.weight}`;
+  return (
+    <span
+      title={`${sourceLabel} · ${weightLabel}`}
+      className="inline-flex items-center gap-1 border border-line bg-bg-2 px-2 py-[2px] text-[11px] text-ink-2"
+      style={{ borderRadius: "9999px", cursor: "default" }}
+    >
+      <span>{row.tag_name}</span>
+    </span>
   );
 }
 
