@@ -1,13 +1,13 @@
 ---
 gsd_state_version: 1.0
 milestone: v1.2
-milestone_name: TBD
-status: Between milestones (v1.1 shipped — v1.2 not yet defined)
-stopped_at: "v1.1 UI Redesign milestone complete (5 phases, 27/30 reqs satisfied — LIB-02 reverted, PGE-01/02 deferred to v1.2). Audit + integration check passed. Run /gsd-new-milestone to start v1.2."
-last_updated: "2026-05-09T22:30:00.000Z"
-last_activity: "2026-05-09 — closed v1.1 UI Redesign milestone (audit → archive → tag)"
+milestone_name: Metadata Enrichment & Filtering
+status: Active — Phase 11 in progress
+stopped_at: "v1.2 milestone activated 2026-05-09 via /gsd-autonomous; Phase 11 setup pending."
+last_updated: "2026-05-09T23:00:00.000Z"
+last_activity: "2026-05-09 — /gsd-autonomous: bootstrapping v1.2 milestone (STATE + REQUIREMENTS + ROADMAP scaffolding for Phase 11)"
 progress:
-  total_phases: 0
+  total_phases: 1
   completed_phases: 0
   total_plans: 0
   completed_plans: 0
@@ -20,15 +20,15 @@ progress:
 
 See: `.planning/PROJECT.md` (updated 2026-05-09 after v1.1 close)
 
-**Core value:** 让本地一堆乱糟糟的 galgame 目录，变成可搜索、可启动、可统计的图书馆——并且看起来像一座图书馆而不是一坨壁纸
-**Current focus:** Between milestones — v1.2 scope not yet defined
+**Core value:** 让本地一堆乱糟糟的 galgame 目录，变成可搜索、可启动、可统计的图书馆——并且每张卡片背后都有充实的元数据
+**Current focus:** v1.2 — Metadata Enrichment & Filtering（Phase 11）
 
 ## Current Position
 
-Phase: — (no active milestone)
-Plan: —
-Status: v1.1 shipped 2026-05-09; awaiting `/gsd-new-milestone` to start v1.2
-Last activity: 2026-05-09 — milestone close (audit → archive → tag)
+Phase: 11 — Metadata Enrichment & Multi-dim Filtering
+Plan: setup (CONTEXT/UI-SPEC/PLAN pending)
+Status: v1.2 active; Phase 11 setup commenced 2026-05-09 via /gsd-autonomous
+Last activity: 2026-05-09 — milestone bootstrap (REQUIREMENTS.md + STATE + phase scaffold)
 
 ## Carried Tech Debt → v1.2
 
