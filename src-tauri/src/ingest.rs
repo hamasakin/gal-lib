@@ -36,7 +36,10 @@
 use crate::cover_cache;
 use crate::metadata::{self, Candidate, MetadataSource};
 use crate::scan::DiscoveredGame;
+use std::collections::HashMap;
 use std::path::Path;
+use std::sync::{Arc, Mutex};
+use tokio::sync::OnceCell;
 
 /// SQL-parameter-shaped struct: caller does `UPDATE games SET ...`.
 ///
@@ -80,6 +83,54 @@ async fn pick_best_across_sources(query: &str) -> Option<Candidate> {
     pool.into_iter()
         .filter(|c| c.confidence >= AUTO_BIND_THRESHOLD)
         .max_by_key(|c| c.confidence)
+}
+
+/// 20260509g — cross-game query dedup cache. Scope: ONE `start_scan` call.
+///
+/// Multiple parallel ingest tasks may end up cleaning down to the same
+/// query string (common case: a series of doujin entries that all reduce
+/// to the same parent title after `title_clean::clean_title`). The cache
+/// uses `tokio::sync::OnceCell` per-key so the first task to hit a key
+/// runs the Bangumi+VNDB search; concurrent followers `await` the same
+/// future and reuse its result. Prevents thundering-herd against the
+/// rate limiter.
+///
+/// Used only by `process_game_cached` on the start_scan code path.
+/// `process_game` / `refresh_for_query` keep their cache-less signatures
+/// so add_game / refresh_metadata / refresh_all_metadata / bind_metadata
+/// don't need rewiring.
+pub type QueryCache = Mutex<HashMap<String, Arc<OnceCell<Option<Candidate>>>>>;
+
+/// Construct a fresh empty QueryCache wrapped in `Arc` so it can be
+/// `clone()`d into each spawned ingest task.
+pub fn new_query_cache() -> Arc<QueryCache> {
+    Arc::new(Mutex::new(HashMap::new()))
+}
+
+/// `pick_best_across_sources` with per-query memoization.
+///
+/// Cache hit → returns the previously-computed `Option<Candidate>`.
+/// Cache miss → first caller runs `pick_best_across_sources(query)`;
+/// concurrent callers await the same OnceCell::get_or_init future.
+///
+/// `Candidate` derives `Clone` so we can hand out independent owned values
+/// to each caller without juggling lifetimes.
+pub async fn pick_best_with_cache(query: &str, cache: &QueryCache) -> Option<Candidate> {
+    // Phase 1: get-or-insert the OnceCell entry under a short Mutex hold.
+    // We never hold the Mutex across an await — the inner Arc<OnceCell>
+    // is what serializes the actual work.
+    let cell = {
+        let mut g = cache.lock().expect("query cache mutex poisoned");
+        g.entry(query.to_string())
+            .or_insert_with(|| Arc::new(OnceCell::new()))
+            .clone()
+    };
+    // Phase 2: first caller fetches, others await the same future. Result
+    // is cloned so each caller owns an independent Option<Candidate>.
+    let query_owned = query.to_string();
+    cell.get_or_init(|| async move { pick_best_across_sources(&query_owned).await })
+        .await
+        .clone()
 }
 
 /// Process one discovered game: search → fallback → cover-cache.
@@ -171,6 +222,100 @@ pub async fn process_game(
         // 3. Cover cache (best-effort; failure leaves cover_path NULL,
         //    frontend falls back to the remote cover_url which we always
         //    persist on the row regardless of cache outcome).
+        if let Some(url) = &c.cover_url {
+            match cover_cache::cache_cover(data_dir, game_id_for_cover, url).await {
+                Ok(rel) => result.cover_path = Some(rel.to_string_lossy().into_owned()),
+                Err(e) => eprintln!(
+                    "[ingest] cover cache failed for game {} ({}): {}",
+                    game_id_for_cover, url, e
+                ),
+            }
+        }
+    }
+
+    result
+}
+
+/// 20260509g — `process_game` with cross-game query dedup. Same algorithm
+/// as `process_game`, but every Bangumi+VNDB search goes through `cache`
+/// so multiple concurrent ingest tasks (in `start_scan`'s JoinSet) don't
+/// re-search a string that another task is already searching.
+///
+/// Why a parallel function instead of an Option<&QueryCache> parameter on
+/// `process_game`: keeps `process_game` (called by `add_game` /
+/// `refresh_metadata` / `refresh_all_metadata` / `bind_metadata`) entirely
+/// untouched — its signature, contract, and tests are unchanged. Only the
+/// start_scan path picks up cache behaviour.
+pub async fn process_game_cached(
+    game_id_for_cover: i64,
+    data_dir: &Path,
+    discovered: &DiscoveredGame,
+    cache: &QueryCache,
+) -> IngestResult {
+    let default_name = if discovered.clean_name.trim().is_empty() {
+        discovered.raw_name.clone()
+    } else {
+        discovered.clean_name.clone()
+    };
+
+    let mut result = IngestResult {
+        games_path: discovered.path.to_string_lossy().into_owned(),
+        name: default_name,
+        name_cn: None,
+        executable_path: discovered
+            .executable
+            .as_ref()
+            .map(|p| p.to_string_lossy().into_owned()),
+        cover_path: None,
+        cover_url: None,
+        bangumi_id: None,
+        vndb_id: None,
+        metadata_source: "none".into(),
+        match_confidence: None,
+    };
+
+    if discovered.clean_name.trim().is_empty() {
+        return result;
+    }
+
+    // 1. Standard cleaned query through the cache.
+    let mut final_choice = pick_best_with_cache(&discovered.clean_name, cache).await;
+
+    // 1b. Fan-out cascade with per-candidate cache lookups (each fan-out
+    //     candidate is also a query string that may collide across games).
+    if final_choice.is_none() {
+        let candidates = crate::title_clean::aggressive_candidates(&discovered.raw_name);
+        for cand in candidates {
+            if cand == discovered.clean_name {
+                continue;
+            }
+            if let Some(c) = pick_best_with_cache(&cand, cache).await {
+                final_choice = match final_choice {
+                    None => Some(c),
+                    Some(prev) if c.confidence > prev.confidence => Some(c),
+                    other => other,
+                };
+            }
+        }
+    }
+
+    if let Some(c) = final_choice {
+        result.name = c.title.clone();
+        result.match_confidence = Some(c.confidence);
+        result.metadata_source = match c.source {
+            MetadataSource::Bangumi => "bangumi",
+            MetadataSource::Vndb => "vndb",
+            MetadataSource::Manual => "manual",
+            MetadataSource::None => "none",
+        }
+        .into();
+        match c.source {
+            MetadataSource::Bangumi => result.bangumi_id = Some(c.source_id.clone()),
+            MetadataSource::Vndb => result.vndb_id = Some(c.source_id.clone()),
+            _ => {}
+        }
+        result.cover_url = c.cover_url.clone();
+
         if let Some(url) = &c.cover_url {
             match cover_cache::cache_cover(data_dir, game_id_for_cover, url).await {
                 Ok(rel) => result.cover_path = Some(rel.to_string_lossy().into_owned()),
