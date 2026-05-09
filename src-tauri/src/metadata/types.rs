@@ -6,6 +6,9 @@
 //!   (0..=100) — UI selects ≥ 80 auto-bind, < 80 prompts user.
 //! - `MetadataDetail` is the canonical detail view written into `games`
 //!   after a candidate is committed.
+//! - `StaffRole` / `PersonRef` / `OfficialTagRef` are Phase 11 enrichment
+//!   types used by `fetch_persons` / `fetch_characters` / extended
+//!   `fetch_detail` to populate `persons` + `game_staff` + `game_official_tags`.
 //! - `MetadataError` is the unified error type returned by both clients;
 //!   `Http` wraps reqwest errors so callers can pattern-match status for
 //!   retry decisions.
@@ -19,6 +22,51 @@ pub enum MetadataSource {
     Vndb,
     Manual,
     None,
+}
+
+/// Phase 11 — locked 4-role enum for game_staff (matches v7 migration CHECK
+/// constraint exactly). Cross-source role normalization happens in the
+/// bangumi/vndb client modules; consumers see only this normalized form.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
+#[serde(rename_all = "lowercase")]
+pub enum StaffRole {
+    Scenario,
+    Artist,
+    Voice,
+    Music,
+}
+
+impl StaffRole {
+    pub fn as_str(&self) -> &'static str {
+        match self {
+            StaffRole::Scenario => "scenario",
+            StaffRole::Artist => "artist",
+            StaffRole::Voice => "voice",
+            StaffRole::Music => "music",
+        }
+    }
+}
+
+/// One staff entry: a person + their role in a single game.
+/// `character_name` is set only when role == Voice (the CV's character).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct PersonRef {
+    pub source: MetadataSource,
+    /// Bangumi person id stringified, or VNDB staff id like "s123".
+    pub source_id: String,
+    pub name: String,
+    pub name_cn: Option<String>,
+    pub role: StaffRole,
+    pub character_name: Option<String>,
+}
+
+/// One official tag entry on a game (Bangumi user-tag with count, or VNDB
+/// tag with rating). `weight` semantics differ by source — we store as-is
+/// and let the UI render relative weights per-game.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OfficialTagRef {
+    pub name: String,
+    pub weight: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -44,6 +92,12 @@ pub struct MetadataDetail {
     pub cover_url: Option<String>,
     pub summary: Option<String>,
     pub release_date: Option<String>,
+    /// Phase 11 — brand / publisher / circle name extracted from
+    /// Bangumi infobox `开发`/`发行` or VNDB `developers[0].name`.
+    pub brand: Option<String>,
+    /// Phase 11 — official tags for this title (already normalized + sorted
+    /// by descending weight by the client).
+    pub tags: Vec<OfficialTagRef>,
 }
 
 #[derive(Debug, thiserror::Error)]

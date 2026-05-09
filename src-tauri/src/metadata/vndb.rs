@@ -10,11 +10,35 @@
 //! Rate-limited via `limiter::wait_vndb()` (100 req/min singleton).
 //! Retried via `with_retry` on 5xx / 429 / network error; 4xx (except 429)
 //! fail immediately.
+//!
+//! Phase 11 — `fetch_detail` widened to one combined GraphQL query that
+//! pulls staff/va/developers/tags in addition to the basic title fields,
+//! since VNDB allows arbitrary depth in a single call. Bangumi by contrast
+//! requires separate /persons + /characters endpoints.
 
 use super::{limiter, match_score, types::*};
 use serde::Deserialize;
 
 const ENDPOINT: &str = "https://api.vndb.org/kana/vn";
+
+/// Map VNDB English `role` strings on `vn.staff[]` to the locked 4-role enum.
+/// VNDB has more granular roles than Bangumi; we collapse `art` and
+/// `chardesign` into `artist` so a single person who's both rolled appears
+/// once per game (composite key `(game_id, person_id, role, character_name)`
+/// dedups). Non-creative roles (`director`, `staff`, `translator`) are
+/// silently dropped.
+///
+/// Reference VNDB role enum (vn.staff[].role):
+///   scenario, original, art, chardesign, music, songs, director, staff,
+///   translator, editor, qa, etc.
+fn normalize_vndb_role(role: &str) -> Option<StaffRole> {
+    match role {
+        "scenario" | "original" => Some(StaffRole::Scenario),
+        "art" | "chardesign" => Some(StaffRole::Artist),
+        "music" | "songs" => Some(StaffRole::Music),
+        _ => None,
+    }
+}
 
 fn client() -> reqwest::Client {
     reqwest::Client::builder()
@@ -87,17 +111,19 @@ pub async fn search(query: &str) -> Result<Vec<Candidate>, MetadataError> {
 pub async fn fetch_detail(vndb_id: &str) -> Result<MetadataDetail, MetadataError> {
     let body = serde_json::json!({
         "filters": ["id", "=", vndb_id],
-        "fields": "id,title,titles{title,lang},image{url},description,released",
+        "fields": "id,title,titles{title,lang},image{url},description,released,\
+            developers{name,original},tags{name,rating,spoiler},\
+            staff{id,name,original,role},va{staff{id,name,original},character{name,original}}",
         "results": 1
     });
-    let raw: SearchResp = with_retry(|| async {
+    let raw: DetailResp = with_retry(|| async {
         limiter::wait_vndb().await;
         let resp = client().post(ENDPOINT).json(&body).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(MetadataError::NotFound);
         }
         let resp = resp.error_for_status()?;
-        Ok::<_, MetadataError>(resp.json::<SearchResp>().await?)
+        Ok::<_, MetadataError>(resp.json::<DetailResp>().await?)
     })
     .await?;
     let hit = raw.results.into_iter().next().ok_or(MetadataError::NotFound)?;
@@ -108,6 +134,30 @@ pub async fn fetch_detail(vndb_id: &str) -> Result<MetadataDetail, MetadataError
             })
             .map(|t| t.title.clone())
     });
+    let brand = hit
+        .developers
+        .as_ref()
+        .and_then(|devs| {
+            let names: Vec<String> = devs.iter().map(|d| d.name.clone()).collect();
+            if names.is_empty() {
+                None
+            } else {
+                Some(names.join(" / "))
+            }
+        });
+    // Filter out spoilers >= 2 (full-spoiler tags) and convert to OfficialTagRef.
+    let tags = hit
+        .tags
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|t| t.spoiler.unwrap_or(0) < 2)
+        .map(|t| OfficialTagRef {
+            name: t.name,
+            // VNDB rating is float 0..=3 — multiply by 100 + round to keep
+            // schema integer-typed. Higher = more strongly tagged.
+            weight: ((t.rating.unwrap_or(0.0)) * 100.0).round() as i32,
+        })
+        .collect();
     Ok(MetadataDetail {
         source: MetadataSource::Vndb,
         source_id: hit.id,
@@ -116,7 +166,86 @@ pub async fn fetch_detail(vndb_id: &str) -> Result<MetadataDetail, MetadataError
         cover_url: hit.image.and_then(|i| i.url),
         summary: hit.description,
         release_date: hit.released,
+        brand,
+        tags,
     })
+}
+
+/// Phase 11 — VNDB staff fetch. Returns scenario/artist/music persons
+/// (not voice; use `fetch_va`). Uses the same combined detail call so
+/// callers that already have a `MetadataDetail` should call `fetch_va`
+/// only when they need voice. To keep the data flow uniform with the
+/// Bangumi client (`fetch_persons` returns non-voice; `fetch_characters`
+/// returns voice), we expose two functions but both run the same backend
+/// call — they read different sub-arrays of the response.
+pub async fn fetch_persons(vndb_id: &str) -> Result<Vec<PersonRef>, MetadataError> {
+    let body = serde_json::json!({
+        "filters": ["id", "=", vndb_id],
+        "fields": "staff{id,name,original,role}",
+        "results": 1,
+    });
+    let raw: StaffResp = with_retry(|| async {
+        limiter::wait_vndb().await;
+        let resp = client().post(ENDPOINT).json(&body).send().await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(MetadataError::NotFound);
+        }
+        let resp = resp.error_for_status()?;
+        Ok::<_, MetadataError>(resp.json::<StaffResp>().await?)
+    })
+    .await?;
+    let hit = raw.results.into_iter().next().ok_or(MetadataError::NotFound)?;
+    let staff = hit.staff.unwrap_or_default();
+    let mut out = Vec::with_capacity(staff.len());
+    for s in staff {
+        let Some(role) = normalize_vndb_role(&s.role) else {
+            continue;
+        };
+        out.push(PersonRef {
+            source: MetadataSource::Vndb,
+            source_id: s.id,
+            name: s.name,
+            name_cn: s.original,
+            role,
+            character_name: None,
+        });
+    }
+    Ok(out)
+}
+
+/// Phase 11 — VNDB VA fetch. Returns one PersonRef per (character × actor).
+pub async fn fetch_characters(vndb_id: &str) -> Result<Vec<PersonRef>, MetadataError> {
+    let body = serde_json::json!({
+        "filters": ["id", "=", vndb_id],
+        "fields": "va{staff{id,name,original},character{name,original}}",
+        "results": 1,
+    });
+    let raw: VaResp = with_retry(|| async {
+        limiter::wait_vndb().await;
+        let resp = client().post(ENDPOINT).json(&body).send().await?;
+        if resp.status() == reqwest::StatusCode::NOT_FOUND {
+            return Err(MetadataError::NotFound);
+        }
+        let resp = resp.error_for_status()?;
+        Ok::<_, MetadataError>(resp.json::<VaResp>().await?)
+    })
+    .await?;
+    let hit = raw.results.into_iter().next().ok_or(MetadataError::NotFound)?;
+    let va = hit.va.unwrap_or_default();
+    let mut out = Vec::with_capacity(va.len());
+    for entry in va {
+        let staff = entry.staff;
+        let character = entry.character;
+        out.push(PersonRef {
+            source: MetadataSource::Vndb,
+            source_id: staff.id,
+            name: staff.name,
+            name_cn: staff.original,
+            role: StaffRole::Voice,
+            character_name: Some(character.name),
+        });
+    }
+    Ok(out)
 }
 
 #[derive(Deserialize)]
@@ -143,6 +272,91 @@ struct TitleEntry {
 #[derive(Deserialize)]
 struct Image {
     url: Option<String>,
+}
+
+// ── Phase 11 enrichment response shapes ─────────────────────────────────
+
+#[derive(Deserialize)]
+struct DetailResp {
+    results: Vec<DetailHit>,
+}
+
+#[derive(Deserialize)]
+struct DetailHit {
+    id: String,
+    title: String,
+    titles: Option<Vec<TitleEntry>>,
+    image: Option<Image>,
+    description: Option<String>,
+    released: Option<String>,
+    #[serde(default)]
+    developers: Option<Vec<DeveloperEntry>>,
+    #[serde(default)]
+    tags: Option<Vec<TagEntry>>,
+}
+
+#[derive(Deserialize)]
+struct DeveloperEntry {
+    name: String,
+    #[allow(dead_code)]
+    original: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct TagEntry {
+    name: String,
+    rating: Option<f64>,
+    spoiler: Option<u8>,
+}
+
+#[derive(Deserialize)]
+struct StaffResp {
+    results: Vec<StaffHit>,
+}
+
+#[derive(Deserialize)]
+struct StaffHit {
+    #[serde(default)]
+    staff: Option<Vec<StaffEntry>>,
+}
+
+#[derive(Deserialize)]
+struct StaffEntry {
+    id: String,
+    name: String,
+    original: Option<String>,
+    role: String,
+}
+
+#[derive(Deserialize)]
+struct VaResp {
+    results: Vec<VaHit>,
+}
+
+#[derive(Deserialize)]
+struct VaHit {
+    #[serde(default)]
+    va: Option<Vec<VaEntry>>,
+}
+
+#[derive(Deserialize)]
+struct VaEntry {
+    staff: VaStaff,
+    character: VaCharacter,
+}
+
+#[derive(Deserialize)]
+struct VaStaff {
+    id: String,
+    name: String,
+    original: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct VaCharacter {
+    name: String,
+    #[allow(dead_code)]
+    original: Option<String>,
 }
 
 /// Exponential backoff [1s, 2s, 4s] for 5xx / 429 / network errors;
@@ -174,4 +388,27 @@ where
         }
     }
     Err(last_err.unwrap_or(MetadataError::Malformed("retry exhausted".into())))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn role_normalization_collapses_art_and_chardesign() {
+        // VNDB has both `art` and `chardesign` as separate roles; we
+        // collapse them so a single artist appearing under both doesn't
+        // generate two `game_staff` rows for the same role.
+        assert_eq!(normalize_vndb_role("scenario"), Some(StaffRole::Scenario));
+        assert_eq!(normalize_vndb_role("original"), Some(StaffRole::Scenario));
+        assert_eq!(normalize_vndb_role("art"), Some(StaffRole::Artist));
+        assert_eq!(normalize_vndb_role("chardesign"), Some(StaffRole::Artist));
+        assert_eq!(normalize_vndb_role("music"), Some(StaffRole::Music));
+        assert_eq!(normalize_vndb_role("songs"), Some(StaffRole::Music));
+        // Non-creative roles dropped (matches Bangumi behavior).
+        assert_eq!(normalize_vndb_role("director"), None);
+        assert_eq!(normalize_vndb_role("staff"), None);
+        assert_eq!(normalize_vndb_role("translator"), None);
+        assert_eq!(normalize_vndb_role(""), None);
+    }
 }
