@@ -1,49 +1,61 @@
 ---
 gsd_state_version: 1.0
-milestone: v1.2
-milestone_name: Metadata Enrichment & Filtering
-status: Phase 11 complete — pending milestone audit
-stopped_at: "Phase 11 (metadata enrichment) executed via /gsd-autonomous; 7 plans (11a-g) committed; cargo 59/59 + pnpm tsc clean; UI-01/02/03 deferred to audit human-eye review."
-last_updated: "2026-05-09T23:50:00.000Z"
-last_activity: "2026-05-09 — Phase 11 plans 11a-g all shipped (8 commits)"
+milestone: v1.3
+milestone_name: TBD
+status: Between milestones (v1.2 shipped — v1.3 not yet defined)
+stopped_at: "v1.2 Metadata Enrichment & Filtering milestone complete (1 phase, 7 plans, 16/18 audit-credit). Audit + complete-milestone passed. Run /gsd-new-milestone to start v1.3."
+last_updated: "2026-05-10T00:10:00.000Z"
+last_activity: "2026-05-09 — closed v1.2 milestone (audit → archive → tag)"
 progress:
-  total_phases: 1
-  completed_phases: 1
-  total_plans: 7
-  completed_plans: 7
-  percent: 100
+  total_phases: 0
+  completed_phases: 0
+  total_plans: 0
+  completed_plans: 0
+  percent: 0
 ---
 
 # Project State
 
 ## Project Reference
 
-See: `.planning/PROJECT.md` (updated 2026-05-09 after v1.1 close)
+See: `.planning/PROJECT.md` (updated 2026-05-09 after v1.2 close)
 
 **Core value:** 让本地一堆乱糟糟的 galgame 目录，变成可搜索、可启动、可统计的图书馆——并且每张卡片背后都有充实的元数据
-**Current focus:** v1.2 — Metadata Enrichment & Filtering（Phase 11）
+**Current focus:** Between milestones — v1.3 scope not yet defined
 
 ## Current Position
 
-Phase: 11 — Metadata Enrichment & Multi-dim Filtering
-Plan: setup (CONTEXT/UI-SPEC/PLAN pending)
-Status: v1.2 active; Phase 11 setup commenced 2026-05-09 via /gsd-autonomous
-Last activity: 2026-05-09 — milestone bootstrap (REQUIREMENTS.md + STATE + phase scaffold)
+Phase: — (no active milestone)
+Plan: —
+Status: v1.2 shipped 2026-05-09; awaiting `/gsd-new-milestone` to start v1.3
+Last activity: 2026-05-09 — milestone close (audit → archive → tag)
 
-## Carried Tech Debt → v1.2
+## Carried Tech Debt → v1.3
 
-Items deferred or reverted at v1.1 close (full audit at `.planning/milestones/v1.1-MILESTONE-AUDIT.md`):
+Items deferred or carried at v1.2 close (full audit at `.planning/milestones/v1.2-MILESTONE-AUDIT.md`):
 
 | Category | Item | Origin | Status |
 |----------|------|--------|--------|
-| requirement | LIB-02 magazine asymmetric grid hero band | Phase 7 reverted — portrait-cover cropping + density mismatch | revisit-or-drop in v1.2 |
-| requirement | PGE-01 standalone /scan route + KPI strip | Phase 9 deferred — needs router + IPC payload + schema | v1.2 |
-| requirement | PGE-02 Bangumi/VNDB review queue | Phase 9 deferred — depends on PGE-01 backing infra | v1.2 |
-| feature | Detail open-directory action | Phase 8 — needs `tauri-plugin-opener` | v1.2 |
-| feature | Screenshots open-folder button | Phase 10 — needs `open_path` IPC | v1.2 |
-| feature | Detail `?tab=` deeplink parsing | Phase 10 cross-link drops to overview | v1.2 |
-| metric | Real session count IPC | Phase 9 — currently proxied by games count | v1.2 |
-| copy | UIPreferences.tsx:135 stale "Phase 5" hint | Phase 4 carry-over | quick task or v1.2 |
+| verification | UI-01: Detail summary/staff/external links real-app smoke | Phase 11 deferred — compiled + type-clean, awaits running app | v1.3 |
+| verification | UI-02: Person chip click + official tags region real-app smoke | Phase 11 deferred | v1.3 |
+| verification | UI-03: FilterPanel multi-dim facet real-app behavior | Phase 11 deferred | v1.3 |
+| feature | Cross-source person dedup (Bangumi+VNDB) | Phase 11 — same author appears as 2 rows | v1.3 (seed) |
+| feature | Persons aggregate page enrichment (作品时光轴 + 同台伙伴) | Phase 11 carry — `seeds/persons-page-enrichment.md` | v1.3+ |
+| feature | Person portrait local caching | Phase 11 — 人物页当前无头像 | v1.3 |
+| feature | Backfill progress UI 完整化 | Phase 11 — 事件已 emit，PageHeader 进度条待补 | v1.3 |
+
+## Carried from v1.1 (still open at v1.2 close)
+
+| Category | Item | Status | Deferred At |
+|----------|------|--------|-------------|
+| requirement | LIB-02 magazine asymmetric grid hero band | Phase 7 reverted | v1.1 close → revisit-or-drop in v1.3 |
+| requirement | PGE-01 standalone /scan route + KPI strip | Phase 9 deferred | v1.1 close → v1.3 |
+| requirement | PGE-02 Bangumi/VNDB review queue | Phase 9 deferred (depends on PGE-01) | v1.1 close → v1.3 |
+| feature | Detail open-directory action | Phase 8 — needs `tauri-plugin-opener` | v1.1 close → v1.3 |
+| feature | Screenshots open-folder button | Phase 10 — needs `open_path` IPC | v1.1 close → v1.3 |
+| feature | Detail `?tab=` deeplink parsing | Phase 10 cross-link drops to overview | v1.1 close → v1.3 |
+| metric | Real session count IPC | Phase 9 — currently proxied by games count | v1.1 close → v1.3 |
+| copy | UIPreferences.tsx:135 stale "Phase 5" hint | Phase 4 carry-over | quick task or v1.3 |
 
 ## Carried from v1.0 (still open)
 
@@ -63,6 +75,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-09T22:30:00Z
-Stopped at: Completed v1.1 milestone close — audit (gaps_found, accepted), archive, ROADMAP collapse, PROJECT.md evolution. Ready for `/gsd-new-milestone v1.2`.
+Last session: 2026-05-10T00:10:00Z
+Stopped at: Completed v1.2 milestone close — audit (gaps_found, accepted per autonomous-mode policy), archive, ROADMAP collapse, PROJECT.md evolution. Ready for `/gsd-new-milestone v1.3`.
 Resume file: None

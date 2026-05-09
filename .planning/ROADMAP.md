@@ -4,6 +4,7 @@
 
 - ✅ **v1.0 MVP** — Phases 1-5 (shipped 2026-05-08) — see [milestones/v1.0-ROADMAP.md](milestones/v1.0-ROADMAP.md)
 - ✅ **v1.1 UI Redesign** — Phases 6-10 (shipped 2026-05-09) — see [milestones/v1.1-ROADMAP.md](milestones/v1.1-ROADMAP.md)
+- ✅ **v1.2 Metadata Enrichment & Filtering** — Phase 11 (shipped 2026-05-09) — see [milestones/v1.2-ROADMAP.md](milestones/v1.2-ROADMAP.md)
 
 ## Phases
 
@@ -29,24 +30,26 @@
 
 </details>
 
-### 📋 v1.2 (Planned)
+<details>
+<summary>✅ v1.2 Metadata Enrichment (Phase 11) — SHIPPED 2026-05-09 — 16/18 reqs (3 UI deferred to real-app smoke)</summary>
 
-Carry-over tech debt + deferred items from v1.1 audit + new metadata-enrichment scope from /gsd-explore 2026-05-09:
+- [x] Phase 11: Metadata Enrichment & Multi-dim Filtering (7/7 plans, 11a-g) — completed 2026-05-09
 
-- [ ] **Phase 11: Metadata Enrichment & Multi-dim Filtering** — *primary scope of v1.2*
-  - DB migration: add `summary` column to `games`; new tables `persons`, `game_staff(role IN scenario|artist|voice|music)`, `game_official_tags`
-  - Bangumi/VNDB clients widen to fetch infobox brand, persons (`/v0/subjects/{id}/persons` + `/characters`), official tags; VNDB `staff{}` / `vns_va` / `producers{}` fields
-  - Ingest writes new fields; backfill script for existing library
-  - UI: Detail surfaces 简介 / 品牌 / 编剧 / 画师 / 声优 / 音乐 / 官方 tags + "在 Bangumi 看 ↗" / "在 VNDB 看 ↗" external links
-  - Library facet panel: 品牌 / 作者 / 声优 / 官方 tag 多维筛选 (AND across dimensions)
-  - New route `/persons/:id` — 人物聚合页 (该人物参与的所有游戏)
-  - 前置研究：`research/questions.md` 中的 Bangumi/VNDB 字段映射验证
-  - 设计 context：`notes/metadata-enrichment-context.md`
-- LIB-02 magazine asymmetric grid (revisit or drop spec)
-- PGE-01 / PGE-02 standalone `/scan` route + Bangumi/VNDB review queue (needs IPC payload + schema work)
-- Detail `?tab=` deeplink parsing
-- Open-directory / open-screenshots-dir actions (needs `tauri-plugin-opener` / `open_path` IPC)
-- UIPreferences stale-copy cleanup
+</details>
+
+### 📋 v1.3 (Planned)
+
+Carry-over from v1.1 + v1.2 — run `/gsd-new-milestone` to formalise scope:
+
+- LIB-02 magazine asymmetric grid (revisit or drop spec) — v1.1 carry
+- PGE-01 / PGE-02 standalone `/scan` route + Bangumi/VNDB review queue (needs IPC payload + schema) — v1.1 carry
+- Detail `?tab=` deeplink parsing — v1.1 carry
+- Open-directory / open-screenshots-dir actions (needs `tauri-plugin-opener` / `open_path` IPC) — v1.1 carry
+- UIPreferences stale-copy cleanup — v1.1 carry
+- Cross-source person dedup (Bangumi+VNDB → 1 row) — v1.2 carry
+- Persons aggregate page enrichment (作品时光轴 / 同台伙伴推荐) — v1.2 seed
+- Person portrait local caching — v1.2 carry
+- Backfill progress UI (full PageHeader bar) — v1.2 carry
 
 ## Progress
 

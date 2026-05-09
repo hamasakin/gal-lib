@@ -1,5 +1,28 @@
 # Milestones
 
+## v1.2 Metadata Enrichment & Filtering (Shipped: 2026-05-09)
+
+**Phases completed:** 1 phase (11), 7 plans (11a-g), executed via /gsd-autonomous in single session.
+**Score:** 16/18 audit-credit (15 backend reqs auto-verified via cargo test + pnpm tsc, UI-04 verified at type/route level, UI-01/02/03 partial — compiled + type-clean, real-app smoke deferred per autonomous-mode policy).
+**Audit:** [milestones/v1.2-MILESTONE-AUDIT.md](milestones/v1.2-MILESTONE-AUDIT.md)
+
+**Key accomplishments:**
+
+- **Phase 11 — Metadata Enrichment & Multi-dim Filtering** — 一次性补齐 metadata "三层缺口"（API 客户端字段抓取 / DB schema 列与关系表 / UI 展示与筛选）：schema v7 增 `games.summary` 列 + 3 张新表 (persons / game_staff CHECK(role IN scenario|artist|voice|music) / game_official_tags) 一次性迁完；Bangumi 客户端扩展为 `fetch_detail` 解析 infobox 开发/发行 → brand + 顶层 tags 数组、新增 `fetch_persons` 与 `fetch_characters` (voice with character_name)、relation 中文 → 4-role enum normalize；VNDB 客户端 GraphQL 单次 combined call 拉 staff + va + developers + tags（rating × 100 → integer weight，spoiler ≥ 2 过滤），role normalize 时 art + chardesign 合并为 artist；ingest `IngestResult` 携带 summary/brand/staff/tags，`process_game(_cached)` 在 final_choice 后 best-effort 调 fetch_detail + fetch_persons + fetch_characters；commands.rs 新增 `write_staff_and_tags` tx-helper（DELETE → UPSERT persons → INSERT game_staff/game_official_tags）+ 6 新 IPC 命令 (`list_persons_for_game` / `list_games_for_person` / `list_official_tags_for_game` / `get_filter_options` / `backfill_metadata_enrichment` / `open_external_url`)；`SearchFilter` 扩展 `staff_ids[] / brands[] / official_tags[]`（多维 AND 跨轴，OR 同轴）；前端 `Game.summary` + 新 `lib/persons.ts` 全量类型 + 6 invoke wrappers + bangumiSubjectUrl/vndbVnUrl helpers；`AdvancedFilter` 新 brands/staffIds/officialTags Sets，applyAdvancedFilter brand 客户端、staff/tags 走后端；Detail.tsx 总览 tab 新增 summary 段落渲染 + 制作团队 staff 区块（按 role 分组：scenario/artist/voice/music，voice 显示 角色 · 演员，PenLine/Brush/Mic2/Music 图标）+ 官方标签 region in right sidebar + ExtSourcePill 在 Bangumi 看 ↗ / 在 VNDB 看 ↗ 替换 BGM·id pill；Library FilterPanel 新增 4 sections (品牌 / 编剧 / 画师 / 声优 / 官方标签，music 暂略)，每 section 自带搜索 input + 60-chip cap with 更多/收起 expander；Library.tsx 在 mount + scan-completion edge fetch `getFilterOptions()`；新路由 `/persons/:id` 展示 4 role-grouped game grids（4 parallel listGamesForPerson 调用），voice section 显示 饰 · {character_name}。
+
+**Cross-phase integration**: 单 phase 内集成验证完成 — schema → API → ingest → commands → frontend 全链路 `cargo build --lib`(59 tests pass) + `pnpm tsc --noEmit`(clean) 双绿。6 新 IPC 命令在 lib.rs::generate_handler! 全部注册。
+
+**Bundle delta**: backend cargo build succeeds（仅 dead-code warnings）；frontend bundle delta 待下次 `pnpm build` 测量；预计 +若干 KB（lib/persons.ts + Persons.tsx + FilterPanel.tsx 新 sections）。
+
+**Known carry-over to v1.3:**
+- Cross-source person dedup（同一作者 Bangumi+VNDB 双源 → 当前两条 persons 行）
+- Persons aggregate page enrichment（作品时光轴 + 同台伙伴推荐）— `seeds/persons-page-enrichment.md`
+- Person portrait local caching（人物页当前无头像）
+- Backfill progress UI 完整化（meta-fetch-progress 事件已 emit，PageHeader 进度条待补）
+- UI-01/02/03 real-app smoke verification（详情页 staff 渲染 / facet panel 多维筛选实际行为 / 200-game backfill 10 分钟 E2E 观察）
+
+---
+
 ## v1.1 UI Redesign (Shipped: 2026-05-09)
 
 **Phases completed:** 5 phases (6-10), 5 plans, executed in summary-only mode (no VERIFICATION.md per project autonomous-mode policy).
