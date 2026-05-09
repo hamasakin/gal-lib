@@ -50,6 +50,7 @@ import {
   EMPTY_ADV_FILTER,
   isAdvFilterActive,
 } from "@/lib/advancedFilter";
+import { getFilterOptions, type FilterOptions } from "@/lib/persons";
 import { RefreshCw, FolderPlus, Library as LibraryIcon, SearchX, AlertCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -61,7 +62,10 @@ function isFilterEmpty(f: SearchFilter): boolean {
     f.status == null &&
     !f.favorite &&
     f.brand == null &&
-    f.year_decade == null
+    f.year_decade == null &&
+    (f.brands == null || f.brands.length === 0) &&
+    (f.staff_ids == null || f.staff_ids.length === 0) &&
+    (f.official_tags == null || f.official_tags.length === 0)
   );
 }
 
@@ -81,6 +85,7 @@ export function Library() {
 
   const [pickerGame, setPickerGame] = useState<Game | null>(null);
   const [advFilter, setAdvFilter] = useState<AdvancedFilter>(EMPTY_ADV_FILTER);
+  const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const navigate = useNavigate();
   const viewMode = usePreferencesStore((s) => s.viewMode);
 
@@ -97,7 +102,23 @@ export function Library() {
   const refetchGrid = useCallback(async () => {
     const trimmedQuery = searchQuery.trim();
     const queryArg = trimmedQuery === "" ? null : trimmedQuery;
-    const filterArg = isFilterEmpty(filter) ? null : filter;
+    // Multi-dim facets that MUST go server-side: staff & official tags don't
+    // ride on the Game row (no client-side fan-out is feasible). Brand can
+    // be filtered either side; we send it to the server too so the row
+    // count badge in PageHeader reflects the same intent (note: the legacy
+    // sidebar `filter.brand` single-axis still works independently and is
+    // ANDed with `brands` server-side).
+    const merged: SearchFilter = {
+      ...filter,
+      brands: advFilter.brands.size > 0 ? Array.from(advFilter.brands) : undefined,
+      staff_ids:
+        advFilter.staffIds.size > 0 ? Array.from(advFilter.staffIds) : undefined,
+      official_tags:
+        advFilter.officialTags.size > 0
+          ? Array.from(advFilter.officialTags)
+          : undefined,
+    };
+    const filterArg = isFilterEmpty(merged) ? null : merged;
     try {
       const rows = await searchGames(queryArg, sortBy, filterArg);
       setGames(rows);
@@ -105,7 +126,22 @@ export function Library() {
       // eslint-disable-next-line no-console
       console.error("[Library] searchGames failed:", e);
     }
-  }, [searchQuery, sortBy, filter, setGames]);
+  }, [searchQuery, sortBy, filter, advFilter, setGames]);
+
+  // Phase 11 multi-dim facet payload — fetch once on mount, then re-fetch
+  // after each scan completes (the option set may shift if new brands /
+  // persons / tags landed). The payload is small (a few KB even for
+  // hundreds of games), so over-fetching is cheap; under-fetching produces
+  // confusing UX (stale chips that filter out everything).
+  const refreshFilterOptions = useCallback(async () => {
+    try {
+      const opts = await getFilterOptions();
+      setFilterOptions(opts);
+    } catch (e: unknown) {
+      // eslint-disable-next-line no-console
+      console.error("[Library] getFilterOptions failed:", e);
+    }
+  }, []);
 
   const refreshSidebar = useCallback(async () => {
     try {
@@ -121,6 +157,11 @@ export function Library() {
     void refetchGrid();
   }, [refetchGrid]);
 
+  // Bootstrap fetch of multi-dim facet options on mount.
+  useEffect(() => {
+    void refreshFilterOptions();
+  }, [refreshFilterOptions]);
+
   // Detect the running → completed edge once and fire the rich scan-finished
   // toast post-refresh. The ref guard prevents double-fires when refetchGrid
   // identity changes (deps below) while scanProgress is still in 'completed'.
@@ -134,6 +175,7 @@ export function Library() {
       void (async () => {
         await refetchGrid();
         await refreshSidebar();
+        await refreshFilterOptions();
         // Post-refresh read — refetchGrid setGames-through means the store
         // snapshot now carries the freshly inserted/updated rows.
         const latest = useLibraryStore.getState().games;
@@ -143,7 +185,13 @@ export function Library() {
         toastScanFinished(total, total - pending, pending);
       })();
     }
-  }, [scanProgress?.status, scanProgress?.total, refetchGrid, refreshSidebar]);
+  }, [
+    scanProgress?.status,
+    scanProgress?.total,
+    refetchGrid,
+    refreshSidebar,
+    refreshFilterOptions,
+  ]);
 
   const onChildMutation = useCallback(() => {
     void refetchGrid();
@@ -258,6 +306,7 @@ export function Library() {
             games={games}
             filter={advFilter}
             onChange={setAdvFilter}
+            options={filterOptions}
           />
           <SearchBar />
           <ViewToggle />

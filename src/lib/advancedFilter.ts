@@ -121,6 +121,12 @@ export function applyAdvancedFilter(
     if (f.reviewOnly) {
       if (g.match_confidence == null || g.match_confidence >= 80) return false;
     }
+    // Brand is client-side filterable (Game row carries `brand`); staffIds
+    // and officialTags are NOT — those go through SearchFilter and are
+    // already narrowed server-side by the time we get here.
+    if (f.brands.size > 0) {
+      if (g.brand == null || !f.brands.has(g.brand)) return false;
+    }
     return true;
   });
 }
