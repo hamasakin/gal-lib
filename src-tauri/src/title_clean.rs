@@ -68,14 +68,26 @@ pub fn clean_title(raw: &str) -> String {
     s.trim().to_string()
 }
 
-/// Aggressive fallback: extract the longest contiguous CJK run (Han +
-/// Katakana + Hiragana, plus a few CJK punctuation marks `・`, `々`, `、`,
-/// `。`) from the standard-cleaned title.
+/// Aggressive fallback: extract the longest contiguous "title-char" run
+/// from the standard-cleaned title.
+///
+/// Title-chars are Han + Hiragana + Katakana + halfwidth/fullwidth digits
+/// + a few in-title punctuation marks (`・々、。〜！？ー`). Including digits
+/// matters: titles like `艶嬢学園２` / `シンフォギア２` were otherwise
+/// severed at the digit. ASCII letters are *intentionally excluded* —
+/// when a directory is dominated by Latin (e.g. `Symphonic Rain`), the
+/// standard clean is already correct and the aggressive fallback should
+/// defer to it rather than picking a sub-word like `Symphonic`.
+///
+/// After picking the longest run, leading and trailing pure-punctuation
+/// chars are trimmed (so a subtitle delimited by `ー...ー` doesn't
+/// retain its decorative book-ends in the search query).
 ///
 /// Used by the ingest layer when both Bangumi and VNDB miss the standard
-/// query — isolates the core Japanese/Chinese title from heavy doujin
-/// scene-release noise that survived the regex pipeline. Returns the
-/// standard clean unchanged if no CJK run exists (e.g. pure English title).
+/// query — isolates the core title from heavy doujin scene-release noise
+/// that survived the regex pipeline. Returns the standard clean
+/// unchanged if no CJK run exists (pure-Latin titles, all-punctuation
+/// pathological directories).
 pub fn aggressive_clean(raw: &str) -> String {
     let standard = clean_title(raw);
     let mut best = String::new();
@@ -93,22 +105,36 @@ pub fn aggressive_clean(raw: &str) -> String {
     if current.chars().count() > best.chars().count() {
         best = current;
     }
-    if best.is_empty() {
+    let trimmed = trim_title_punct(&best);
+    if trimmed.is_empty() {
         standard
     } else {
-        best
+        trimmed.to_string()
     }
 }
 
 fn is_cjk_titlechar(ch: char) -> bool {
-    // Unicode blocks: CJK Unified, Hiragana, Katakana, plus a few common
-    // in-title punctuation characters that shouldn't break a contiguous run.
+    // Unicode blocks: CJK Unified, Hiragana, Katakana, plus halfwidth +
+    // fullwidth digits, and a few common in-title punctuation chars that
+    // shouldn't break a contiguous run. ASCII letters are deliberately
+    // not included — see `aggressive_clean` doc.
     let n = ch as u32;
     let in_han = (0x4E00..=0x9FFF).contains(&n) || (0x3400..=0x4DBF).contains(&n);
     let in_hira = (0x3040..=0x309F).contains(&n);
     let in_kana = (0x30A0..=0x30FF).contains(&n);
-    let punctuation = matches!(ch, '・' | '々' | '、' | '。' | '〜' | '！' | '？' | 'ー');
-    in_han || in_hira || in_kana || punctuation
+    let in_digit = ch.is_ascii_digit() || (0xFF10..=0xFF19).contains(&n); // 0-9 / ０-９
+    let punctuation = is_title_punct(ch);
+    in_han || in_hira || in_kana || in_digit || punctuation
+}
+
+fn is_title_punct(ch: char) -> bool {
+    matches!(ch, '・' | '々' | '、' | '。' | '〜' | '！' | '？' | 'ー')
+}
+
+/// Strip leading and trailing pure-punctuation chars from a title run.
+/// Leaves interior punctuation untouched (`艶嬢学園・第二章` keeps the `・`).
+fn trim_title_punct(s: &str) -> &str {
+    s.trim_matches(|ch: char| is_title_punct(ch) || ch.is_whitespace())
 }
 
 #[cfg(test)]
@@ -198,6 +224,28 @@ mod tests {
         // Pure English / Latin titles have no CJK run — return the standard
         // clean unchanged so we don't return an empty query.
         assert_eq!(aggressive_clean("Symphonic Rain v1.5"), "Symphonic Rain");
+    }
+
+    #[test]
+    fn aggressive_keeps_digits_in_cjk_run() {
+        // 「艶嬢学園２」 should stay as a single 5-char run (was previously
+        // severed at the fullwidth digit ２, leaving 「艶嬢学園」 4 chars).
+        // The longer subtitle still wins overall, but the leading 「ー」
+        // is now trimmed so it returns clean.
+        let raw = "(18禁ゲーム) [240927] [アストロノーツ・シリウス] \
+                   艶嬢学園２ ー熾天使たちの花園ー";
+        let agg = aggressive_clean(raw);
+        assert_eq!(agg, "熾天使たちの花園");
+        // And the digits-in-run guarantee: a title where the digit-bearing
+        // run IS the longest must keep the digit.
+        let r2 = aggressive_clean("[150227] シンフォギア２");
+        assert_eq!(r2, "シンフォギア２");
+    }
+
+    #[test]
+    fn aggressive_trims_leading_trailing_punct() {
+        // Decorative ー/〜/！ book-ends are stripped from the chosen run.
+        assert_eq!(aggressive_clean("ーー雪月華〜！"), "雪月華");
     }
 
     #[test]
