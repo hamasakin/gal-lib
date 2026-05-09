@@ -69,6 +69,25 @@ interface LibraryState {
   games: Game[];
 
   /**
+   * 20260509f — Set of `game.id`s currently being fetched (started → finished
+   * pair on the backend `meta-fetch-progress` event). Modeled as
+   * `Record<number, true>` rather than `Set<number>` so:
+   *   - zustand's shallow equality detects mutations (Set identity rarely changes)
+   *   - JSON-friendly (devtools / persistence-ready if we ever hydrate it)
+   *
+   * Maintained by the module-scope `meta-fetch-progress` listener in main.tsx
+   * (started → addFetchingMetaId / finished → removeFetchingMetaId).
+   * Also bulk-cleared by the `scan-progress` listener on terminal status
+   * (completed / cancelled / failed) to defend against any missed
+   * finished-emit (e.g. backend panic mid-iteration).
+   *
+   * Consumed by `<GameCard />` via a per-card boolean selector
+   * `(s) => s.fetchingMetaIds[game.id] === true` so a card only re-renders
+   * when its own id transitions in/out of the set (zustand referential check).
+   */
+  fetchingMetaIds: Record<number, true>;
+
+  /**
    * Currently-running game session, or null. Driven by the
    * `active-session-changed` event subscription in `main.tsx`. Used by:
    *   - `<ActiveSessionBar />` (sticky-top bar; null hides it)
@@ -164,6 +183,9 @@ interface LibraryState {
   setScanRoots: (rs: ScanRoot[]) => void;
   setScanProgress: (p: ScanProgress | null) => void;
   setGames: (gs: Game[]) => void;
+  addFetchingMetaId: (id: number) => void;
+  removeFetchingMetaId: (id: number) => void;
+  clearFetchingMetaIds: () => void;
   setActiveSession: (s: ActiveSession | null) => void;
   setSessionsForGame: (gameId: number, sessions: SessionRow[]) => void;
   setSearchQuery: (q: string) => void;
@@ -181,6 +203,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   scanRoots: [],
   scanProgress: null,
   games: [],
+  fetchingMetaIds: {},
   activeSession: null,
   sessionsByGame: {},
   searchQuery: "",
@@ -195,6 +218,25 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   setScanRoots: (rs) => set({ scanRoots: rs }),
   setScanProgress: (p) => set({ scanProgress: p }),
   setGames: (gs) => set({ games: gs }),
+  addFetchingMetaId: (id) =>
+    set((st) => ({ fetchingMetaIds: { ...st.fetchingMetaIds, [id]: true } })),
+  removeFetchingMetaId: (id) =>
+    set((st) => {
+      // Skip the spread when the id wasn't tracked (avoids a no-op object
+      // identity bump that would invalidate every fetchingMetaIds-subscriber).
+      if (st.fetchingMetaIds[id] !== true) return st;
+      const next = { ...st.fetchingMetaIds };
+      delete next[id];
+      return { fetchingMetaIds: next };
+    }),
+  clearFetchingMetaIds: () =>
+    set((st) =>
+      // Object.keys length check — clearing an already-empty record would
+      // still produce a new {} reference and invalidate subscribers.
+      Object.keys(st.fetchingMetaIds).length === 0
+        ? st
+        : { fetchingMetaIds: {} },
+    ),
   setActiveSession: (s) => set({ activeSession: s }),
   setSessionsForGame: (gameId, sessions) =>
     set((st) => ({

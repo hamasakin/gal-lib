@@ -15,7 +15,7 @@ applyPreferences(loadPreferences());
 // Without this trigger, app.db never materializes. Errors are swallowed:
 // Phase 2 will introduce real DB consumers with proper error handling.
 import { getDb } from "./lib/db";
-import { onScanProgress } from "@/lib/scan";
+import { onMetaFetchProgress, onScanProgress } from "@/lib/scan";
 import {
   getActiveSession,
   onActiveSessionChanged,
@@ -43,7 +43,19 @@ void getDb().catch((e) => {
 let __scanProgressUnsub: (() => void) | undefined;
 if (!__scanProgressUnsub) {
   void onScanProgress((p) => {
-    useLibraryStore.getState().setScanProgress(p);
+    // 20260509f — single getState() for both calls (avoids two-pass overhead)
+    // and bulk-clears fetchingMetaIds on terminal status as a safety net for
+    // any missed `meta-fetch-progress { phase: "finished" }` (e.g. a backend
+    // panic between started/finished, or a process kill mid-iteration).
+    const store = useLibraryStore.getState();
+    store.setScanProgress(p);
+    if (
+      p.status === "completed" ||
+      p.status === "cancelled" ||
+      p.status === "failed"
+    ) {
+      store.clearFetchingMetaIds();
+    }
   })
     .then((unsub) => {
       __scanProgressUnsub = unsub;
@@ -51,6 +63,40 @@ if (!__scanProgressUnsub) {
     .catch((e: unknown) => {
       // eslint-disable-next-line no-console
       console.error("[gal-lib] failed to subscribe to scan-progress:", e);
+    });
+}
+
+// 20260509f: Global meta-fetch-progress subscription.
+//
+// Per-game pulse highlight stream. Each `started` adds the game's id to the
+// store's fetchingMetaIds set; each `finished` removes it. Covers all four
+// backend trigger paths (start_scan ingest loop / refresh_all_metadata /
+// refresh_metadata / bind_metadata).
+//
+// Terminal-status fallback for missed finishes lives in the scan-progress
+// listener above (clearFetchingMetaIds on completed/cancelled/failed).
+// bind_metadata + single refresh_metadata don't go through scan-progress —
+// they rely on the inner async-block wrapping in commands.rs to guarantee
+// the finished emit fires on both success and error paths.
+let __metaFetchProgressUnsub: (() => void) | undefined;
+if (!__metaFetchProgressUnsub) {
+  void onMetaFetchProgress((p) => {
+    const store = useLibraryStore.getState();
+    if (p.phase === "started") {
+      store.addFetchingMetaId(p.game_id);
+    } else {
+      store.removeFetchingMetaId(p.game_id);
+    }
+  })
+    .then((unsub) => {
+      __metaFetchProgressUnsub = unsub;
+    })
+    .catch((e: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error(
+        "[gal-lib] failed to subscribe to meta-fetch-progress:",
+        e,
+      );
     });
 }
 

@@ -106,3 +106,42 @@ export async function onScanProgress(
 ): Promise<UnlistenFn> {
   return listen<ScanProgress>("scan-progress", (e) => cb(e.payload));
 }
+
+// ── 20260509f: meta-fetch-progress (per-game pulse highlight) ───────────────
+
+/**
+ * Backend payload for the `meta-fetch-progress` event — emitted in pairs
+ * (started/finished) around each per-game metadata fetch.
+ *
+ * Sources (Rust commands.rs):
+ *   - `start_scan` ingest loop (per-game)
+ *   - `refresh_all_metadata` loop (per-game)
+ *   - `refresh_metadata` (single game)
+ *   - `bind_metadata` (single game; happy + error paths via inner async block)
+ *
+ * Tauri serializes Rust `serde_json::json!({...})` snake_case as-is, so the
+ * field names below match the Rust emit literals 1:1.
+ */
+export interface MetaFetchProgress {
+  game_id: number;
+  phase: "started" | "finished";
+}
+
+/**
+ * Subscribe to the per-game `meta-fetch-progress` event stream.
+ *
+ * Pair-based: each `started` is followed by exactly one `finished` on the
+ * happy path. Backend wraps the inner work in an async block so even on
+ * error the `finished` emit still runs — but consumers should still pair
+ * this listener with a `scan-progress` terminal-status fallback that calls
+ * `clearFetchingMetaIds()` (see `src/main.tsx`) to defend against panics
+ * or missed events from non-scan-progress paths (bind/single-refresh).
+ *
+ * Returns an `UnlistenFn` — caller MUST invoke on cleanup. The canonical
+ * owner is the module-scope subscription in `src/main.tsx`.
+ */
+export async function onMetaFetchProgress(
+  cb: (p: MetaFetchProgress) => void,
+): Promise<UnlistenFn> {
+  return listen<MetaFetchProgress>("meta-fetch-progress", (e) => cb(e.payload));
+}
