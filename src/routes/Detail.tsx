@@ -48,11 +48,13 @@ import {
   ExternalLink,
   FolderOpen,
   Heart,
+  ImageDown,
   ImageOff,
   Mic2,
   MoreHorizontal,
   Music,
   PenLine,
+  RefreshCw,
   Search,
 } from "lucide-react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
@@ -123,8 +125,11 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { MetadataPicker } from "@/components/library/MetadataPicker";
+import { refreshMetadata } from "@/lib/metadata";
 
 const LE_PROFILES = [
   "Japanese",
@@ -334,6 +339,11 @@ export default function Detail() {
   const [screenshotIntervalState, setScreenshotIntervalState] = useState<
     number | null
   >(null);
+
+  // 重新匹配元数据 modal — open ↔ pickerOpen
+  const [pickerOpen, setPickerOpen] = useState(false);
+  // 重新抓取封面 button busy state (prevents double-click during the IPC roundtrip)
+  const [refreshingCover, setRefreshingCover] = useState(false);
 
   const {
     data: staffRows,
@@ -617,6 +627,32 @@ export default function Detail() {
     }
   }
 
+  async function onRefreshCover() {
+    if (!game || refreshingCover) return;
+    setRefreshingCover(true);
+    try {
+      await refreshMetadata(game.id);
+      await refreshGame();
+      await refreshStaff();
+      await refreshOfficialTags();
+      toast.success("已刷新封面");
+    } catch (e: unknown) {
+      toast.error(`刷新封面失败 — ${String(e)}`);
+    } finally {
+      setRefreshingCover(false);
+    }
+  }
+
+  function onClosePicker() {
+    setPickerOpen(false);
+    // After bindMetadata succeeds, MetadataPicker refreshes the library store
+    // but Detail.tsx hydrates `game` via its own listGames roundtrip — so
+    // re-fire refreshGame + staff/tag fetches to surface the new metadata.
+    void refreshGame();
+    void refreshStaff();
+    void refreshOfficialTags();
+  }
+
   async function onCopyPath() {
     if (!game) return;
     try {
@@ -898,6 +934,18 @@ export default function Detail() {
                 <DropdownMenuItem onClick={() => void onCopyPath()}>
                   <Copy size={14} className="mr-2" />
                   复制路径
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => setPickerOpen(true)}>
+                  <RefreshCw size={14} className="mr-2" />
+                  重新匹配元数据
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  disabled={refreshingCover}
+                  onClick={() => void onRefreshCover()}
+                >
+                  <ImageDown size={14} className="mr-2" />
+                  重新抓取封面
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -1290,6 +1338,10 @@ export default function Detail() {
           </DSection>
         </aside>
       </section>
+
+      {/* 重新匹配元数据 modal — controlled by the More-menu item; passes the
+          current `game` through so MetadataPicker pre-populates the search. */}
+      <MetadataPicker game={pickerOpen ? game : null} onClose={onClosePicker} />
     </div>
   );
 }
