@@ -24,10 +24,23 @@ fn client() -> reqwest::Client {
 }
 
 pub async fn search(query: &str) -> Result<Vec<Candidate>, MetadataError> {
+    // VNDB's `search` filter is already a fuzzy substring/token match
+    // across visible titles + aliases (no extra "fuzzy" mode exists).
+    // Knobs we can turn for recall:
+    //   - results: page size, default 10, max 100. We were capped at 5,
+    //     missing relevant matches that ranked 6+. Bump to 25 — wide
+    //     enough to catch an off-by-name candidate, still cheap on the
+    //     limiter.
+    //   - sort: when `search` is the active filter, "searchrank" orders
+    //     by VNDB's internal relevance score (most-relevant first). Our
+    //     own score_best then re-ranks across name pool, but starting
+    //     from a relevance-sorted page reduces the chance of a strong
+    //     candidate being silently truncated.
     let body = serde_json::json!({
         "filters": ["search", "=", query],
         "fields": "id,title,titles{title,lang},image{url},description,released",
-        "results": 5
+        "results": 25,
+        "sort": "searchrank",
     });
     let raw: SearchResp = with_retry(|| async {
         limiter::wait_vndb().await;
