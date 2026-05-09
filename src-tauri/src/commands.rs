@@ -2745,6 +2745,10 @@ pub fn open_in_explorer(path: String) -> Result<(), String> {
 /// rowid — pass it back to `list_games_for_person`.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GameStaffRow {
+    // Renamed on the wire to match the frontend's `person_id` field.
+    // The struct keeps `id` internally to mirror the underlying `persons.id`
+    // column (only one `id` in scope), but the JSON contract is `person_id`.
+    #[serde(rename = "person_id")]
     pub id: i64,
     pub name: String,
     pub name_cn: Option<String>,
@@ -2901,6 +2905,15 @@ pub struct PersonOption {
     pub id: i64,
     pub name: String,
     pub name_cn: Option<String>,
+    pub count: i64,
+}
+
+/// Brand option for the FilterPanel facet — name + count so the chip can
+/// render `品牌 · N` with frequency. Mirrors `TagOption` shape.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct BrandOption {
+    pub name: String,
+    pub count: i64,
 }
 
 /// Tag option carries its frequency so the panel can sort by relevance and
@@ -2916,7 +2929,7 @@ pub struct TagOption {
 /// after a metadata refresh / scan.
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct FilterOptions {
-    pub brands: Vec<String>,
+    pub brands: Vec<BrandOption>,
     pub scenarios: Vec<PersonOption>,
     pub artists: Vec<PersonOption>,
     pub voices: Vec<PersonOption>,
@@ -2943,9 +2956,14 @@ pub async fn get_filter_options(
     .fetch_all(&*pool)
     .await
     .map_err(err_str)?;
-    let brands: Vec<String> = brand_rows
+    let brands: Vec<BrandOption> = brand_rows
         .into_iter()
-        .filter_map(|r| r.try_get("brand").ok())
+        .filter_map(|r| {
+            Some(BrandOption {
+                name: r.try_get("brand").ok()?,
+                count: r.try_get("cnt").unwrap_or(0),
+            })
+        })
         .collect();
 
     // Helper: load all persons for one role, ordered by participation count.
@@ -2970,6 +2988,7 @@ pub async fn get_filter_options(
                 id: r.try_get("id").map_err(err_str)?,
                 name: r.try_get("name").map_err(err_str)?,
                 name_cn: r.try_get("name_cn").ok(),
+                count: r.try_get("cnt").unwrap_or(0),
             });
         }
         Ok(out)
