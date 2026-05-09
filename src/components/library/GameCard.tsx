@@ -222,7 +222,7 @@ function GameCardImpl({
               onCardClick();
             }
           }}
-          className="group flex cursor-pointer flex-col text-left outline-none transition-transform duration-200 hover:-translate-y-1 focus-visible:-translate-y-1"
+          className="card-enter group flex cursor-pointer flex-col text-left outline-none transition-transform duration-200 hover:-translate-y-1 focus-visible:-translate-y-1"
           style={{ transitionTimingFunction: "cubic-bezier(.2,.8,.2,1)" }}
         >
           {/* COVER */}
