@@ -62,4 +62,4 @@ Carry-over tech debt + deferred items from v1.1 audit + new metadata-enrichment 
 | 8. Detail Page Redesign | v1.1 | 1/1 | Complete | 2026-05-08 |
 | 9. Scan & Stats Pages | v1.1 | 1/1 | Complete (Scan deferred) | 2026-05-08 |
 | 10. Settings & Screenshots | v1.1 | 1/1 | Complete | 2026-05-08 |
-| 11. Metadata Enrichment & Multi-dim Filtering | v1.2 | 0/? | Planned | — |
+| 11. Metadata Enrichment & Multi-dim Filtering | v1.2 | 7/7 | Complete (UI-01/02/03 human-eye deferred) | 2026-05-09 |
