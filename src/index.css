@@ -284,3 +284,24 @@
     opacity: 0.65;
   }
 }
+
+/* 20260509f — realtime metadata-fetch pulse ring on GameCard cover.
+   2px var(--accent) ring + opacity 1 → 0.5 → 1 breathing, 1.6s loop.
+   GPU-friendly: only opacity animates (box-shadow held constant);
+   transform-based hover lift (-translate-y-1) stacks cleanly on top
+   without compositing conflict. */
+@keyframes pulse-ring {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.5;
+  }
+}
+.pulse-ring {
+  /* Static fallback ring — keyframe holds opacity only, so this baseline
+     box-shadow stays present even if @keyframes fail to parse. */
+  box-shadow: 0 0 0 2px var(--accent);
+  animation: pulse-ring 1.6s ease-in-out infinite;
+}

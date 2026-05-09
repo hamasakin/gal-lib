@@ -17,7 +17,7 @@
  *   - Single-session lock: when another game is active, launch hidden
  */
 
-import { Heart, ImageOff, Play, Square } from "lucide-react";
+import { Heart, ImageOff, Loader2, Play, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
 import {
@@ -119,6 +119,12 @@ export function GameCard({
 }: GameCardProps) {
   const navigate = useNavigate();
   const activeSession = useLibraryStore((s) => s.activeSession);
+  // 20260509f — per-card boolean selector. Only this card re-renders when
+  // its own id flips in/out of fetchingMetaIds (zustand referential check
+  // on the boolean). Other cards' transitions don't leak through.
+  const isFetchingMeta = useLibraryStore(
+    (s) => s.fetchingMetaIds[game.id] === true,
+  );
 
   const stamp = getStamp(game);
   const metaState = getMetadataState(game);
@@ -129,18 +135,26 @@ export function GameCard({
   const launchDisabled = noExe || otherActive;
 
   // Bottom-left badge precedence: at most one renders, in this order.
-  //   pending  → 获取中   (transient — scan still in flight)
-  //   failed   → 待复核   (actionable — user needs to pick metadata)
-  //   no-exe   → 无 EXE   (informational — can't launch)
+  //   fetching → 获取中 + spinner   (active fetch — pulse-ring on cover)
+  //   pending  → 获取中             (placeholder — scan queued, not yet enriching)
+  //   failed   → 待复核              (actionable — user needs to pick metadata)
+  //   no-exe   → 无 EXE              (informational — can't launch)
   // Right-top corner is now exclusively the favorite heart.
-  const bottomBadge: "pending" | "review" | "no-exe" | null =
-    metaState === "pending"
-      ? "pending"
-      : metaState === "failed"
-        ? "review"
-        : noExe
-          ? "no-exe"
-          : null;
+  // 20260509f: fetching takes priority over the static pending badge — when
+  // the backend is actively running enrich for this id, swap to the spinner
+  // variant; the static "获取中" remains for the brief window between
+  // placeholder INSERT and the started emit (and for cards still queued
+  // behind the in-flight ingest).
+  const bottomBadge: "fetching" | "pending" | "review" | "no-exe" | null =
+    isFetchingMeta
+      ? "fetching"
+      : metaState === "pending"
+        ? "pending"
+        : metaState === "failed"
+          ? "review"
+          : noExe
+            ? "no-exe"
+            : null;
 
   function onCardClick() {
     navigate(`/games/${game.id}`);
@@ -215,6 +229,11 @@ export function GameCard({
             className={cn(
               "relative aspect-[3/4] overflow-hidden bg-bg-2 transition-shadow",
               "rounded-md shadow-card group-hover:shadow-lift",
+              // 20260509f — pulse ring while metadata fetch is in flight
+              // (covers all 4 backend trigger paths). Sits over the static
+              // shadow-card; hover lift via transform stacks cleanly because
+              // .pulse-ring only animates opacity, not transform.
+              isFetchingMeta && "pulse-ring",
             )}
             style={{ borderRadius: "var(--r-md)" }}
           >
@@ -259,7 +278,20 @@ export function GameCard({
             )}
 
             {/* Bottom-left badge — at most one renders; precedence in
-                bottomBadge is pending > review > no-exe. */}
+                bottomBadge is fetching > pending > review > no-exe. */}
+            {/* 20260509f — active-fetch badge: same "获取中" copy as the
+                static pending variant but with the accent color (matches
+                the cover ring) + Loader2 spinner. Visual cue: this card is
+                the one currently hitting Bangumi/VNDB right now. */}
+            {bottomBadge === "fetching" && (
+              <div
+                className="absolute bottom-2 left-2 z-[3] inline-flex items-center px-1.5 py-[2px] border border-current bg-black/55 font-mono text-[9px] uppercase tracking-[0.12em] text-[var(--accent)] backdrop-blur"
+                style={{ borderRadius: "var(--r-sm)" }}
+              >
+                <Loader2 size={9} className="mr-1 animate-spin" />
+                获取中
+              </div>
+            )}
             {bottomBadge === "pending" && (
               <div
                 className="absolute bottom-2 left-2 z-[3] inline-flex items-center px-1.5 py-[2px] border border-line-strong bg-black/55 font-mono text-[9px] uppercase tracking-[0.12em] text-ink-1 backdrop-blur"
