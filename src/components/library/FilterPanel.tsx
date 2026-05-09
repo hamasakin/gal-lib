@@ -180,7 +180,7 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
         align="start"
         sideOffset={6}
         className={cn(
-          "z-50 flex w-[320px] flex-col gap-0 border border-line-strong bg-bg-1/95 p-0 shadow-lift backdrop-blur-md",
+          "z-50 flex w-[320px] flex-col gap-0 border border-line-strong bg-bg-1 p-0 shadow-lift",
         )}
         style={{ borderRadius: "var(--r-md)" }}
       >
