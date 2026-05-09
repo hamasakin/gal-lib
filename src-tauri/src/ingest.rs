@@ -18,6 +18,20 @@
 //! No-match path: returns an `IngestResult` with `metadata_source = "none"`
 //! so the row is still inserted (UI shows "metadata-pending" badge per
 //! 02-CONTEXT § Card Grid Virtualization).
+//!
+//! 20260509f — two-phase ingest contract (callers in `commands.rs`):
+//!   Phase 1 (placeholder INSERT): caller runs `INSERT ... ON CONFLICT(path)`
+//!     immediately after `discover` finishes, returns the `game_id`. Row is
+//!     visible in the grid as `metadata_source=NULL last_scanned_at=NULL`
+//!     (rendered by GameCard as "获取中"). No network I/O; never blocks.
+//!   Phase 2 (enrich): caller emits `meta-fetch-progress { phase:"started" }`,
+//!     calls `process_game(game_id, data_dir, dg)`, then UPDATEs the row
+//!     and emits `meta-fetch-progress { phase:"finished" }`.
+//! `process_game` / `refresh_for_query` signatures are intentionally
+//! unchanged — splitting the SQL halves out at the command layer keeps
+//! the ingest module pure (no DB access here) and avoids touching every
+//! existing call site (add_game / refresh_metadata / refresh_all_metadata
+//! / bind_metadata).
 
 use crate::cover_cache;
 use crate::metadata::{self, Candidate, MetadataSource};

@@ -156,6 +156,33 @@ pub fn run() {
                     let _ = app_handle.emit("close-to-tray", ());
                 }
             });
+
+            // 20260509f — purge orphan placeholder rows from previous crashed /
+            // force-killed scans. A placeholder is `metadata_source IS NULL
+            // AND last_scanned_at IS NULL` — i.e. INSERT ran but the enrich
+            // half never updated the row. Safe to do at startup because a
+            // scan in progress belongs to the previous (now-dead) process;
+            // this process's own ingest loop hasn't started yet.
+            //
+            // Lives in setup (not db.rs migrations) because migrations
+            // should be schema-only — running data-cleanup there blurs
+            // responsibility and would re-execute every schema upgrade.
+            // We spawn into the tauri async runtime because setup is sync;
+            // the cleanup is best-effort (DELETE failures are non-fatal,
+            // worst case is a few visible "获取中" cards that the user
+            // can right-click to retry).
+            let app_for_cleanup = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                if let Some(paths) = app_for_cleanup.try_state::<AppPaths>() {
+                    if let Ok(pool) = paths.pool().await {
+                        let _ = sqlx::query(
+                            "DELETE FROM games WHERE metadata_source IS NULL AND last_scanned_at IS NULL",
+                        )
+                        .execute(&*pool)
+                        .await;
+                    }
+                }
+            });
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![

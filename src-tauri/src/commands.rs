@@ -61,12 +61,20 @@ fn err_str<E: std::fmt::Display>(e: E) -> String {
     format!("{}", e)
 }
 
-/// Ingest one DiscoveredGame: UPSERT row, run metadata + cover pipeline,
-/// UPDATE row with the result. Shared by `start_scan` (the bulk scan loop)
-/// and `add_game` (single-directory entry-point). Returns the row id.
-async fn ingest_one_dir(
+/// 20260509f — Phase 1 of two-phase ingest: idempotent placeholder INSERT.
+///
+/// Writes the minimum row (path / name / executable_path / screenshot_interval_sec=0)
+/// without doing any network I/O or cover work. Resolves the `games.id` —
+/// either freshly inserted (last_insert_rowid != 0) or via the ON CONFLICT(path)
+/// `SELECT id` fallback when the row already exists.
+///
+/// Idempotent: a second call with the same path returns the same id (the
+/// ON CONFLICT branch keeps the row stable). `start_scan` deliberately calls
+/// it twice per discovered directory — once in the pre-ingest batch loop to
+/// make placeholders visible immediately, then again at the head of each
+/// ingest iteration to recover the id without threading a parallel `Vec<i64>`.
+async fn insert_placeholder_dir(
     pool: &SqlitePool,
-    data_dir: &Path,
     dg: &scan::DiscoveredGame,
 ) -> Result<i64, String> {
     let path_str = dg.path.to_string_lossy().to_string();
@@ -97,6 +105,19 @@ async fn ingest_one_dir(
             .map_err(err_str)?,
     };
 
+    Ok(game_id)
+}
+
+/// 20260509f — Phase 2 of two-phase ingest: run metadata + cover pipeline
+/// then UPDATE the row. Caller is responsible for emitting
+/// `meta-fetch-progress` started/finished events around this call (see
+/// `start_scan` for the canonical pattern).
+async fn enrich_metadata_for_dir(
+    pool: &SqlitePool,
+    data_dir: &Path,
+    game_id: i64,
+    dg: &scan::DiscoveredGame,
+) -> Result<(), String> {
     let result = ingest::process_game(game_id, data_dir, dg).await;
 
     sqlx::query(
@@ -118,6 +139,26 @@ async fn ingest_one_dir(
     .await
     .map_err(err_str)?;
 
+    Ok(())
+}
+
+/// Ingest one DiscoveredGame: placeholder INSERT → metadata+cover → UPDATE.
+/// Shared by `start_scan` (the bulk scan loop) and `add_game` (single-directory
+/// entry-point). Returns the row id.
+///
+/// 20260509f — composed of `insert_placeholder_dir` + `enrich_metadata_for_dir`.
+/// `add_game` keeps calling this monolithic helper (no `meta-fetch-progress`
+/// emit needed for the single-add path: caller-side optimistic refetch is
+/// the only existing UX, and there's no card on screen to highlight before
+/// the row exists). `start_scan` bypasses this helper and calls the two
+/// halves directly so it can emit between them.
+async fn ingest_one_dir(
+    pool: &SqlitePool,
+    data_dir: &Path,
+    dg: &scan::DiscoveredGame,
+) -> Result<i64, String> {
+    let game_id = insert_placeholder_dir(pool, dg).await?;
+    enrich_metadata_for_dir(pool, data_dir, game_id, dg).await?;
     Ok(game_id)
 }
 
@@ -321,7 +362,24 @@ pub async fn start_scan(
             return;
         }
 
+        // 20260509f — Phase 1 of two-phase ingest: batch-INSERT placeholders
+        // BEFORE the per-game enrich loop runs. Each row lands as
+        // `metadata_source=NULL last_scanned_at=NULL`, which GameCard
+        // already renders as "获取中". This makes the full set of
+        // discovered directories visible in the grid the moment ingest
+        // starts (rather than appearing one-at-a-time as enrich completes).
+        // Errors are swallowed per-row: a single failed INSERT shouldn't
+        // abort the whole scan; the enrich loop will retry the INSERT
+        // (idempotent ON CONFLICT(path)) and surface its own error.
+        for dg in &discovered {
+            let _ = insert_placeholder_dir(&*pool_for_task, dg).await;
+        }
+
         // Transition event — reset the progress bar to phase 2 (ingest).
+        // Frontend's existing scan-progress completed→refetch flow picks up
+        // the placeholder rows on terminal status; we deliberately don't
+        // emit a separate `games-changed` event here to keep the event
+        // surface minimal (CONTEXT decision logged in PLAN Task 2).
         let _ = app_for_emit.emit(
             "scan-progress",
             scan::ScanProgress {
@@ -337,7 +395,41 @@ pub async fn start_scan(
         // the per-game progress reporting).
         for (i, dg) in discovered.into_iter().enumerate() {
             let path_str = dg.path.to_string_lossy().to_string();
-            let _ = ingest_one_dir(&*pool_for_task, &data_dir, &dg).await;
+
+            // 20260509f — Phase 2 of two-phase ingest with per-game emit.
+            // Re-resolve the id via the idempotent `insert_placeholder_dir`
+            // (ON CONFLICT(path) returns the existing rowid); avoids the
+            // need to thread a parallel `Vec<i64>` through the enumerate.
+            // Skip this iteration on placeholder failure — the row simply
+            // won't be enriched this pass; user can rescan or right-click
+            // 「重新匹配元数据」later.
+            let game_id = match insert_placeholder_dir(&*pool_for_task, &dg).await {
+                Ok(id) => id,
+                Err(_) => {
+                    // Still bump the progress bar so the user sees us moving.
+                    let _ = app_for_emit.emit(
+                        "scan-progress",
+                        scan::ScanProgress {
+                            current_dir: path_str,
+                            completed: i + 1,
+                            total,
+                            status: scan::ScanStatus::Running,
+                        },
+                    );
+                    continue;
+                }
+            };
+
+            let _ = app_for_emit.emit(
+                "meta-fetch-progress",
+                serde_json::json!({ "game_id": game_id, "phase": "started" }),
+            );
+            let _ = enrich_metadata_for_dir(&*pool_for_task, &data_dir, game_id, &dg).await;
+            let _ = app_for_emit.emit(
+                "meta-fetch-progress",
+                serde_json::json!({ "game_id": game_id, "phase": "finished" }),
+            );
+
             let _ = app_for_emit.emit(
                 "scan-progress",
                 scan::ScanProgress {
@@ -476,117 +568,155 @@ pub async fn bind_metadata(
     game_id: i64,
     source: String,
     source_id: String,
+    app: AppHandle,
     state: State<'_, AppPaths>,
 ) -> Result<(), String> {
     let pool = state.pool().await.map_err(err_str)?;
     let data_dir = state.data_dir.clone();
 
-    // Fetch detail from the chosen source.
-    let detail = match source.as_str() {
-        "bangumi" => metadata::bangumi::fetch_detail(&source_id).await.map_err(err_str)?,
-        "vndb" => metadata::vndb::fetch_detail(&source_id).await.map_err(err_str)?,
-        other => return Err(format!("source must be 'bangumi' or 'vndb' (got '{}')", other)),
-    };
+    // 20260509f — emit started, then run the bind in an inner async block so
+    // that BOTH success and error paths fall through to the finished emit
+    // before returning. Avoids a leaked card-pulse if the inner work fails
+    // (without scopeguard which the project doesn't depend on).
+    let _ = app.emit(
+        "meta-fetch-progress",
+        serde_json::json!({ "game_id": game_id, "phase": "started" }),
+    );
 
-    // Cache cover (best-effort). Surface failures via stderr so a user
-    // reporting "no cover after bind" has a log line to grep — the row's
-    // cover_url is still set from the bind, and the frontend falls back to
-    // it when cover_path is null.
-    let cover_path = if let Some(url) = &detail.cover_url {
-        match crate::cover_cache::cache_cover(&data_dir, game_id, url).await {
-            Ok(p) => Some(p.to_string_lossy().into_owned()),
-            Err(e) => {
-                eprintln!(
-                    "[bind_metadata] cover cache failed for game {} ({}): {}",
-                    game_id, url, e
-                );
-                None
+    let result: Result<(), String> = async {
+        // Fetch detail from the chosen source.
+        let detail = match source.as_str() {
+            "bangumi" => metadata::bangumi::fetch_detail(&source_id).await.map_err(err_str)?,
+            "vndb" => metadata::vndb::fetch_detail(&source_id).await.map_err(err_str)?,
+            other => return Err(format!("source must be 'bangumi' or 'vndb' (got '{}')", other)),
+        };
+
+        // Cache cover (best-effort). Surface failures via stderr so a user
+        // reporting "no cover after bind" has a log line to grep — the row's
+        // cover_url is still set from the bind, and the frontend falls back to
+        // it when cover_path is null.
+        let cover_path = if let Some(url) = &detail.cover_url {
+            match crate::cover_cache::cache_cover(&data_dir, game_id, url).await {
+                Ok(p) => Some(p.to_string_lossy().into_owned()),
+                Err(e) => {
+                    eprintln!(
+                        "[bind_metadata] cover cache failed for game {} ({}): {}",
+                        game_id, url, e
+                    );
+                    None
+                }
             }
-        }
-    } else {
-        None
-    };
+        } else {
+            None
+        };
 
-    let (bangumi_id_col, vndb_id_col) = match source.as_str() {
-        "bangumi" => (Some(detail.source_id.clone()), None),
-        "vndb" => (None, Some(detail.source_id.clone())),
-        _ => unreachable!(),
-    };
+        let (bangumi_id_col, vndb_id_col) = match source.as_str() {
+            "bangumi" => (Some(detail.source_id.clone()), None),
+            "vndb" => (None, Some(detail.source_id.clone())),
+            _ => unreachable!(),
+        };
 
-    sqlx::query(
-        "UPDATE games SET name = ?, name_cn = ?, cover_path = COALESCE(?, cover_path), \
-                          cover_url = ?, bangumi_id = ?, vndb_id = ?, \
-                          metadata_source = ?, match_confidence = 100, \
-                          last_scanned_at = datetime('now') \
-         WHERE id = ?",
-    )
-    .bind(&detail.title)
-    .bind(&detail.title_cn)
-    .bind(&cover_path)
-    .bind(&detail.cover_url)
-    .bind(&bangumi_id_col)
-    .bind(&vndb_id_col)
-    .bind(&source) // "bangumi" or "vndb"
-    .bind(game_id)
-    .execute(&*pool)
-    .await
-    .map_err(err_str)?;
+        sqlx::query(
+            "UPDATE games SET name = ?, name_cn = ?, cover_path = COALESCE(?, cover_path), \
+                              cover_url = ?, bangumi_id = ?, vndb_id = ?, \
+                              metadata_source = ?, match_confidence = 100, \
+                              last_scanned_at = datetime('now') \
+             WHERE id = ?",
+        )
+        .bind(&detail.title)
+        .bind(&detail.title_cn)
+        .bind(&cover_path)
+        .bind(&detail.cover_url)
+        .bind(&bangumi_id_col)
+        .bind(&vndb_id_col)
+        .bind(&source) // "bangumi" or "vndb"
+        .bind(game_id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
 
-    Ok(())
+        Ok(())
+    }
+    .await;
+
+    let _ = app.emit(
+        "meta-fetch-progress",
+        serde_json::json!({ "game_id": game_id, "phase": "finished" }),
+    );
+
+    result
 }
 
 #[tauri::command]
 pub async fn refresh_metadata(
     game_id: i64,
+    app: AppHandle,
     state: State<'_, AppPaths>,
 ) -> Result<(), String> {
     let pool = state.pool().await.map_err(err_str)?;
     let data_dir = state.data_dir.clone();
 
-    // Read the row's current state.
-    let row = sqlx::query("SELECT path, name, executable_path FROM games WHERE id = ?")
+    // 20260509f — emit started, then run the refresh in an inner async block
+    // so the finished emit always runs even on row-not-found / network error.
+    let _ = app.emit(
+        "meta-fetch-progress",
+        serde_json::json!({ "game_id": game_id, "phase": "started" }),
+    );
+
+    let result: Result<(), String> = async {
+        // Read the row's current state.
+        let row = sqlx::query("SELECT path, name, executable_path FROM games WHERE id = ?")
+            .bind(game_id)
+            .fetch_one(&*pool)
+            .await
+            .map_err(err_str)?;
+        let games_path: String = row.try_get("path").map_err(err_str)?;
+        let current_name: String = row.try_get("name").map_err(err_str)?;
+        let exec: Option<String> = row.try_get("executable_path").ok();
+
+        // Use current `name` as the search query (it's typically the cleaned
+        // disk-name from initial ingest, OR the bound title from prior bind).
+        let result = ingest::refresh_for_query(
+            game_id,
+            &data_dir,
+            &games_path,
+            &current_name,
+            exec.as_deref(),
+        )
+        .await;
+
+        sqlx::query(
+            "UPDATE games SET name = ?, name_cn = ?, cover_path = COALESCE(?, cover_path), \
+                              cover_url = COALESCE(?, cover_url), \
+                              bangumi_id = COALESCE(?, bangumi_id), \
+                              vndb_id = COALESCE(?, vndb_id), \
+                              metadata_source = ?, match_confidence = ?, \
+                              last_scanned_at = datetime('now') \
+             WHERE id = ?",
+        )
+        .bind(&result.name)
+        .bind(&result.name_cn)
+        .bind(&result.cover_path)
+        .bind(&result.cover_url)
+        .bind(&result.bangumi_id)
+        .bind(&result.vndb_id)
+        .bind(&result.metadata_source)
+        .bind(result.match_confidence.map(|x| x as i64))
         .bind(game_id)
-        .fetch_one(&*pool)
+        .execute(&*pool)
         .await
         .map_err(err_str)?;
-    let games_path: String = row.try_get("path").map_err(err_str)?;
-    let current_name: String = row.try_get("name").map_err(err_str)?;
-    let exec: Option<String> = row.try_get("executable_path").ok();
 
-    // Use current `name` as the search query (it's typically the cleaned
-    // disk-name from initial ingest, OR the bound title from prior bind).
-    let result = ingest::refresh_for_query(
-        game_id,
-        &data_dir,
-        &games_path,
-        &current_name,
-        exec.as_deref(),
-    )
+        Ok(())
+    }
     .await;
 
-    sqlx::query(
-        "UPDATE games SET name = ?, name_cn = ?, cover_path = COALESCE(?, cover_path), \
-                          cover_url = COALESCE(?, cover_url), \
-                          bangumi_id = COALESCE(?, bangumi_id), \
-                          vndb_id = COALESCE(?, vndb_id), \
-                          metadata_source = ?, match_confidence = ?, \
-                          last_scanned_at = datetime('now') \
-         WHERE id = ?",
-    )
-    .bind(&result.name)
-    .bind(&result.name_cn)
-    .bind(&result.cover_path)
-    .bind(&result.cover_url)
-    .bind(&result.bangumi_id)
-    .bind(&result.vndb_id)
-    .bind(&result.metadata_source)
-    .bind(result.match_confidence.map(|x| x as i64))
-    .bind(game_id)
-    .execute(&*pool)
-    .await
-    .map_err(err_str)?;
+    let _ = app.emit(
+        "meta-fetch-progress",
+        serde_json::json!({ "game_id": game_id, "phase": "finished" }),
+    );
 
-    Ok(())
+    result
 }
 
 /// Bulk version of `refresh_metadata`: iterates every game in the library
@@ -661,6 +791,15 @@ pub async fn refresh_all_metadata(
             };
             let exec: Option<String> = row.try_get("executable_path").ok();
 
+            // 20260509f — pulse this card while we hit Bangumi+VNDB. The
+            // scan-progress terminal status (emitted at the end of this
+            // spawn) is the safety net for any missed finished emit; the
+            // pair below covers the happy path.
+            let _ = app_for_emit.emit(
+                "meta-fetch-progress",
+                serde_json::json!({ "game_id": id, "phase": "started" }),
+            );
+
             let result = ingest::refresh_for_query(
                 id,
                 &data_dir,
@@ -695,6 +834,11 @@ pub async fn refresh_all_metadata(
             .bind(id)
             .execute(&*pool_for_task)
             .await;
+
+            let _ = app_for_emit.emit(
+                "meta-fetch-progress",
+                serde_json::json!({ "game_id": id, "phase": "finished" }),
+            );
 
             let _ = app_for_emit.emit(
                 "scan-progress",
