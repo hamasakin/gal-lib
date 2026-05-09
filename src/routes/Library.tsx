@@ -194,7 +194,7 @@ export function Library() {
     <div className="flex h-full w-full flex-col">
       <ScanProgressBar />
 
-      <div className="flex-1 overflow-auto">
+      <div className="flex min-h-0 flex-1 flex-col">
         <PageHeader
           crumb="图书馆"
           badge={
@@ -254,7 +254,8 @@ export function Library() {
           <SortSelect />
         </div>
 
-        {/* Grid + empty states — designed per supplementary §8 (StatesWall) */}
+        {/* Grid + empty states — only this region scrolls; header/toolbar stay fixed above */}
+        <div className="flex min-h-0 flex-1 flex-col overflow-auto">
         {noScanYet && (
           <EmptyPanel
             icon={LibraryIcon}
@@ -297,6 +298,7 @@ export function Library() {
           />
         )}
         {!isEmpty && viewMode === "list" && <GameList games={visibleGames} />}
+        </div>
       </div>
 
       <MetadataPicker game={pickerGame} onClose={() => setPickerGame(null)} />
