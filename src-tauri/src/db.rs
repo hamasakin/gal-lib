@@ -12,6 +12,10 @@
 //! Schema v5 (Phase 5) adds 2 columns on `games` (screenshot_interval_sec +
 //! save_path) and 2 new tables (`screenshots`, `save_backups`) with FK
 //! ON DELETE CASCADE + per-table game_id index.
+//! Schema v7 (Phase 11) adds metadata-enrichment infrastructure:
+//! `games.summary` column + 3 new tables (`persons`, `game_staff`,
+//! `game_official_tags`) for cross-source author/artist/VA/composer storage
+//! and Bangumi/VNDB official tag lists.
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -21,6 +25,7 @@ const V3_SQL: &str = include_str!("../migrations/0003_add_launch_and_session_sta
 const V4_SQL: &str = include_str!("../migrations/0004_add_brand_year_favorite.sql");
 const V5_SQL: &str = include_str!("../migrations/0005_add_screenshots_and_saves.sql");
 const V6_SQL: &str = include_str!("../migrations/0006_disable_default_screenshots.sql");
+const V7_SQL: &str = include_str!("../migrations/0007_add_metadata_enrichment.sql");
 
 /// All migrations to register with tauri-plugin-sql, in version order.
 /// Add future migrations as additional entries with monotonically increasing
@@ -61,6 +66,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 6,
             description: "disable_default_screenshots",
             sql: V6_SQL,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 7,
+            description: "add_metadata_enrichment",
+            sql: V7_SQL,
             kind: MigrationKind::Up,
         },
     ]
@@ -248,6 +259,89 @@ mod tests {
         assert!(
             m5.sql.contains("schema_version") && m5.sql.contains("'5'"),
             "v5 sql bumps schema_version to '5'"
+        );
+    }
+
+    #[test]
+    fn migrations_v7_adds_metadata_enrichment() {
+        let m = migrations();
+        assert!(m.len() >= 7, "v7: at least seven migrations registered");
+        let m7 = m.iter().find(|x| x.version == 7).expect("v7 present");
+        assert_eq!(m7.description, "add_metadata_enrichment");
+
+        // Phase 11 adds 1 column on games + 3 new tables + 4 indexes.
+        let add_column_count = m7
+            .sql
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("--") && t.contains("ADD COLUMN")
+            })
+            .count();
+        assert_eq!(add_column_count, 1, "v7: exactly 1 ADD COLUMN statement");
+
+        // games.summary column
+        assert!(
+            m7.sql.contains("ADD COLUMN summary TEXT"),
+            "v7 sql adds summary TEXT column to games"
+        );
+
+        // 3 new tables
+        assert!(
+            m7.sql.contains("CREATE TABLE persons"),
+            "v7 sql creates persons table"
+        );
+        assert!(
+            m7.sql.contains("CREATE TABLE game_staff"),
+            "v7 sql creates game_staff table"
+        );
+        assert!(
+            m7.sql.contains("CREATE TABLE game_official_tags"),
+            "v7 sql creates game_official_tags table"
+        );
+
+        // role CHECK constraint with the locked 4-role enum
+        assert!(
+            m7.sql.contains("CHECK(role IN ('scenario','artist','voice','music'))"),
+            "v7 sql contains exact game_staff role CHECK constraint"
+        );
+
+        // FK ON DELETE CASCADE on both N:M tables
+        let cascade_count = m7
+            .sql
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("--") && t.contains("ON DELETE CASCADE")
+            })
+            .count();
+        assert!(
+            cascade_count >= 3,
+            "v7: at least 3 ON DELETE CASCADE clauses (game_staff×2, official_tags×1)"
+        );
+
+        // 4 indexes
+        assert!(
+            m7.sql.contains("CREATE INDEX idx_game_staff_game"),
+            "v7 sql creates idx_game_staff_game"
+        );
+        assert!(
+            m7.sql.contains("CREATE INDEX idx_game_staff_person_role"),
+            "v7 sql creates idx_game_staff_person_role"
+        );
+        assert!(
+            m7.sql.contains("CREATE INDEX idx_official_tags_game"),
+            "v7 sql creates idx_official_tags_game"
+        );
+        assert!(
+            m7.sql.contains("CREATE INDEX idx_official_tags_name"),
+            "v7 sql creates idx_official_tags_name"
+        );
+
+        // schema_version bumped to 7
+        assert!(
+            m7.sql.contains("schema_version") && m7.sql.contains("'7'"),
+            "v7 sql bumps schema_version to '7'"
         );
     }
 }
