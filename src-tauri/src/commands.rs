@@ -21,6 +21,7 @@
 //! Serialize-able errors; we render with `{:#}` to capture context chains).
 
 use crate::launch::{le, orchestrator, process_track, session};
+use crate::metadata::types::MetadataSource;
 use crate::{ingest, metadata, scan, AppPaths};
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
@@ -144,10 +145,16 @@ async fn apply_ingest_result(
     game_id: i64,
     result: &ingest::IngestResult,
 ) -> Result<(), String> {
+    // Phase 11 — `summary` overwrites unconditionally (NULL clears stale data
+    // when a re-fetch returns empty). `brand` uses COALESCE so a manually-set
+    // brand survives a re-fetch where the source returns NULL — symmetric
+    // with how `update_game_brand_year` lets users curate brand independently.
     sqlx::query(
         "UPDATE games SET name = ?, name_cn = ?, cover_path = ?, cover_url = ?, \
                           bangumi_id = ?, vndb_id = ?, metadata_source = ?, \
-                          match_confidence = ?, last_scanned_at = datetime('now') \
+                          match_confidence = ?, summary = ?, \
+                          brand = COALESCE(?, brand), \
+                          last_scanned_at = datetime('now') \
          WHERE id = ?",
     )
     .bind(&result.name)
@@ -158,11 +165,117 @@ async fn apply_ingest_result(
     .bind(&result.vndb_id)
     .bind(&result.metadata_source)
     .bind(result.match_confidence.map(|x| x as i64))
+    .bind(&result.summary)
+    .bind(&result.brand)
     .bind(game_id)
     .execute(pool)
     .await
     .map_err(err_str)?;
 
+    // Phase 11 — write_staff_and_tags handles the persons/game_staff/
+    // game_official_tags side. metadata_source on the IngestResult drives
+    // the official_tags.source column; if metadata_source is "none"
+    // (no-match path), there are no staff/tags to write so the helper
+    // is a fast no-op (DELETE clears stale rows + the loops exit on empty).
+    write_staff_and_tags(pool, game_id, &result.metadata_source, result).await?;
+
+    Ok(())
+}
+
+/// Phase 11 — DELETE-then-INSERT staff + official_tags for `game_id`.
+/// Wrapped in a single transaction so a partial failure (e.g. a UNIQUE
+/// collision on persons mid-loop) doesn't leave half-written enrichment.
+///
+/// `source_str` is the metadata_source string ("bangumi" | "vndb" | "none" |
+/// "manual") that's already on the IngestResult — passed in verbatim so
+/// game_official_tags.source matches games.metadata_source.
+///
+/// The DELETE pair always runs (even when staff/tags are empty) so that a
+/// re-fetch which returns 0 rows correctly clears stale rows rather than
+/// leaving them. Personal `INSERT OR IGNORE` handles duplicate persons rows
+/// gracefully when two different games share a contributor; the upsert
+/// returns the existing rowid via the UNIQUE(source, source_id) index.
+async fn write_staff_and_tags(
+    pool: &SqlitePool,
+    game_id: i64,
+    source_str: &str,
+    result: &ingest::IngestResult,
+) -> Result<(), String> {
+    let mut tx = pool.begin().await.map_err(err_str)?;
+
+    sqlx::query("DELETE FROM game_staff WHERE game_id = ?")
+        .bind(game_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(err_str)?;
+    sqlx::query("DELETE FROM game_official_tags WHERE game_id = ?")
+        .bind(game_id)
+        .execute(&mut *tx)
+        .await
+        .map_err(err_str)?;
+
+    for person in &result.staff {
+        let person_source_str = match person.source {
+            MetadataSource::Bangumi => "bangumi",
+            MetadataSource::Vndb => "vndb",
+            MetadataSource::Manual => "manual",
+            MetadataSource::None => continue, // shouldn't occur, defensive
+        };
+        // Look up existing person by (source, source_id); if missing, insert
+        // and grab the new rowid. UNIQUE(source, source_id) ensures the
+        // SELECT-then-INSERT race is harmless (concurrent inserts would hit
+        // the unique constraint and we'd just retry the SELECT next call —
+        // but we're inside a tx so this is single-threaded anyway).
+        let existing = sqlx::query("SELECT id FROM persons WHERE source = ? AND source_id = ?")
+            .bind(person_source_str)
+            .bind(&person.source_id)
+            .fetch_optional(&mut *tx)
+            .await
+            .map_err(err_str)?;
+        let person_id: i64 = match existing {
+            Some(row) => row.try_get("id").map_err(err_str)?,
+            None => {
+                let r = sqlx::query(
+                    "INSERT INTO persons (name, name_cn, source, source_id) VALUES (?, ?, ?, ?)",
+                )
+                .bind(&person.name)
+                .bind(&person.name_cn)
+                .bind(person_source_str)
+                .bind(&person.source_id)
+                .execute(&mut *tx)
+                .await
+                .map_err(err_str)?;
+                r.last_insert_rowid()
+            }
+        };
+        sqlx::query(
+            "INSERT OR IGNORE INTO game_staff (game_id, person_id, role, character_name) \
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(game_id)
+        .bind(person_id)
+        .bind(person.role.as_str())
+        .bind(&person.character_name)
+        .execute(&mut *tx)
+        .await
+        .map_err(err_str)?;
+    }
+
+    for tag in &result.tags {
+        sqlx::query(
+            "INSERT OR IGNORE INTO game_official_tags (game_id, tag_name, source, weight) \
+             VALUES (?, ?, ?, ?)",
+        )
+        .bind(game_id)
+        .bind(&tag.name)
+        .bind(source_str)
+        .bind(tag.weight)
+        .execute(&mut *tx)
+        .await
+        .map_err(err_str)?;
+    }
+
+    tx.commit().await.map_err(err_str)?;
     Ok(())
 }
 
@@ -733,10 +846,42 @@ pub async fn bind_metadata(
             _ => unreachable!(),
         };
 
+        // Phase 11 — bind also pulls staff/characters so the user sees the
+        // full enrichment immediately. Best-effort; any failure logs via the
+        // helper. We collect into a fresh IngestResult so we can reuse
+        // `write_staff_and_tags` without duplicating the SQL.
+        let (persons, characters) = match source.as_str() {
+            "bangumi" => (
+                metadata::bangumi::fetch_persons(&source_id).await,
+                metadata::bangumi::fetch_characters(&source_id).await,
+            ),
+            "vndb" => (
+                metadata::vndb::fetch_persons(&source_id).await,
+                metadata::vndb::fetch_characters(&source_id).await,
+            ),
+            _ => unreachable!(),
+        };
+        let mut staff = persons.unwrap_or_else(|e| {
+            eprintln!("[bind_metadata] fetch_persons failed for {}/{}: {}", source, source_id, e);
+            Vec::new()
+        });
+        match characters {
+            Ok(v) => staff.extend(v),
+            Err(e) => eprintln!(
+                "[bind_metadata] fetch_characters failed for {}/{}: {}",
+                source, source_id, e
+            ),
+        }
+
+        // Phase 11 — bind UPDATE writes summary unconditionally + brand via
+        // COALESCE (preserve manual brand). cover_path keeps its original
+        // COALESCE so a transient cover-cache failure doesn't blank an
+        // already-cached cover.
         sqlx::query(
             "UPDATE games SET name = ?, name_cn = ?, cover_path = COALESCE(?, cover_path), \
                               cover_url = ?, bangumi_id = ?, vndb_id = ?, \
                               metadata_source = ?, match_confidence = 100, \
+                              summary = ?, brand = COALESCE(?, brand), \
                               last_scanned_at = datetime('now') \
              WHERE id = ?",
         )
@@ -747,10 +892,32 @@ pub async fn bind_metadata(
         .bind(&bangumi_id_col)
         .bind(&vndb_id_col)
         .bind(&source) // "bangumi" or "vndb"
+        .bind(&detail.summary)
+        .bind(&detail.brand)
         .bind(game_id)
         .execute(&*pool)
         .await
         .map_err(err_str)?;
+
+        // Build a synthetic IngestResult so we can reuse `write_staff_and_tags`.
+        // Only the fields the helper reads (staff, tags) are populated meaningfully.
+        let synthetic = ingest::IngestResult {
+            games_path: String::new(),
+            name: detail.title.clone(),
+            name_cn: detail.title_cn.clone(),
+            executable_path: None,
+            cover_path: None,
+            cover_url: detail.cover_url.clone(),
+            bangumi_id: bangumi_id_col.clone(),
+            vndb_id: vndb_id_col.clone(),
+            metadata_source: source.clone(),
+            match_confidence: Some(100),
+            summary: detail.summary.clone(),
+            brand: detail.brand.clone(),
+            staff,
+            tags: detail.tags.clone(),
+        };
+        write_staff_and_tags(&*pool, game_id, &source, &synthetic).await?;
 
         Ok(())
     }
@@ -808,6 +975,7 @@ pub async fn refresh_metadata(
                               bangumi_id = COALESCE(?, bangumi_id), \
                               vndb_id = COALESCE(?, vndb_id), \
                               metadata_source = ?, match_confidence = ?, \
+                              summary = ?, brand = COALESCE(?, brand), \
                               last_scanned_at = datetime('now') \
              WHERE id = ?",
         )
@@ -819,10 +987,16 @@ pub async fn refresh_metadata(
         .bind(&result.vndb_id)
         .bind(&result.metadata_source)
         .bind(result.match_confidence.map(|x| x as i64))
+        .bind(&result.summary)
+        .bind(&result.brand)
         .bind(game_id)
         .execute(&*pool)
         .await
         .map_err(err_str)?;
+
+        // Phase 11 — write staff + official tags. metadata_source on the
+        // result is "bangumi" / "vndb" / "none"; the helper handles each.
+        write_staff_and_tags(&*pool, game_id, &result.metadata_source, &result).await?;
 
         Ok(())
     }
@@ -966,6 +1140,7 @@ pub async fn refresh_all_metadata(
                                   bangumi_id = COALESCE(?, bangumi_id), \
                                   vndb_id = COALESCE(?, vndb_id), \
                                   metadata_source = ?, match_confidence = ?, \
+                                  summary = ?, brand = COALESCE(?, brand), \
                                   last_scanned_at = datetime('now') \
                  WHERE id = ?",
             )
@@ -977,9 +1152,20 @@ pub async fn refresh_all_metadata(
             .bind(&result.vndb_id)
             .bind(&result.metadata_source)
             .bind(result.match_confidence.map(|x| x as i64))
+            .bind(&result.summary)
+            .bind(&result.brand)
             .bind(id)
             .execute(&*pool_for_task)
             .await;
+
+            // Phase 11 — staff + official tags refresh. Best-effort; a
+            // helper failure logs via err_str but doesn't abort the bulk
+            // refresh (matches the existing UPDATE's `let _ =` pattern).
+            if let Err(e) =
+                write_staff_and_tags(&*pool_for_task, id, &result.metadata_source, &result).await
+            {
+                eprintln!("[refresh_all_metadata] staff/tags write failed for game {}: {}", id, e);
+            }
 
             let _ = app_for_emit.emit(
                 "meta-fetch-progress",
@@ -1043,6 +1229,10 @@ pub struct Game {
     pub is_favorite: bool,
     pub created_at: String,
     pub updated_at: String,
+    // ── Phase 11 / schema v7 fields ──
+    /// Synopsis text from Bangumi/VNDB. NULL when never enriched or when the
+    /// source returned an empty summary.
+    pub summary: Option<String>,
 }
 
 /// Read every row from `games`, ordered by `created_at DESC`.
@@ -1061,7 +1251,7 @@ pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String>
         "SELECT id, path, name, name_cn, executable_path, cover_path, cover_url, \
                 bangumi_id, vndb_id, total_playtime_sec, last_played_at, status, \
                 rating, notes, metadata_source, match_confidence, last_scanned_at, \
-                brand, release_year, is_favorite, \
+                brand, release_year, is_favorite, summary, \
                 created_at, updated_at \
          FROM games ORDER BY created_at DESC",
     )
@@ -1104,6 +1294,7 @@ fn row_to_game(row: &sqlx::sqlite::SqliteRow) -> Result<Game, String> {
         is_favorite: row.try_get::<i64, _>("is_favorite").unwrap_or(0) != 0,
         created_at: row.try_get("created_at").map_err(err_str)?,
         updated_at: row.try_get("updated_at").map_err(err_str)?,
+        summary: row.try_get("summary").ok(),
     })
 }
 
@@ -1464,6 +1655,17 @@ pub struct SearchFilter {
     pub favorite: Option<bool>,
     pub brand: Option<String>,
     pub year_decade: Option<i32>,
+    /// Phase 11 — multi-select staff filter. Games where ANY of these
+    /// person_ids appear in `game_staff` match (OR within the list).
+    /// Combined with other filters by AND.
+    pub staff_ids: Option<Vec<i64>>,
+    /// Phase 11 — multi-select official-tag filter (matches `tag_name`
+    /// across all sources). OR within the list.
+    pub official_tags: Option<Vec<String>>,
+    /// Phase 11 — multi-select brand filter. OR within the list (extends
+    /// the legacy single-value `brand` field which is kept for backward
+    /// compatibility with the sidebar's existing brand-bucket clicks).
+    pub brands: Option<Vec<String>>,
 }
 
 /// Search + sort + filter the `games` table.
@@ -1563,6 +1765,53 @@ pub async fn search_games(
             lo, hi
         ));
     }
+    // Phase 11 — staff_ids filter: any of these persons participated.
+    // i64 list interpolation is injection-safe (numeric type) and matches
+    // how `tag_id` is already inlined above.
+    if let Some(ids) = f.staff_ids.as_ref().filter(|v| !v.is_empty()) {
+        let csv = ids
+            .iter()
+            .map(|i| i.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        where_clauses.push(format!(
+            "g.id IN (SELECT game_id FROM game_staff WHERE person_id IN ({}))",
+            csv
+        ));
+    }
+    // Phase 11 — official_tags filter: any of these tag names hit on
+    // game_official_tags. Strings, so use placeholders + bind.
+    let official_tags_count = f
+        .official_tags
+        .as_ref()
+        .filter(|v| !v.is_empty())
+        .map(|v| v.len())
+        .unwrap_or(0);
+    if official_tags_count > 0 {
+        let placeholders = std::iter::repeat("?")
+            .take(official_tags_count)
+            .collect::<Vec<_>>()
+            .join(",");
+        where_clauses.push(format!(
+            "g.id IN (SELECT game_id FROM game_official_tags WHERE tag_name IN ({}))",
+            placeholders
+        ));
+    }
+    // Phase 11 — multi-brand filter (OR). Coexists with the legacy
+    // single-value `brand` field (which is ANDed via the earlier clause).
+    let brands_count = f
+        .brands
+        .as_ref()
+        .filter(|v| !v.is_empty())
+        .map(|v| v.len())
+        .unwrap_or(0);
+    if brands_count > 0 {
+        let placeholders = std::iter::repeat("?")
+            .take(brands_count)
+            .collect::<Vec<_>>()
+            .join(",");
+        where_clauses.push(format!("g.brand IN ({})", placeholders));
+    }
 
     let where_sql = if where_clauses.is_empty() {
         String::new()
@@ -1574,7 +1823,7 @@ pub async fn search_games(
         "SELECT g.id, g.path, g.name, g.name_cn, g.executable_path, g.cover_path, g.cover_url, \
                 g.bangumi_id, g.vndb_id, g.total_playtime_sec, g.last_played_at, g.status, \
                 g.rating, g.notes, g.metadata_source, g.match_confidence, g.last_scanned_at, \
-                g.brand, g.release_year, g.is_favorite, \
+                g.brand, g.release_year, g.is_favorite, g.summary, \
                 g.created_at, g.updated_at \
          FROM games g {} ORDER BY {}",
         where_sql, order_by
@@ -1587,6 +1836,17 @@ pub async fn search_games(
     }
     if let Some(brand) = &f.brand {
         qb = qb.bind(brand);
+    }
+    // Phase 11 — bind official_tags then brands, matching WHERE append order.
+    if let Some(tags) = f.official_tags.as_ref().filter(|v| !v.is_empty()) {
+        for t in tags {
+            qb = qb.bind(t);
+        }
+    }
+    if let Some(brands) = f.brands.as_ref().filter(|v| !v.is_empty()) {
+        for b in brands {
+            qb = qb.bind(b);
+        }
     }
 
     let rows = qb.fetch_all(&*pool).await.map_err(err_str)?;
@@ -2464,4 +2724,460 @@ pub fn open_in_explorer(path: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("无法打开 Explorer：{}", e))
+}
+
+// ── Phase 11 / 11c — metadata enrichment IPCs ──────────────────────────────
+//
+// Six commands powering the Detail-page enrichment panel (staff list, official
+// tags), the multi-dim filter sidebar (`get_filter_options`), the cross-page
+// "browse by person" navigation (`list_games_for_person`), the
+// `backfill_metadata_enrichment` migration helper, and external-link opens
+// (Bangumi/VNDB urls in the staff popover).
+
+/// Row returned by `list_persons_for_game`. Joins `game_staff` ←→ `persons`
+/// so the frontend has both the role/character_name (per-game data) and the
+/// person identity (cross-game data) in one round-trip. `id` is the persons
+/// rowid — pass it back to `list_games_for_person`.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GameStaffRow {
+    pub id: i64,
+    pub name: String,
+    pub name_cn: Option<String>,
+    pub source: String,
+    pub source_id: String,
+    pub role: String,
+    pub character_name: Option<String>,
+}
+
+#[tauri::command]
+pub async fn list_persons_for_game(
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<GameStaffRow>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query(
+        "SELECT p.id, p.name, p.name_cn, p.source, p.source_id, \
+                gs.role, gs.character_name \
+         FROM game_staff gs JOIN persons p ON p.id = gs.person_id \
+         WHERE gs.game_id = ? \
+         ORDER BY \
+            CASE gs.role \
+                WHEN 'scenario' THEN 1 \
+                WHEN 'artist'   THEN 2 \
+                WHEN 'music'    THEN 3 \
+                WHEN 'voice'    THEN 4 \
+                ELSE 5 \
+            END, \
+            COALESCE(p.name_cn, p.name) COLLATE NOCASE ASC",
+    )
+    .bind(game_id)
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(GameStaffRow {
+            id: row.try_get("id").map_err(err_str)?,
+            name: row.try_get("name").map_err(err_str)?,
+            name_cn: row.try_get("name_cn").ok(),
+            source: row.try_get("source").map_err(err_str)?,
+            source_id: row.try_get("source_id").map_err(err_str)?,
+            role: row.try_get("role").map_err(err_str)?,
+            character_name: row.try_get("character_name").ok(),
+        });
+    }
+    Ok(out)
+}
+
+/// Reverse lookup: every game where `person_id` participated, optionally
+/// filtered to a single role. Returns full `Game` rows so the caller can
+/// render a result-grid card without a follow-up `list_games` call.
+#[tauri::command]
+pub async fn list_games_for_person(
+    person_id: i64,
+    role: Option<String>,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<Game>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+
+    // Defensive whitelist: role enum already enforced by DB CHECK, but a
+    // bad string would simply return zero rows; surface a precise error.
+    if let Some(r) = role.as_deref() {
+        match r {
+            "scenario" | "artist" | "voice" | "music" => {}
+            other => {
+                return Err(format!(
+                    "role must be scenario|artist|voice|music (got '{}')",
+                    other
+                ))
+            }
+        }
+    }
+
+    let role_clause = if role.is_some() {
+        " AND gs.role = ?"
+    } else {
+        ""
+    };
+
+    let sql = format!(
+        "SELECT DISTINCT g.id, g.path, g.name, g.name_cn, g.executable_path, \
+                g.cover_path, g.cover_url, g.bangumi_id, g.vndb_id, \
+                g.total_playtime_sec, g.last_played_at, g.status, \
+                g.rating, g.notes, g.metadata_source, g.match_confidence, \
+                g.last_scanned_at, g.brand, g.release_year, g.is_favorite, \
+                g.summary, g.created_at, g.updated_at \
+         FROM games g \
+         JOIN game_staff gs ON gs.game_id = g.id \
+         WHERE gs.person_id = ?{} \
+         ORDER BY g.created_at DESC",
+        role_clause
+    );
+
+    let mut qb = sqlx::query(&sql).bind(person_id);
+    if let Some(r) = &role {
+        qb = qb.bind(r);
+    }
+    let rows = qb.fetch_all(&*pool).await.map_err(err_str)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(row_to_game(&row)?);
+    }
+    Ok(out)
+}
+
+/// Row returned by `list_official_tags_for_game`. The table has no rowid
+/// (composite PRIMARY KEY) so we mint a synthetic id from the rowid via
+/// SQLite's implicit `_rowid_` column — purely for the React `key` prop.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct OfficialTagRow {
+    pub id: i64,
+    pub tag_name: String,
+    pub source: String,
+    pub weight: i64,
+}
+
+#[tauri::command]
+pub async fn list_official_tags_for_game(
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<OfficialTagRow>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query(
+        "SELECT _rowid_ AS id, tag_name, source, weight \
+         FROM game_official_tags \
+         WHERE game_id = ? \
+         ORDER BY weight DESC, tag_name COLLATE NOCASE ASC",
+    )
+    .bind(game_id)
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(OfficialTagRow {
+            id: row.try_get("id").unwrap_or(0),
+            tag_name: row.try_get("tag_name").map_err(err_str)?,
+            source: row.try_get("source").map_err(err_str)?,
+            weight: row.try_get("weight").unwrap_or(0),
+        });
+    }
+    Ok(out)
+}
+
+/// Compact identity for facet-panel option lists. Includes Chinese alias so
+/// the dropdown can render "夜永サクヤ / 夜永咲夜" without a second lookup.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PersonOption {
+    pub id: i64,
+    pub name: String,
+    pub name_cn: Option<String>,
+}
+
+/// Tag option carries its frequency so the panel can sort by relevance and
+/// render tag clouds with weight indicators.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct TagOption {
+    pub name: String,
+    pub count: i64,
+}
+
+/// Aggregated facet options for the multi-dim filter sidebar. One round-trip,
+/// 6 SELECTs internally; the frontend caches the result and re-fetches only
+/// after a metadata refresh / scan.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct FilterOptions {
+    pub brands: Vec<String>,
+    pub scenarios: Vec<PersonOption>,
+    pub artists: Vec<PersonOption>,
+    pub voices: Vec<PersonOption>,
+    pub music: Vec<PersonOption>,
+    pub official_tags: Vec<TagOption>,
+}
+
+/// Returns brands sorted by frequency desc, scenarios/artists/voices/music
+/// sorted by participation count desc, official_tags sorted by count desc.
+/// All lists exclude entries with zero usage in the current library.
+#[tauri::command]
+pub async fn get_filter_options(
+    state: State<'_, AppPaths>,
+) -> Result<FilterOptions, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+
+    // Brands — ordered by frequency desc, name asc as tiebreak. NULL/empty
+    // excluded (matches `get_sidebar_categories`'s brand query).
+    let brand_rows = sqlx::query(
+        "SELECT brand, COUNT(*) AS cnt FROM games \
+         WHERE brand IS NOT NULL AND brand <> '' \
+         GROUP BY brand ORDER BY cnt DESC, brand COLLATE NOCASE ASC",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let brands: Vec<String> = brand_rows
+        .into_iter()
+        .filter_map(|r| r.try_get("brand").ok())
+        .collect();
+
+    // Helper: load all persons for one role, ordered by participation count.
+    async fn persons_for_role(
+        pool: &SqlitePool,
+        role: &str,
+    ) -> Result<Vec<PersonOption>, String> {
+        let rows = sqlx::query(
+            "SELECT p.id, p.name, p.name_cn, COUNT(DISTINCT gs.game_id) AS cnt \
+             FROM persons p JOIN game_staff gs ON gs.person_id = p.id \
+             WHERE gs.role = ? \
+             GROUP BY p.id, p.name, p.name_cn \
+             ORDER BY cnt DESC, COALESCE(p.name_cn, p.name) COLLATE NOCASE ASC",
+        )
+        .bind(role)
+        .fetch_all(pool)
+        .await
+        .map_err(err_str)?;
+        let mut out = Vec::with_capacity(rows.len());
+        for r in rows {
+            out.push(PersonOption {
+                id: r.try_get("id").map_err(err_str)?,
+                name: r.try_get("name").map_err(err_str)?,
+                name_cn: r.try_get("name_cn").ok(),
+            });
+        }
+        Ok(out)
+    }
+
+    let scenarios = persons_for_role(&pool, "scenario").await?;
+    let artists = persons_for_role(&pool, "artist").await?;
+    let voices = persons_for_role(&pool, "voice").await?;
+    let music = persons_for_role(&pool, "music").await?;
+
+    // Official tags — count distinct games per tag_name (cross-source: a tag
+    // present on both Bangumi and VNDB for the same game counts once).
+    let tag_rows = sqlx::query(
+        "SELECT tag_name, COUNT(DISTINCT game_id) AS cnt \
+         FROM game_official_tags \
+         GROUP BY tag_name \
+         ORDER BY cnt DESC, tag_name COLLATE NOCASE ASC",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let official_tags: Vec<TagOption> = tag_rows
+        .into_iter()
+        .filter_map(|r| {
+            Some(TagOption {
+                name: r.try_get("tag_name").ok()?,
+                count: r.try_get("cnt").unwrap_or(0),
+            })
+        })
+        .collect();
+
+    Ok(FilterOptions {
+        brands,
+        scenarios,
+        artists,
+        voices,
+        music,
+        official_tags,
+    })
+}
+
+/// Backfill staff + official tags for every already-bound game that's still
+/// missing them. The query targets games with a non-NULL bangumi_id or
+/// vndb_id AND zero rows in `game_staff` — a precise selector that picks up
+/// pre-Phase 11 rows without re-touching games already enriched.
+///
+/// Re-uses the existing source_id (no re-search), respects the per-source
+/// rate limiters, and emits `meta-fetch-progress` events so the existing
+/// card-pulse UX surfaces the work.
+#[tauri::command]
+pub async fn backfill_metadata_enrichment(
+    app: AppHandle,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+
+    let rows = sqlx::query(
+        "SELECT id, bangumi_id, vndb_id, metadata_source FROM games \
+         WHERE (bangumi_id IS NOT NULL OR vndb_id IS NOT NULL) \
+           AND id NOT IN (SELECT DISTINCT game_id FROM game_staff)",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+
+    if rows.is_empty() {
+        return Ok(());
+    }
+
+    // Spawn so the command returns immediately; the frontend listens on the
+    // existing `meta-fetch-progress` channel.
+    let pool_for_task = pool.clone();
+    tokio::spawn(async move {
+        for row in rows {
+            let game_id: i64 = match row.try_get("id") {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let bangumi_id: Option<String> = row.try_get("bangumi_id").ok();
+            let vndb_id: Option<String> = row.try_get("vndb_id").ok();
+            let metadata_source: Option<String> = row.try_get("metadata_source").ok();
+
+            // Decide which source to enrich from. Prefer the bound
+            // metadata_source; fall back to whichever id is present.
+            let (source_enum, source_id, source_str) = match metadata_source.as_deref() {
+                Some("bangumi") => match bangumi_id.as_ref() {
+                    Some(id) => (MetadataSource::Bangumi, id.clone(), "bangumi".to_string()),
+                    None => continue,
+                },
+                Some("vndb") => match vndb_id.as_ref() {
+                    Some(id) => (MetadataSource::Vndb, id.clone(), "vndb".to_string()),
+                    None => continue,
+                },
+                _ => {
+                    // Manual or none: fall back to whichever id is present.
+                    if let Some(id) = bangumi_id.as_ref() {
+                        (MetadataSource::Bangumi, id.clone(), "bangumi".to_string())
+                    } else if let Some(id) = vndb_id.as_ref() {
+                        (MetadataSource::Vndb, id.clone(), "vndb".to_string())
+                    } else {
+                        continue;
+                    }
+                }
+            };
+
+            let _ = app.emit(
+                "meta-fetch-progress",
+                serde_json::json!({ "game_id": game_id, "phase": "started" }),
+            );
+
+            // 3 fetches: detail (summary/brand/tags) + persons + characters.
+            // Best-effort each; the helper module already logs on failure.
+            let detail = match source_enum {
+                MetadataSource::Bangumi => metadata::bangumi::fetch_detail(&source_id).await,
+                MetadataSource::Vndb => metadata::vndb::fetch_detail(&source_id).await,
+                _ => continue,
+            };
+            let (summary, brand, tags) = match detail {
+                Ok(d) => (d.summary, d.brand, d.tags),
+                Err(e) => {
+                    eprintln!(
+                        "[backfill] fetch_detail failed for game {} ({:?}): {}",
+                        game_id, source_enum, e
+                    );
+                    (None, None, Vec::new())
+                }
+            };
+            let persons = match source_enum {
+                MetadataSource::Bangumi => metadata::bangumi::fetch_persons(&source_id).await,
+                MetadataSource::Vndb => metadata::vndb::fetch_persons(&source_id).await,
+                _ => Ok(Vec::new()),
+            };
+            let mut staff = persons.unwrap_or_else(|e| {
+                eprintln!("[backfill] fetch_persons failed for game {}: {}", game_id, e);
+                Vec::new()
+            });
+            let characters = match source_enum {
+                MetadataSource::Bangumi => metadata::bangumi::fetch_characters(&source_id).await,
+                MetadataSource::Vndb => metadata::vndb::fetch_characters(&source_id).await,
+                _ => Ok(Vec::new()),
+            };
+            match characters {
+                Ok(v) => staff.extend(v),
+                Err(e) => eprintln!(
+                    "[backfill] fetch_characters failed for game {}: {}",
+                    game_id, e
+                ),
+            }
+
+            // Update games row with summary/brand (preserve manual brand
+            // via COALESCE — symmetric with apply_ingest_result).
+            let _ = sqlx::query(
+                "UPDATE games SET summary = ?, brand = COALESCE(?, brand), \
+                                  last_scanned_at = datetime('now') \
+                 WHERE id = ?",
+            )
+            .bind(&summary)
+            .bind(&brand)
+            .bind(game_id)
+            .execute(&*pool_for_task)
+            .await;
+
+            // Synthetic IngestResult so we can reuse the helper.
+            let synthetic = ingest::IngestResult {
+                games_path: String::new(),
+                name: String::new(),
+                name_cn: None,
+                executable_path: None,
+                cover_path: None,
+                cover_url: None,
+                bangumi_id: bangumi_id.clone(),
+                vndb_id: vndb_id.clone(),
+                metadata_source: source_str.clone(),
+                match_confidence: None,
+                summary,
+                brand,
+                staff,
+                tags,
+            };
+            if let Err(e) =
+                write_staff_and_tags(&*pool_for_task, game_id, &source_str, &synthetic).await
+            {
+                eprintln!(
+                    "[backfill] staff/tags write failed for game {}: {}",
+                    game_id, e
+                );
+            }
+
+            let _ = app.emit(
+                "meta-fetch-progress",
+                serde_json::json!({ "game_id": game_id, "phase": "finished" }),
+            );
+        }
+    });
+
+    Ok(())
+}
+
+/// Open an external URL in the user's default browser. Used by the staff
+/// popover's "在 Bangumi/VNDB 查看" links and any other outbound link the
+/// frontend wants to surface.
+///
+/// Windows-only implementation via `cmd /C start` — equivalent to running
+/// `start "" <url>` in a shell. The empty title argument is required by
+/// `start.exe`'s argument parser to avoid mistaking the URL for a window
+/// title. The project already targets Windows-only (per CLAUDE.md), so we
+/// don't need a cross-platform fallback.
+#[tauri::command]
+pub fn open_external_url(url: String) -> Result<(), String> {
+    use std::process::Command;
+    // Defensive: only allow http(s) URLs. Avoid being a generic shell-exec.
+    if !url.starts_with("http://") && !url.starts_with("https://") {
+        return Err(format!("仅支持 http/https URL：{}", url));
+    }
+    Command::new("cmd")
+        .args(["/C", "start", "", &url])
+        .spawn()
+        .map(|_| ())
+        .map_err(|e| format!("无法打开浏览器：{}", e))
 }

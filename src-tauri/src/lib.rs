@@ -238,6 +238,13 @@ pub fn run() {
             commands::delete_save_backup,
             // 20260509b — open game directory in OS file manager (1 new)
             commands::open_in_explorer,
+            // 11c — Phase 11 metadata enrichment IPCs (6 new)
+            commands::list_persons_for_game,
+            commands::list_games_for_person,
+            commands::list_official_tags_for_game,
+            commands::get_filter_options,
+            commands::backfill_metadata_enrichment,
+            commands::open_external_url,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

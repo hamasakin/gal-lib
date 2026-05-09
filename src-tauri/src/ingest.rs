@@ -34,6 +34,7 @@
 //! / bind_metadata).
 
 use crate::cover_cache;
+use crate::metadata::types::{OfficialTagRef, PersonRef};
 use crate::metadata::{self, Candidate, MetadataSource};
 use crate::scan::DiscoveredGame;
 use std::collections::HashMap;
@@ -58,6 +59,17 @@ pub struct IngestResult {
     pub vndb_id: Option<String>,
     pub metadata_source: String,
     pub match_confidence: Option<u8>,
+    /// Phase 11 — synopsis text from MetadataDetail; None if no detail fetch
+    /// (no-match path) or if the source returned an empty summary.
+    pub summary: Option<String>,
+    /// Phase 11 — brand / publisher / circle name from MetadataDetail.
+    pub brand: Option<String>,
+    /// Phase 11 — combined `fetch_persons` + `fetch_characters` result for
+    /// the chosen source. Empty when the chosen source's fetch failed (best
+    /// effort) or when no candidate was bound.
+    pub staff: Vec<PersonRef>,
+    /// Phase 11 — official tags from MetadataDetail.
+    pub tags: Vec<OfficialTagRef>,
 }
 
 /// Auto-bind threshold (locked in 02-CONTEXT § Metadata Match Pipeline).
@@ -133,6 +145,72 @@ pub async fn pick_best_with_cache(query: &str, cache: &QueryCache) -> Option<Can
         .clone()
 }
 
+/// Phase 11 — best-effort enrichment fetch for a chosen candidate.
+///
+/// Issues 3 calls per source:
+///   - `fetch_detail` for summary / brand / official tags
+///   - `fetch_persons` for scenario / artist / music staff
+///   - `fetch_characters` for voice actors
+///
+/// All three are best-effort: any error is logged via stderr and the
+/// affected slice falls back to its empty default. The returned tuple
+/// matches `(summary, brand, staff, tags)` exactly so the caller can
+/// assign into IngestResult fields directly.
+async fn fetch_enrichment(
+    source: MetadataSource,
+    source_id: &str,
+) -> (Option<String>, Option<String>, Vec<PersonRef>, Vec<OfficialTagRef>) {
+    // 1. Detail (summary, brand, tags). On error: log + leave fields empty.
+    let detail = match source {
+        MetadataSource::Bangumi => metadata::bangumi::fetch_detail(source_id).await,
+        MetadataSource::Vndb => metadata::vndb::fetch_detail(source_id).await,
+        _ => return (None, None, Vec::new(), Vec::new()),
+    };
+    let (summary, brand, tags) = match detail {
+        Ok(d) => (d.summary, d.brand, d.tags),
+        Err(e) => {
+            eprintln!(
+                "[ingest] fetch_detail failed for {:?}/{}: {}",
+                source, source_id, e
+            );
+            (None, None, Vec::new())
+        }
+    };
+
+    // 2. Persons (scenario / artist / music). Best-effort.
+    let persons = match source {
+        MetadataSource::Bangumi => metadata::bangumi::fetch_persons(source_id).await,
+        MetadataSource::Vndb => metadata::vndb::fetch_persons(source_id).await,
+        _ => Ok(Vec::new()),
+    };
+    let mut staff = match persons {
+        Ok(v) => v,
+        Err(e) => {
+            eprintln!(
+                "[ingest] fetch_persons failed for {:?}/{}: {}",
+                source, source_id, e
+            );
+            Vec::new()
+        }
+    };
+
+    // 3. Characters / VAs. Best-effort. Concatenate onto staff.
+    let characters = match source {
+        MetadataSource::Bangumi => metadata::bangumi::fetch_characters(source_id).await,
+        MetadataSource::Vndb => metadata::vndb::fetch_characters(source_id).await,
+        _ => Ok(Vec::new()),
+    };
+    match characters {
+        Ok(v) => staff.extend(v),
+        Err(e) => eprintln!(
+            "[ingest] fetch_characters failed for {:?}/{}: {}",
+            source, source_id, e
+        ),
+    }
+
+    (summary, brand, staff, tags)
+}
+
 /// Process one discovered game: search → fallback → cover-cache.
 ///
 /// `game_id_for_cover` is the SQLite ROWID of the freshly-inserted `games`
@@ -168,6 +246,10 @@ pub async fn process_game(
         vndb_id: None,
         metadata_source: "none".into(),
         match_confidence: None,
+        summary: None,
+        brand: None,
+        staff: Vec::new(),
+        tags: Vec::new(),
     };
 
     // Skip metadata search entirely when clean_name is empty (defensive).
@@ -231,6 +313,15 @@ pub async fn process_game(
                 ),
             }
         }
+
+        // 4. Phase 11 — best-effort enrichment fetch (summary / brand /
+        //    staff / tags). Any failure logs and leaves the field empty;
+        //    never aborts ingest.
+        let (summary, brand, staff, tags) = fetch_enrichment(c.source, &c.source_id).await;
+        result.summary = summary;
+        result.brand = brand;
+        result.staff = staff;
+        result.tags = tags;
     }
 
     result
@@ -272,6 +363,10 @@ pub async fn process_game_cached(
         vndb_id: None,
         metadata_source: "none".into(),
         match_confidence: None,
+        summary: None,
+        brand: None,
+        staff: Vec::new(),
+        tags: Vec::new(),
     };
 
     if discovered.clean_name.trim().is_empty() {
@@ -325,6 +420,16 @@ pub async fn process_game_cached(
                 ),
             }
         }
+
+        // Phase 11 — same enrichment fetch as `process_game`. The query
+        // dedup cache only covers `pick_best_*` (search results); detail/
+        // persons/characters aren't cached because each game's source_id
+        // is unique by construction.
+        let (summary, brand, staff, tags) = fetch_enrichment(c.source, &c.source_id).await;
+        result.summary = summary;
+        result.brand = brand;
+        result.staff = staff;
+        result.tags = tags;
     }
 
     result
@@ -385,6 +490,11 @@ mod tests {
         assert_eq!(res.name, "_____"); // raw fallback
         assert!(res.bangumi_id.is_none() && res.vndb_id.is_none());
         assert!(res.cover_path.is_none());
+        // Phase 11 — new fields default to None / empty Vec when no match.
+        assert!(res.summary.is_none());
+        assert!(res.brand.is_none());
+        assert!(res.staff.is_empty());
+        assert!(res.tags.is_empty());
         let _ = std::fs::remove_dir_all(&tmp);
     }
 
