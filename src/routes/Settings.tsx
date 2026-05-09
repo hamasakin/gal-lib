@@ -55,6 +55,7 @@ import {
   removeScanRoot,
   startScan,
 } from "@/lib/scan";
+import { backfillMetadataEnrichment } from "@/lib/persons";
 import { getSidebarCategories, searchGames } from "@/lib/search";
 import { getLePath, setLePath as applyLePath } from "@/lib/launch";
 import { useLibraryStore } from "@/store/library";
@@ -259,6 +260,16 @@ export function Settings() {
     try {
       await refreshAllMetadata();
       toast.info("元数据刷新已启动");
+      navigate("/");
+    } catch (e: unknown) {
+      toast.error(`启动失败 — ${String(e)}`);
+    }
+  }
+
+  async function onBackfillEnrichment() {
+    try {
+      await backfillMetadataEnrichment();
+      toast.info("已开始补全简介/作者/声优/官方标签 — 后台运行，受 API 限速影响可能耗时数分钟");
       navigate("/");
     } catch (e: unknown) {
       toast.error(`启动失败 — ${String(e)}`);
@@ -481,7 +492,7 @@ export function Settings() {
           <Section
             id="scan-ops"
             title="扫描操作"
-            lede="增量扫描跳过已绑定的游戏，自动复审「待复核」 · 全量扫描重新发现并匹配 · 强制刷新对所有游戏（含已绑定）重跑元数据"
+            lede="增量扫描跳过已绑定的游戏，自动复审「待复核」 · 全量扫描重新发现并匹配 · 强制刷新重跑全部元数据 · 补全简介/作者/声优只对已绑定但缺 staff 的游戏拉取（不改绑定）"
             sectionRefs={sectionRefs}
           >
             <div className="flex flex-wrap gap-2.5">
@@ -490,6 +501,9 @@ export function Settings() {
               </SettingButton>
               <SettingButton onClick={() => void onScan("incremental")}>
                 增量扫描
+              </SettingButton>
+              <SettingButton onClick={() => void onBackfillEnrichment()}>
+                补全简介/作者/声优/官方标签
               </SettingButton>
               <AlertDialog>
                 <AlertDialogTrigger asChild>
@@ -501,7 +515,7 @@ export function Settings() {
                     <AlertDialogDescription>
                       会对所有游戏重新搜索 Bangumi/VNDB，
                       <span className="text-ink-1">含已绑定与手动绑定的</span>
-                      。手动指定的封面/标题可能被覆盖。受 API 限速器约束，库越大越慢。
+                      。手动指定的封面/标题可能被覆盖。受 API 限速器约束，库越大越慢。若只想补全简介/作者/声优数据而不改绑定，请使用「补全简介/作者/声优」按钮。
                     </AlertDialogDescription>
                   </AlertDialogHeader>
                   <AlertDialogFooter>
