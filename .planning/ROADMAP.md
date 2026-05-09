@@ -31,8 +31,17 @@
 
 ### 📋 v1.2 (Planned)
 
-Carry-over tech debt + deferred items from v1.1 audit (run `/gsd-new-milestone` to formalise scope):
+Carry-over tech debt + deferred items from v1.1 audit + new metadata-enrichment scope from /gsd-explore 2026-05-09:
 
+- [ ] **Phase 11: Metadata Enrichment & Multi-dim Filtering** — *primary scope of v1.2*
+  - DB migration: add `summary` column to `games`; new tables `persons`, `game_staff(role IN scenario|artist|voice|music)`, `game_official_tags`
+  - Bangumi/VNDB clients widen to fetch infobox brand, persons (`/v0/subjects/{id}/persons` + `/characters`), official tags; VNDB `staff{}` / `vns_va` / `producers{}` fields
+  - Ingest writes new fields; backfill script for existing library
+  - UI: Detail surfaces 简介 / 品牌 / 编剧 / 画师 / 声优 / 音乐 / 官方 tags + "在 Bangumi 看 ↗" / "在 VNDB 看 ↗" external links
+  - Library facet panel: 品牌 / 作者 / 声优 / 官方 tag 多维筛选 (AND across dimensions)
+  - New route `/persons/:id` — 人物聚合页 (该人物参与的所有游戏)
+  - 前置研究：`research/questions.md` 中的 Bangumi/VNDB 字段映射验证
+  - 设计 context：`notes/metadata-enrichment-context.md`
 - LIB-02 magazine asymmetric grid (revisit or drop spec)
 - PGE-01 / PGE-02 standalone `/scan` route + Bangumi/VNDB review queue (needs IPC payload + schema work)
 - Detail `?tab=` deeplink parsing
@@ -53,3 +62,4 @@ Carry-over tech debt + deferred items from v1.1 audit (run `/gsd-new-milestone` 
 | 8. Detail Page Redesign | v1.1 | 1/1 | Complete | 2026-05-08 |
 | 9. Scan & Stats Pages | v1.1 | 1/1 | Complete (Scan deferred) | 2026-05-08 |
 | 10. Settings & Screenshots | v1.1 | 1/1 | Complete | 2026-05-08 |
+| 11. Metadata Enrichment & Multi-dim Filtering | v1.2 | 0/? | Planned | — |
