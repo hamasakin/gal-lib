@@ -371,7 +371,24 @@ pub async fn start_scan(
         // Errors are swallowed per-row: a single failed INSERT shouldn't
         // abort the whole scan; the enrich loop will retry the INSERT
         // (idempotent ON CONFLICT(path)) and surface its own error.
+        //
+        // 20260509g — cancel check at top of each placeholder-insert iteration:
+        // if the user clicked "取消扫描" while we're seeding placeholders,
+        // bail immediately with a Cancelled event instead of continuing to
+        // INSERT every remaining discovery before the ingest loop's check.
         for dg in &discovered {
+            if ctx.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = app_for_emit.emit(
+                    "scan-progress",
+                    scan::ScanProgress {
+                        current_dir: String::new(),
+                        completed: 0,
+                        total,
+                        status: scan::ScanStatus::Cancelled,
+                    },
+                );
+                return;
+            }
             let _ = insert_placeholder_dir(&*pool_for_task, dg).await;
         }
 
@@ -393,7 +410,27 @@ pub async fn start_scan(
         // Ingest each discovered game sequentially (intentional — Bangumi
         // limiter is 1 req/s, parallelism wouldn't help and would garble
         // the per-game progress reporting).
+        //
+        // 20260509g — Task 2 will replace this sequential loop with a
+        // tokio::task::JoinSet for cross-game concurrency. Task 1 only
+        // adds the per-iteration cancel check so users can abort the
+        // scan without waiting for the entire library to finish.
         for (i, dg) in discovered.into_iter().enumerate() {
+            // Top-of-iteration cancel check — bail before spending any
+            // more time on Bangumi/VNDB limiter waits or DB writes.
+            if ctx.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = app_for_emit.emit(
+                    "scan-progress",
+                    scan::ScanProgress {
+                        current_dir: String::new(),
+                        completed: i,
+                        total,
+                        status: scan::ScanStatus::Cancelled,
+                    },
+                );
+                return;
+            }
+
             let path_str = dg.path.to_string_lossy().to_string();
 
             // 20260509f — Phase 2 of two-phase ingest with per-game emit.
@@ -736,9 +773,20 @@ pub async fn refresh_metadata(
 pub async fn refresh_all_metadata(
     app: AppHandle,
     state: State<'_, AppPaths>,
+    scan_state: State<'_, ScanState>,
 ) -> Result<(), String> {
     let pool = state.pool().await.map_err(err_str)?;
     let data_dir = state.data_dir.clone();
+
+    // 20260509g — share the ScanState ctx so `cancel_scan` can stop this
+    // bulk refresh too. Mirrors `start_scan` line ~241-245: replace any
+    // prior ctx (a stale ctx left by a finished scan is harmless because
+    // its cancel flag was never read; replacing keeps semantics simple).
+    let ctx = Arc::new(scan::ScanContext::new());
+    {
+        let mut g = scan_state.ctx.lock().map_err(|_| "scan state mutex poisoned".to_string())?;
+        *g = Some(ctx.clone());
+    }
 
     let rows = sqlx::query(
         "SELECT id, path, name, executable_path FROM games ORDER BY id ASC",
@@ -750,6 +798,7 @@ pub async fn refresh_all_metadata(
     let total = rows.len();
     let app_for_emit = app.clone();
     let pool_for_task = pool.clone();
+    let ctx_for_task = ctx.clone();
 
     // Initial Running event so the progress bar opens at 0 / total.
     let _ = app.emit(
@@ -777,6 +826,23 @@ pub async fn refresh_all_metadata(
 
     tokio::spawn(async move {
         for (i, row) in rows.into_iter().enumerate() {
+            // 20260509g — cancel check at top of each iteration: if the user
+            // clicked the cancel button while we were mid-refresh, stop here
+            // (in-flight Bangumi/VNDB request finishes naturally) and emit a
+            // terminal Cancelled event so the progress bar UI can clear.
+            if ctx_for_task.cancel.load(std::sync::atomic::Ordering::Relaxed) {
+                let _ = app_for_emit.emit(
+                    "scan-progress",
+                    scan::ScanProgress {
+                        current_dir: String::new(),
+                        completed: i,
+                        total,
+                        status: scan::ScanStatus::Cancelled,
+                    },
+                );
+                return;
+            }
+
             let id: i64 = match row.try_get("id") {
                 Ok(v) => v,
                 Err(_) => continue,
