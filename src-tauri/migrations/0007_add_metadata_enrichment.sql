@@ -20,12 +20,18 @@ CREATE TABLE persons (
   UNIQUE(source, source_id)
 );
 
+-- character_name is NOT NULL DEFAULT '' rather than nullable: SQLite forbids
+-- expressions (COALESCE) in PRIMARY KEY columns and treats NULLs in UNIQUE
+-- as distinct, which would let the same (game_id, person_id, role) for a
+-- non-voice entry be duplicated. Empty string is the sentinel for "no
+-- character" — `list_persons_for_game` maps '' back to NULL on the way to
+-- the frontend so the API contract stays clean.
 CREATE TABLE game_staff (
   game_id INTEGER NOT NULL REFERENCES games(id) ON DELETE CASCADE,
   person_id INTEGER NOT NULL REFERENCES persons(id) ON DELETE CASCADE,
   role TEXT NOT NULL CHECK(role IN ('scenario','artist','voice','music')),
-  character_name TEXT,
-  PRIMARY KEY (game_id, person_id, role, COALESCE(character_name, ''))
+  character_name TEXT NOT NULL DEFAULT '',
+  PRIMARY KEY (game_id, person_id, role, character_name)
 );
 CREATE INDEX idx_game_staff_game ON game_staff(game_id);
 CREATE INDEX idx_game_staff_person_role ON game_staff(person_id, role);

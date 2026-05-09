@@ -248,6 +248,11 @@ async fn write_staff_and_tags(
                 r.last_insert_rowid()
             }
         };
+        // character_name column is NOT NULL DEFAULT ''. We coerce None to ''
+        // here so the PK (game_id, person_id, role, character_name) properly
+        // dedups non-voice entries (NULLs would be treated as distinct,
+        // letting INSERT OR IGNORE accept duplicates).
+        let character_name = person.character_name.as_deref().unwrap_or("");
         sqlx::query(
             "INSERT OR IGNORE INTO game_staff (game_id, person_id, role, character_name) \
              VALUES (?, ?, ?, ?)",
@@ -255,7 +260,7 @@ async fn write_staff_and_tags(
         .bind(game_id)
         .bind(person_id)
         .bind(person.role.as_str())
-        .bind(&person.character_name)
+        .bind(character_name)
         .execute(&mut *tx)
         .await
         .map_err(err_str)?;
@@ -2776,6 +2781,10 @@ pub async fn list_persons_for_game(
     .map_err(err_str)?;
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
+        // character_name in DB is NOT NULL DEFAULT '' (see migration 0007).
+        // Map empty string back to None for the frontend so the wire contract
+        // stays clean: `character_name: string | null` where null = non-voice.
+        let cn: String = row.try_get("character_name").unwrap_or_default();
         out.push(GameStaffRow {
             id: row.try_get("id").map_err(err_str)?,
             name: row.try_get("name").map_err(err_str)?,
@@ -2783,7 +2792,7 @@ pub async fn list_persons_for_game(
             source: row.try_get("source").map_err(err_str)?,
             source_id: row.try_get("source_id").map_err(err_str)?,
             role: row.try_get("role").map_err(err_str)?,
-            character_name: row.try_get("character_name").ok(),
+            character_name: if cn.is_empty() { None } else { Some(cn) },
         });
     }
     Ok(out)
