@@ -115,6 +115,9 @@ pub async fn fetch_detail(bangumi_id: &str) -> Result<MetadataDetail, MetadataEr
         release_date: raw.date,
         brand,
         tags,
+        // Quick 20260510b — Bangumi exposes `nsfw: bool` on the subject
+        // detail. Map directly: true → R18, false → all-ages, missing → None.
+        is_r18: raw.nsfw,
     })
 }
 
@@ -254,6 +257,10 @@ struct SubjectDetail {
     /// Phase 11 — official tags array; each has `name` + `count`.
     #[serde(default)]
     tags: Option<Vec<TagHit>>,
+    /// Quick 20260510b — `true` for 18+ subjects (galgame R18), `false`
+    /// otherwise; absent on rare subject types (we treat that as unknown).
+    #[serde(default)]
+    nsfw: Option<bool>,
 }
 
 #[derive(Deserialize)]

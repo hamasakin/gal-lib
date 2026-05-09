@@ -70,6 +70,10 @@ pub struct IngestResult {
     pub staff: Vec<PersonRef>,
     /// Phase 11 — official tags from MetadataDetail.
     pub tags: Vec<OfficialTagRef>,
+    /// Quick 20260510b — age-rating signal from the source. `None` is
+    /// preserved as "no opinion" so `apply_ingest_result` uses COALESCE
+    /// to keep any prior value (including manual override).
+    pub is_r18: Option<bool>,
 }
 
 /// Auto-bind threshold (locked in 02-CONTEXT § Metadata Match Pipeline).
@@ -159,21 +163,27 @@ pub async fn pick_best_with_cache(query: &str, cache: &QueryCache) -> Option<Can
 async fn fetch_enrichment(
     source: MetadataSource,
     source_id: &str,
-) -> (Option<String>, Option<String>, Vec<PersonRef>, Vec<OfficialTagRef>) {
-    // 1. Detail (summary, brand, tags). On error: log + leave fields empty.
+) -> (
+    Option<String>,
+    Option<String>,
+    Vec<PersonRef>,
+    Vec<OfficialTagRef>,
+    Option<bool>,
+) {
+    // 1. Detail (summary, brand, tags, is_r18). On error: log + empty.
     let detail = match source {
         MetadataSource::Bangumi => metadata::bangumi::fetch_detail(source_id).await,
         MetadataSource::Vndb => metadata::vndb::fetch_detail(source_id).await,
-        _ => return (None, None, Vec::new(), Vec::new()),
+        _ => return (None, None, Vec::new(), Vec::new(), None),
     };
-    let (summary, brand, tags) = match detail {
-        Ok(d) => (d.summary, d.brand, d.tags),
+    let (summary, brand, tags, is_r18) = match detail {
+        Ok(d) => (d.summary, d.brand, d.tags, d.is_r18),
         Err(e) => {
             eprintln!(
                 "[ingest] fetch_detail failed for {:?}/{}: {}",
                 source, source_id, e
             );
-            (None, None, Vec::new())
+            (None, None, Vec::new(), None)
         }
     };
 
@@ -208,7 +218,7 @@ async fn fetch_enrichment(
         ),
     }
 
-    (summary, brand, staff, tags)
+    (summary, brand, staff, tags, is_r18)
 }
 
 /// Process one discovered game: search → fallback → cover-cache.
@@ -250,6 +260,7 @@ pub async fn process_game(
         brand: None,
         staff: Vec::new(),
         tags: Vec::new(),
+        is_r18: None,
     };
 
     // Skip metadata search entirely when clean_name is empty (defensive).
@@ -317,11 +328,13 @@ pub async fn process_game(
         // 4. Phase 11 — best-effort enrichment fetch (summary / brand /
         //    staff / tags). Any failure logs and leaves the field empty;
         //    never aborts ingest.
-        let (summary, brand, staff, tags) = fetch_enrichment(c.source, &c.source_id).await;
+        let (summary, brand, staff, tags, is_r18) =
+            fetch_enrichment(c.source, &c.source_id).await;
         result.summary = summary;
         result.brand = brand;
         result.staff = staff;
         result.tags = tags;
+        result.is_r18 = is_r18;
     }
 
     result
@@ -367,6 +380,7 @@ pub async fn process_game_cached(
         brand: None,
         staff: Vec::new(),
         tags: Vec::new(),
+        is_r18: None,
     };
 
     if discovered.clean_name.trim().is_empty() {
@@ -425,11 +439,13 @@ pub async fn process_game_cached(
         // dedup cache only covers `pick_best_*` (search results); detail/
         // persons/characters aren't cached because each game's source_id
         // is unique by construction.
-        let (summary, brand, staff, tags) = fetch_enrichment(c.source, &c.source_id).await;
+        let (summary, brand, staff, tags, is_r18) =
+            fetch_enrichment(c.source, &c.source_id).await;
         result.summary = summary;
         result.brand = brand;
         result.staff = staff;
         result.tags = tags;
+        result.is_r18 = is_r18;
     }
 
     result

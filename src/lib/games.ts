@@ -78,6 +78,14 @@ export interface Game {
    * has reached this row.
    */
   summary: string | null;
+  // ── Quick 20260510b / schema v8 fields ──
+  /**
+   * Age rating: `"r18"` / `"all_ages"` / `null` (unknown). Bangumi sources
+   * this from the `nsfw` flag; VNDB derives from `category=ero` tag presence.
+   * Manual override via `updateGameAgeRating` survives re-binds (the
+   * metadata writers use COALESCE on this column).
+   */
+  age_rating: "r18" | "all_ages" | null;
   created_at: string;
   updated_at: string;
 }
@@ -154,6 +162,19 @@ export async function updateGameBrandYear(
   releaseYear: number | null,
 ): Promise<void> {
   await invoke("update_game_brand_year", { gameId, brand, releaseYear });
+}
+
+/**
+ * Quick 20260510b — manual override of the age-rating flag. Pass `null`
+ * to clear back to "unknown". The override is preserved on subsequent
+ * metadata refreshes (server-side COALESCE) so the user can correct
+ * misclassified Bangumi/VNDB rows once and have it stick.
+ */
+export async function updateGameAgeRating(
+  gameId: number,
+  ageRating: "r18" | "all_ages" | null,
+): Promise<void> {
+  await invoke("update_game_age_rating", { gameId, ageRating });
 }
 
 /**

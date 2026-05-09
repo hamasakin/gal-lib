@@ -112,7 +112,7 @@ pub async fn fetch_detail(vndb_id: &str) -> Result<MetadataDetail, MetadataError
     let body = serde_json::json!({
         "filters": ["id", "=", vndb_id],
         "fields": "id,title,titles{title,lang},image{url},description,released,\
-            developers{name,original},tags{name,rating,spoiler},\
+            developers{name,original},tags{name,rating,spoiler,category},\
             staff{id,name,original,role},va{staff{id,name,original},character{name,original}}",
         "results": 1
     });
@@ -145,10 +145,23 @@ pub async fn fetch_detail(vndb_id: &str) -> Result<MetadataDetail, MetadataError
                 Some(names.join(" / "))
             }
         });
+    // Quick 20260510b — derive R18 signal from VNDB's `ero` tag category
+    // before consuming `hit.tags`. Threshold 1.5/3 keeps a single low-rated
+    // erotic tag from flipping an otherwise all-ages title; conversely, a
+    // strongly-rated `ero` tag is a high-confidence R18 signal. If the title
+    // has zero tags at all (which can happen for sparsely-curated entries),
+    // we report `None` rather than guessing.
+    let raw_tags = hit.tags.unwrap_or_default();
+    let is_r18: Option<bool> = if raw_tags.is_empty() {
+        None
+    } else {
+        let any_ero = raw_tags.iter().any(|t| {
+            t.category.as_deref() == Some("ero") && t.rating.unwrap_or(0.0) >= 1.5
+        });
+        Some(any_ero)
+    };
     // Filter out spoilers >= 2 (full-spoiler tags) and convert to OfficialTagRef.
-    let tags = hit
-        .tags
-        .unwrap_or_default()
+    let tags = raw_tags
         .into_iter()
         .filter(|t| t.spoiler.unwrap_or(0) < 2)
         .map(|t| OfficialTagRef {
@@ -168,6 +181,7 @@ pub async fn fetch_detail(vndb_id: &str) -> Result<MetadataDetail, MetadataError
         release_date: hit.released,
         brand,
         tags,
+        is_r18,
     })
 }
 
@@ -307,6 +321,11 @@ struct TagEntry {
     name: String,
     rating: Option<f64>,
     spoiler: Option<u8>,
+    /// Quick 20260510b — VNDB tag category: `cont` (content), `ero`, `tech`.
+    /// Used to derive the R18 signal; absent on legacy entries we treat as
+    /// non-erotic.
+    #[serde(default)]
+    category: Option<String>,
 }
 
 #[derive(Deserialize)]

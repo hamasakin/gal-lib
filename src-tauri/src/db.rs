@@ -16,6 +16,9 @@
 //! `games.summary` column + 3 new tables (`persons`, `game_staff`,
 //! `game_official_tags`) for cross-source author/artist/VA/composer storage
 //! and Bangumi/VNDB official tag lists.
+//! Schema v8 (Quick 20260510b) adds `games.age_rating` (R18/全年龄/NULL)
+//! and 2 new tables (`custom_views`, `custom_view_games`) for user-curated
+//! game lists.
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -26,6 +29,7 @@ const V4_SQL: &str = include_str!("../migrations/0004_add_brand_year_favorite.sq
 const V5_SQL: &str = include_str!("../migrations/0005_add_screenshots_and_saves.sql");
 const V6_SQL: &str = include_str!("../migrations/0006_disable_default_screenshots.sql");
 const V7_SQL: &str = include_str!("../migrations/0007_add_metadata_enrichment.sql");
+const V8_SQL: &str = include_str!("../migrations/0008_add_age_rating_and_custom_views.sql");
 
 /// All migrations to register with tauri-plugin-sql, in version order.
 /// Add future migrations as additional entries with monotonically increasing
@@ -72,6 +76,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 7,
             description: "add_metadata_enrichment",
             sql: V7_SQL,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 8,
+            description: "add_age_rating_and_custom_views",
+            sql: V8_SQL,
             kind: MigrationKind::Up,
         },
     ]
@@ -342,6 +352,65 @@ mod tests {
         assert!(
             m7.sql.contains("schema_version") && m7.sql.contains("'7'"),
             "v7 sql bumps schema_version to '7'"
+        );
+    }
+
+    #[test]
+    fn migrations_v8_adds_age_rating_and_custom_views() {
+        let m = migrations();
+        let m8 = m.iter().find(|x| x.version == 8).expect("v8 present");
+        assert_eq!(m8.description, "add_age_rating_and_custom_views");
+
+        // 1 ADD COLUMN (games.age_rating)
+        let add_column_count = m8
+            .sql
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("--") && t.contains("ADD COLUMN")
+            })
+            .count();
+        assert_eq!(add_column_count, 1, "v8: exactly 1 ADD COLUMN statement");
+
+        assert!(
+            m8.sql.contains("ADD COLUMN age_rating TEXT"),
+            "v8 adds age_rating column"
+        );
+        assert!(
+            m8.sql.contains("age_rating IN ('all_ages','r18')"),
+            "v8 enforces age_rating CHECK constraint"
+        );
+
+        // 2 new tables
+        assert!(
+            m8.sql.contains("CREATE TABLE custom_views"),
+            "v8 creates custom_views"
+        );
+        assert!(
+            m8.sql.contains("CREATE TABLE custom_view_games"),
+            "v8 creates custom_view_games"
+        );
+
+        // FK ON DELETE CASCADE on join table (×2 for view_id + game_id)
+        let cascade_count = m8
+            .sql
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("--") && t.contains("ON DELETE CASCADE")
+            })
+            .count();
+        assert_eq!(cascade_count, 2, "v8: 2 ON DELETE CASCADE clauses");
+
+        assert!(
+            m8.sql.contains("CREATE INDEX idx_custom_view_games_game"),
+            "v8 creates idx_custom_view_games_game"
+        );
+
+        // schema_version bumped to 8
+        assert!(
+            m8.sql.contains("schema_version") && m8.sql.contains("'8'"),
+            "v8 bumps schema_version to '8'"
         );
     }
 }

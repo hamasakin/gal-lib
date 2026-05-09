@@ -98,6 +98,12 @@ pub struct MetadataDetail {
     /// Phase 11 — official tags for this title (already normalized + sorted
     /// by descending weight by the client).
     pub tags: Vec<OfficialTagRef>,
+    /// Quick 20260510b — age-rating signal from the source.
+    /// `Some(true)` = R18, `Some(false)` = all-ages, `None` = unknown
+    /// (source returned no signal). Bangumi uses the `nsfw` boolean directly;
+    /// VNDB derives from the presence of `category=ero` tags above a rating
+    /// threshold.
+    pub is_r18: Option<bool>,
 }
 
 #[derive(Debug, thiserror::Error)]

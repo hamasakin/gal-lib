@@ -222,6 +222,8 @@ pub fn run() {
             commands::update_game_rating,
             commands::update_game_notes,
             commands::update_game_brand_year,
+            // Quick 20260510b — R18 marker manual override
+            commands::update_game_age_rating,
             // 05b — stats (2) + screenshots (5) + save backups (5) = 12 new
             commands::get_playtime_trend,
             commands::get_top_games,
@@ -245,6 +247,13 @@ pub fn run() {
             commands::get_filter_options,
             commands::backfill_metadata_enrichment,
             commands::open_external_url,
+            // Quick 20260510b — custom views (6 new)
+            commands::list_custom_views,
+            commands::create_custom_view,
+            commands::rename_custom_view,
+            commands::delete_custom_view,
+            commands::add_games_to_view,
+            commands::remove_game_from_view,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

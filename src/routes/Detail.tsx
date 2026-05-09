@@ -83,6 +83,7 @@ import { LaunchButton } from "@/components/library/LaunchButton";
 import {
   listGames,
   openGameDir,
+  updateGameAgeRating,
   updateGameFavorite,
   updateGameNotes,
   updateGameRating,
@@ -125,11 +126,21 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuPortal,
   DropdownMenuSeparator,
+  DropdownMenuSub,
+  DropdownMenuSubContent,
+  DropdownMenuSubTrigger,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MetadataPicker } from "@/components/library/MetadataPicker";
 import { refreshMetadata } from "@/lib/metadata";
+import {
+  addGamesToView,
+  createCustomView,
+  type CustomViewRow,
+} from "@/lib/customViews";
+import { getSidebarCategories } from "@/lib/search";
 
 const LE_PROFILES = [
   "Japanese",
@@ -320,6 +331,46 @@ export default function Detail() {
   const setSessionsForGame = useLibraryStore((s) => s.setSessionsForGame);
   const games = useLibraryStore((s) => s.games);
   const setFilter = useLibraryStore((s) => s.setFilter);
+  const sidebar = useLibraryStore((s) => s.sidebar);
+  const setSidebar = useLibraryStore((s) => s.setSidebar);
+  const customViews: CustomViewRow[] = sidebar?.custom_views ?? [];
+
+  async function refreshSidebarFromDetail() {
+    try {
+      const cats = await getSidebarCategories();
+      setSidebar(cats);
+    } catch (e: unknown) {
+      // eslint-disable-next-line no-console
+      console.error("[Detail] sidebar refresh failed:", e);
+    }
+  }
+
+  async function onAddToView(viewId: number, viewName: string) {
+    if (!game) return;
+    try {
+      const inserted = await addGamesToView(viewId, [game.id]);
+      toast.success(
+        inserted > 0 ? `已加入「${viewName}」` : `已在「${viewName}」中`,
+      );
+      await refreshSidebarFromDetail();
+    } catch (e: unknown) {
+      toast.error(`添加失败 — ${String(e)}`);
+    }
+  }
+
+  async function onCreateAndAddView() {
+    if (!game) return;
+    const name = window.prompt("新视图名称")?.trim();
+    if (!name) return;
+    try {
+      const newId = await createCustomView(name);
+      await addGamesToView(newId, [game.id]);
+      toast.success(`已创建视图「${name}」并加入`);
+      await refreshSidebarFromDetail();
+    } catch (e: unknown) {
+      toast.error(`创建视图失败 — ${String(e)}`);
+    }
+  }
 
   const [game, setGame] = useState<Game | null>(null);
   const [profile, setProfile] = useState<LeProfile>("Japanese");
@@ -555,6 +606,23 @@ export default function Detail() {
       await refreshGame();
     } catch (e: unknown) {
       toast.error(`评分更新失败 — ${String(e)}`);
+    }
+  }
+
+  async function onSetAgeRating(next: "r18" | "all_ages" | null) {
+    if (!game || next === (game.age_rating ?? null)) return;
+    try {
+      await updateGameAgeRating(game.id, next);
+      await refreshGame();
+      toast.success(
+        next === "r18"
+          ? "已标记为 R18"
+          : next === "all_ages"
+            ? "已标记为全年龄"
+            : "已清除年龄分级",
+      );
+    } catch (e: unknown) {
+      toast.error(`分级更新失败 — ${String(e)}`);
     }
   }
 
@@ -947,6 +1015,59 @@ export default function Detail() {
                   <ImageDown size={14} className="mr-2" />
                   重新抓取封面
                 </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>添加到视图</DropdownMenuSubTrigger>
+                  <DropdownMenuPortal>
+                    <DropdownMenuSubContent>
+                      {customViews.length === 0 && (
+                        <DropdownMenuItem disabled>
+                          <span className="text-ink-3">尚无视图</span>
+                        </DropdownMenuItem>
+                      )}
+                      {customViews.map((cv) => (
+                        <DropdownMenuItem
+                          key={cv.id}
+                          onClick={() => void onAddToView(cv.id, cv.name)}
+                        >
+                          {cv.name}
+                          <span className="ml-auto font-mono text-[10px] text-ink-3">
+                            {cv.count}
+                          </span>
+                        </DropdownMenuItem>
+                      ))}
+                      <DropdownMenuSeparator />
+                      <DropdownMenuItem onClick={() => void onCreateAndAddView()}>
+                        新建视图…
+                      </DropdownMenuItem>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuPortal>
+                </DropdownMenuSub>
+                <DropdownMenuSub>
+                  <DropdownMenuSubTrigger>标记年龄分级</DropdownMenuSubTrigger>
+                  <DropdownMenuPortal>
+                    <DropdownMenuSubContent>
+                      <DropdownMenuItem
+                        disabled={game.age_rating === "r18"}
+                        onClick={() => void onSetAgeRating("r18")}
+                      >
+                        R18
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={game.age_rating === "all_ages"}
+                        onClick={() => void onSetAgeRating("all_ages")}
+                      >
+                        全年龄
+                      </DropdownMenuItem>
+                      <DropdownMenuItem
+                        disabled={game.age_rating == null}
+                        onClick={() => void onSetAgeRating(null)}
+                      >
+                        清除（未知）
+                      </DropdownMenuItem>
+                    </DropdownMenuSubContent>
+                  </DropdownMenuPortal>
+                </DropdownMenuSub>
               </DropdownMenuContent>
             </DropdownMenu>
             <LaunchButton

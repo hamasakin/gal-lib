@@ -25,6 +25,7 @@
 import { invoke } from "@tauri-apps/api/core";
 import type { Game } from "./games";
 import type { Tag } from "./tags";
+import type { CustomViewRow } from "./customViews";
 
 /**
  * Optional filter clauses passed to `search_games`. All fields are optional
@@ -65,6 +66,14 @@ export interface SearchFilter {
   brands?: string[];
   staff_ids?: number[];
   official_tags?: string[];
+  // Quick 20260510b
+  /**
+   * Multi-select age rating. Each entry is one of `"r18"` (R18), `"all_ages"`
+   * (全年龄), or `"unknown"` (matches NULL). OR within the list.
+   */
+  age_ratings?: Array<"r18" | "all_ages" | "unknown">;
+  /** Restrict to games belonging to this custom view. */
+  custom_view_id?: number;
 }
 
 /**
@@ -121,6 +130,8 @@ export interface SidebarCategories {
   brands: BrandCount[];
   year_decades: DecadeCount[];
   favorite_count: number;
+  /** Quick 20260510b — user-curated views (id + name + count). */
+  custom_views: CustomViewRow[];
 }
 
 // ── invoke wrappers ─────────────────────────────────────────────────────────

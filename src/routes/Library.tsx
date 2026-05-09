@@ -51,7 +51,26 @@ import {
   isAdvFilterActive,
 } from "@/lib/advancedFilter";
 import { getFilterOptions, type FilterOptions } from "@/lib/persons";
-import { RefreshCw, FolderPlus, Library as LibraryIcon, SearchX, AlertCircle } from "lucide-react";
+import { addGamesToView, createCustomView } from "@/lib/customViews";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
+  RefreshCw,
+  FolderPlus,
+  Library as LibraryIcon,
+  SearchX,
+  AlertCircle,
+  CheckSquare,
+  Bookmark,
+  Plus,
+  X,
+  ChevronDown,
+} from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { useSmoothWheel } from "@/hooks/useSmoothWheel";
@@ -88,6 +107,66 @@ export function Library() {
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const navigate = useNavigate();
   const viewMode = usePreferencesStore((s) => s.viewMode);
+
+  // Quick 20260510b — batch select mode + selection set. selectedIds is a
+  // Set so identity changes drive a re-render; a setter that always
+  // creates a new Set keeps zustand-style shallow equality consistent.
+  const [selectMode, setSelectMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const sidebar = useLibraryStore((s) => s.sidebar);
+  const customViews = sidebar?.custom_views ?? [];
+
+  function toggleSelected(id: number) {
+    setSelectedIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }
+
+  function exitSelectMode() {
+    setSelectMode(false);
+    setSelectedIds(new Set());
+  }
+
+  function selectAllVisible() {
+    setSelectedIds(new Set(visibleGames.map((g) => g.id)));
+  }
+
+  async function onAddToView(viewId: number, viewName: string) {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    try {
+      const inserted = await addGamesToView(viewId, ids);
+      const skipped = ids.length - inserted;
+      toast.success(
+        skipped > 0
+          ? `已加入「${viewName}」(${inserted} 部，${skipped} 部已存在)`
+          : `已加入「${viewName}」(${inserted} 部)`,
+      );
+      await refreshSidebar();
+      exitSelectMode();
+    } catch (e: unknown) {
+      toast.error(`添加失败 — ${String(e)}`);
+    }
+  }
+
+  async function onCreateAndAdd() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    const name = window.prompt("新视图名称")?.trim();
+    if (!name) return;
+    try {
+      const newId = await createCustomView(name);
+      const inserted = await addGamesToView(newId, ids);
+      toast.success(`已创建视图「${name}」并加入 ${inserted} 部`);
+      await refreshSidebar();
+      exitSelectMode();
+    } catch (e: unknown) {
+      toast.error(`创建视图失败 — ${String(e)}`);
+    }
+  }
 
   // 20260509g — 滚动容器 ref，下放到 GameGrid 给 useVirtualizer 的
   // getScrollElement 用。Library 持有这个 ref 是因为 scroll 区是 toolbar
@@ -308,6 +387,28 @@ export function Library() {
             onChange={setAdvFilter}
             options={filterOptions}
           />
+          {/* Quick 20260510b — toggle batch selection mode. Available only
+              in grid view; list view's row-click model would need a
+              separate affordance. */}
+          {viewMode === "grid" && (
+            <button
+              type="button"
+              onClick={() =>
+                selectMode ? exitSelectMode() : setSelectMode(true)
+              }
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 border px-3 font-mono text-[11px] transition-colors",
+                selectMode
+                  ? "border-brand bg-brand-soft text-ink-0"
+                  : "border-line bg-bg-1 text-ink-1 hover:border-line-strong hover:bg-bg-2 hover:text-ink-0",
+              )}
+              style={{ borderRadius: "9999px" }}
+              title={selectMode ? "退出选择" : "批量选择"}
+            >
+              <CheckSquare size={12} strokeWidth={1.7} />
+              <span>{selectMode ? `选择中 ${selectedIds.size}` : "批量选择"}</span>
+            </button>
+          )}
           <SearchBar />
           <ViewToggle />
           {viewMode === "grid" && <DensityToggle />}
@@ -359,11 +460,102 @@ export function Library() {
             onPickMetadata={setPickerGame}
             onChildMutation={onChildMutation}
             scrollContainerRef={scrollContainerRef}
+            selectMode={selectMode}
+            selectedIds={selectedIds}
+            onToggleSelect={toggleSelected}
           />
         )}
         {!isEmpty && viewMode === "list" && <GameList games={visibleGames} />}
         </div>
       </div>
+
+      {/* Quick 20260510b — floating selection action bar. Pinned bottom-center
+          while selectMode is active; mirrors ActiveSessionBar's surface but
+          stacks above it (z-50) so an active game session doesn't hide it. */}
+      {selectMode && (
+        <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
+          <div className="pointer-events-auto flex items-center gap-3 border border-line-strong bg-bg-1 px-4 py-2.5 shadow-lift">
+            <span className="font-mono text-[11px] text-ink-1">
+              已选 <span className="text-ink-0">{selectedIds.size}</span> 部
+            </span>
+            <span className="h-4 w-px bg-line" />
+            <button
+              type="button"
+              onClick={selectAllVisible}
+              className="font-mono text-[11px] text-ink-2 hover:text-ink-0"
+            >
+              全选当前网格
+            </button>
+            <button
+              type="button"
+              onClick={() => setSelectedIds(new Set())}
+              disabled={selectedIds.size === 0}
+              className={cn(
+                "font-mono text-[11px]",
+                selectedIds.size === 0
+                  ? "cursor-not-allowed text-ink-3"
+                  : "text-ink-2 hover:text-ink-0",
+              )}
+            >
+              清空
+            </button>
+            <span className="h-4 w-px bg-line" />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <button
+                  type="button"
+                  disabled={selectedIds.size === 0}
+                  className={cn(
+                    "inline-flex h-8 items-center gap-1.5 border px-3 text-[12px]",
+                    selectedIds.size === 0
+                      ? "cursor-not-allowed border-line bg-bg-2 text-ink-3"
+                      : "border-brand bg-brand text-[var(--accent-on)] hover:bg-brand-deep",
+                  )}
+                  style={{ borderRadius: "var(--r-md)" }}
+                >
+                  <Bookmark size={12} strokeWidth={1.7} />
+                  添加到视图
+                  <ChevronDown size={12} strokeWidth={1.7} />
+                </button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                {customViews.length === 0 && (
+                  <DropdownMenuItem disabled>
+                    <span className="text-ink-3">尚无视图</span>
+                  </DropdownMenuItem>
+                )}
+                {customViews.map((cv) => (
+                  <DropdownMenuItem
+                    key={cv.id}
+                    onClick={() => void onAddToView(cv.id, cv.name)}
+                  >
+                    <Bookmark size={13} className="mr-2" />
+                    {cv.name}
+                    <span className="ml-auto font-mono text-[10px] text-ink-3">
+                      {cv.count}
+                    </span>
+                  </DropdownMenuItem>
+                ))}
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={() => void onCreateAndAdd()}>
+                  <Plus size={13} className="mr-2" />
+                  新建视图…
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+            <button
+              type="button"
+              onClick={exitSelectMode}
+              className="grid h-8 w-8 place-items-center text-ink-2 hover:bg-bg-2 hover:text-ink-0"
+              title="取消"
+              aria-label="取消"
+              style={{ borderRadius: "var(--r-md)" }}
+            >
+              <X size={14} strokeWidth={1.7} />
+            </button>
+          </div>
+        </div>
+      )}
 
       <MetadataPicker game={pickerGame} onClose={() => setPickerGame(null)} />
     </div>

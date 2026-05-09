@@ -149,11 +149,17 @@ async fn apply_ingest_result(
     // when a re-fetch returns empty). `brand` uses COALESCE so a manually-set
     // brand survives a re-fetch where the source returns NULL — symmetric
     // with how `update_game_brand_year` lets users curate brand independently.
+    // Quick 20260510b — age_rating: convert is_r18 (Option<bool>) to the
+    // string column value. None preserves prior value via COALESCE.
+    let age_rating_str: Option<&'static str> = result
+        .is_r18
+        .map(|b| if b { "r18" } else { "all_ages" });
     sqlx::query(
         "UPDATE games SET name = ?, name_cn = ?, cover_path = ?, cover_url = ?, \
                           bangumi_id = ?, vndb_id = ?, metadata_source = ?, \
                           match_confidence = ?, summary = ?, \
                           brand = COALESCE(?, brand), \
+                          age_rating = COALESCE(?, age_rating), \
                           last_scanned_at = datetime('now') \
          WHERE id = ?",
     )
@@ -167,6 +173,7 @@ async fn apply_ingest_result(
     .bind(result.match_confidence.map(|x| x as i64))
     .bind(&result.summary)
     .bind(&result.brand)
+    .bind(age_rating_str)
     .bind(game_id)
     .execute(pool)
     .await
@@ -881,12 +888,17 @@ pub async fn bind_metadata(
         // Phase 11 — bind UPDATE writes summary unconditionally + brand via
         // COALESCE (preserve manual brand). cover_path keeps its original
         // COALESCE so a transient cover-cache failure doesn't blank an
-        // already-cached cover.
+        // already-cached cover. Quick 20260510b — age_rating uses COALESCE
+        // so a manual override survives a re-bind.
+        let age_rating_str: Option<&'static str> = detail
+            .is_r18
+            .map(|b| if b { "r18" } else { "all_ages" });
         sqlx::query(
             "UPDATE games SET name = ?, name_cn = ?, cover_path = COALESCE(?, cover_path), \
                               cover_url = ?, bangumi_id = ?, vndb_id = ?, \
                               metadata_source = ?, match_confidence = 100, \
                               summary = ?, brand = COALESCE(?, brand), \
+                              age_rating = COALESCE(?, age_rating), \
                               last_scanned_at = datetime('now') \
              WHERE id = ?",
         )
@@ -899,6 +911,7 @@ pub async fn bind_metadata(
         .bind(&source) // "bangumi" or "vndb"
         .bind(&detail.summary)
         .bind(&detail.brand)
+        .bind(age_rating_str)
         .bind(game_id)
         .execute(&*pool)
         .await
@@ -921,6 +934,7 @@ pub async fn bind_metadata(
             brand: detail.brand.clone(),
             staff,
             tags: detail.tags.clone(),
+            is_r18: detail.is_r18,
         };
         write_staff_and_tags(&*pool, game_id, &source, &synthetic).await?;
 
@@ -974,6 +988,9 @@ pub async fn refresh_metadata(
         )
         .await;
 
+        let age_rating_str: Option<&'static str> = result
+            .is_r18
+            .map(|b| if b { "r18" } else { "all_ages" });
         sqlx::query(
             "UPDATE games SET name = ?, name_cn = ?, cover_path = COALESCE(?, cover_path), \
                               cover_url = COALESCE(?, cover_url), \
@@ -981,6 +998,7 @@ pub async fn refresh_metadata(
                               vndb_id = COALESCE(?, vndb_id), \
                               metadata_source = ?, match_confidence = ?, \
                               summary = ?, brand = COALESCE(?, brand), \
+                              age_rating = COALESCE(?, age_rating), \
                               last_scanned_at = datetime('now') \
              WHERE id = ?",
         )
@@ -994,6 +1012,7 @@ pub async fn refresh_metadata(
         .bind(result.match_confidence.map(|x| x as i64))
         .bind(&result.summary)
         .bind(&result.brand)
+        .bind(age_rating_str)
         .bind(game_id)
         .execute(&*pool)
         .await
@@ -1138,6 +1157,9 @@ pub async fn refresh_all_metadata(
             // the existing cover_path / cover_url / bangumi_id / vndb_id
             // when the new fetch returns NULL (e.g. transient network blip)
             // so we don't blank a working row on a partial failure.
+            let age_rating_str: Option<&'static str> = result
+                .is_r18
+                .map(|b| if b { "r18" } else { "all_ages" });
             let _ = sqlx::query(
                 "UPDATE games SET name = ?, name_cn = ?, \
                                   cover_path = COALESCE(?, cover_path), \
@@ -1146,6 +1168,7 @@ pub async fn refresh_all_metadata(
                                   vndb_id = COALESCE(?, vndb_id), \
                                   metadata_source = ?, match_confidence = ?, \
                                   summary = ?, brand = COALESCE(?, brand), \
+                                  age_rating = COALESCE(?, age_rating), \
                                   last_scanned_at = datetime('now') \
                  WHERE id = ?",
             )
@@ -1159,6 +1182,7 @@ pub async fn refresh_all_metadata(
             .bind(result.match_confidence.map(|x| x as i64))
             .bind(&result.summary)
             .bind(&result.brand)
+            .bind(age_rating_str)
             .bind(id)
             .execute(&*pool_for_task)
             .await;
@@ -1238,6 +1262,12 @@ pub struct Game {
     /// Synopsis text from Bangumi/VNDB. NULL when never enriched or when the
     /// source returned an empty summary.
     pub summary: Option<String>,
+    // ── Quick 20260510b / schema v8 fields ──
+    /// Age rating: `Some("r18")` / `Some("all_ages")` / `None` (unknown).
+    /// Bangumi sources `nsfw`; VNDB derives from `category=ero` tag presence.
+    /// Manual override via `update_game_age_rating` survives re-binds (the
+    /// metadata writers use COALESCE).
+    pub age_rating: Option<String>,
 }
 
 /// Read every row from `games`, ordered by `created_at DESC`.
@@ -1256,7 +1286,7 @@ pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String>
         "SELECT id, path, name, name_cn, executable_path, cover_path, cover_url, \
                 bangumi_id, vndb_id, total_playtime_sec, last_played_at, status, \
                 rating, notes, metadata_source, match_confidence, last_scanned_at, \
-                brand, release_year, is_favorite, summary, \
+                brand, release_year, is_favorite, summary, age_rating, \
                 created_at, updated_at \
          FROM games ORDER BY created_at DESC",
     )
@@ -1300,6 +1330,7 @@ fn row_to_game(row: &sqlx::sqlite::SqliteRow) -> Result<Game, String> {
         created_at: row.try_get("created_at").map_err(err_str)?,
         updated_at: row.try_get("updated_at").map_err(err_str)?,
         summary: row.try_get("summary").ok(),
+        age_rating: row.try_get("age_rating").ok(),
     })
 }
 
@@ -1671,6 +1702,13 @@ pub struct SearchFilter {
     /// the legacy single-value `brand` field which is kept for backward
     /// compatibility with the sidebar's existing brand-bucket clicks).
     pub brands: Option<Vec<String>>,
+    /// Quick 20260510b — multi-select age rating filter. Accepted values
+    /// are "r18", "all_ages", and "unknown" (matches NULL). OR within the
+    /// list; combined with other filters by AND.
+    pub age_ratings: Option<Vec<String>>,
+    /// Quick 20260510b — only return games belonging to this custom view.
+    /// Empty join-table membership matches zero games.
+    pub custom_view_id: Option<i64>,
 }
 
 /// Search + sort + filter the `games` table.
@@ -1818,6 +1856,57 @@ pub async fn search_games(
         where_clauses.push(format!("g.brand IN ({})", placeholders));
     }
 
+    // Quick 20260510b — age_rating filter. "unknown" maps to NULL; the
+    // other two are exact matches on the column. We split into two SQL
+    // pieces so the NULL test stays an OR alongside the IN ( ... ) list.
+    let mut age_concrete: Vec<&str> = Vec::new();
+    let mut age_include_null = false;
+    if let Some(values) = f.age_ratings.as_ref().filter(|v| !v.is_empty()) {
+        for v in values {
+            match v.as_str() {
+                "r18" | "all_ages" => age_concrete.push(match v.as_str() {
+                    "r18" => "r18",
+                    "all_ages" => "all_ages",
+                    _ => unreachable!(),
+                }),
+                "unknown" => age_include_null = true,
+                other => {
+                    return Err(format!(
+                        "filter.age_ratings entries must be r18|all_ages|unknown (got '{}')",
+                        other
+                    ))
+                }
+            }
+        }
+        // Build WHERE fragment.
+        let mut parts: Vec<String> = Vec::new();
+        if !age_concrete.is_empty() {
+            // Inline literal whitelist (already pattern-matched above) — safe
+            // and avoids placeholder-binding bookkeeping mid-loop.
+            let csv = age_concrete
+                .iter()
+                .map(|s| format!("'{}'", s))
+                .collect::<Vec<_>>()
+                .join(",");
+            parts.push(format!("g.age_rating IN ({})", csv));
+        }
+        if age_include_null {
+            parts.push("g.age_rating IS NULL".to_string());
+        }
+        if !parts.is_empty() {
+            where_clauses.push(format!("({})", parts.join(" OR ")));
+        }
+    }
+
+    // Quick 20260510b — custom view filter. i64 inline interpolation is
+    // injection-safe (matches `tag_id` pattern earlier).
+    if let Some(view_id) = f.custom_view_id {
+        where_clauses.push(format!(
+            "g.id IN (SELECT game_id FROM custom_view_games WHERE view_id = {})",
+            view_id
+        ));
+    }
+
     let where_sql = if where_clauses.is_empty() {
         String::new()
     } else {
@@ -1828,7 +1917,7 @@ pub async fn search_games(
         "SELECT g.id, g.path, g.name, g.name_cn, g.executable_path, g.cover_path, g.cover_url, \
                 g.bangumi_id, g.vndb_id, g.total_playtime_sec, g.last_played_at, g.status, \
                 g.rating, g.notes, g.metadata_source, g.match_confidence, g.last_scanned_at, \
-                g.brand, g.release_year, g.is_favorite, g.summary, \
+                g.brand, g.release_year, g.is_favorite, g.summary, g.age_rating, \
                 g.created_at, g.updated_at \
          FROM games g {} ORDER BY {}",
         where_sql, order_by
@@ -1895,6 +1984,8 @@ pub struct SidebarCategories {
     pub brands: Vec<BrandCount>,
     pub year_decades: Vec<DecadeCount>,
     pub favorite_count: i64,
+    /// Quick 20260510b — user-curated custom views (id + name + count).
+    pub custom_views: Vec<CustomViewRow>,
 }
 
 /// Aggregate counts for the sidebar's auto-derived sections. 4 SELECTs:
@@ -1989,12 +2080,35 @@ pub async fn get_sidebar_categories(
         .map_err(err_str)?;
     let favorite_count: i64 = fav_row.try_get("cnt").unwrap_or(0);
 
+    // Quick 20260510b — custom views; same shape as `list_custom_views` so
+    // both sources stay aligned. Empty list when the user has no views yet.
+    let cv_rows = sqlx::query(
+        "SELECT cv.id, cv.name, cv.created_at, COUNT(cvg.game_id) AS cnt \
+         FROM custom_views cv \
+         LEFT JOIN custom_view_games cvg ON cvg.view_id = cv.id \
+         GROUP BY cv.id, cv.name, cv.created_at \
+         ORDER BY cv.created_at ASC",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut custom_views = Vec::with_capacity(cv_rows.len());
+    for row in cv_rows {
+        custom_views.push(CustomViewRow {
+            id: row.try_get("id").map_err(err_str)?,
+            name: row.try_get("name").map_err(err_str)?,
+            count: row.try_get("cnt").unwrap_or(0),
+            created_at: row.try_get("created_at").map_err(err_str)?,
+        });
+    }
+
     Ok(SidebarCategories {
         tags,
         statuses,
         brands,
         year_decades,
         favorite_count,
+        custom_views,
     })
 }
 
@@ -2237,6 +2351,39 @@ pub async fn update_game_brand_year(
     )
     .bind(&brand)
     .bind(year_i64)
+    .bind(game_id)
+    .execute(&*pool)
+    .await
+    .map_err(err_str)?;
+    Ok(())
+}
+
+/// Quick 20260510b — manual override of `games.age_rating`. Pass `None` to
+/// clear back to "unknown"; pass `Some("r18")` / `Some("all_ages")` to set.
+/// The metadata writers use COALESCE on this column so a manual override
+/// survives subsequent `bind_metadata` / `refresh_metadata` runs.
+#[tauri::command]
+pub async fn update_game_age_rating(
+    game_id: i64,
+    age_rating: Option<String>,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    if let Some(v) = age_rating.as_deref() {
+        match v {
+            "r18" | "all_ages" => {}
+            other => {
+                return Err(format!(
+                    "age_rating must be r18|all_ages|null (got '{}')",
+                    other
+                ))
+            }
+        }
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    sqlx::query(
+        "UPDATE games SET age_rating = ?, updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(&age_rating)
     .bind(game_id)
     .execute(&*pool)
     .await
@@ -2839,7 +2986,7 @@ pub async fn list_games_for_person(
                 g.total_playtime_sec, g.last_played_at, g.status, \
                 g.rating, g.notes, g.metadata_source, g.match_confidence, \
                 g.last_scanned_at, g.brand, g.release_year, g.is_favorite, \
-                g.summary, g.created_at, g.updated_at \
+                g.summary, g.age_rating, g.created_at, g.updated_at \
          FROM games g \
          JOIN game_staff gs ON gs.game_id = g.id \
          WHERE gs.person_id = ?{} \
@@ -3106,14 +3253,14 @@ pub async fn backfill_metadata_enrichment(
                 MetadataSource::Vndb => metadata::vndb::fetch_detail(&source_id).await,
                 _ => continue,
             };
-            let (summary, brand, tags) = match detail {
-                Ok(d) => (d.summary, d.brand, d.tags),
+            let (summary, brand, tags, is_r18) = match detail {
+                Ok(d) => (d.summary, d.brand, d.tags, d.is_r18),
                 Err(e) => {
                     eprintln!(
                         "[backfill] fetch_detail failed for game {} ({:?}): {}",
                         game_id, source_enum, e
                     );
-                    (None, None, Vec::new())
+                    (None, None, Vec::new(), None)
                 }
             };
             let persons = match source_enum {
@@ -3138,15 +3285,19 @@ pub async fn backfill_metadata_enrichment(
                 ),
             }
 
-            // Update games row with summary/brand (preserve manual brand
-            // via COALESCE — symmetric with apply_ingest_result).
+            // Update games row with summary/brand/age_rating (preserve
+            // manual values via COALESCE — symmetric with apply_ingest_result).
+            let age_rating_str: Option<&'static str> =
+                is_r18.map(|b| if b { "r18" } else { "all_ages" });
             let _ = sqlx::query(
                 "UPDATE games SET summary = ?, brand = COALESCE(?, brand), \
+                                  age_rating = COALESCE(?, age_rating), \
                                   last_scanned_at = datetime('now') \
                  WHERE id = ?",
             )
             .bind(&summary)
             .bind(&brand)
+            .bind(age_rating_str)
             .bind(game_id)
             .execute(&*pool_for_task)
             .await;
@@ -3167,6 +3318,7 @@ pub async fn backfill_metadata_enrichment(
                 brand,
                 staff,
                 tags,
+                is_r18,
             };
             if let Err(e) =
                 write_staff_and_tags(&*pool_for_task, game_id, &source_str, &synthetic).await
@@ -3208,4 +3360,163 @@ pub fn open_external_url(url: String) -> Result<(), String> {
         .spawn()
         .map(|_| ())
         .map_err(|e| format!("无法打开浏览器：{}", e))
+}
+
+// ── Custom views (Quick 20260510b) ─────────────────────────────────────────
+
+/// Row payload for sidebar rendering and view-management UI. `count` is the
+/// number of games currently in the view; computed via LEFT JOIN so views
+/// with zero games still appear (users can see an empty view they just
+/// created and start adding to it).
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CustomViewRow {
+    pub id: i64,
+    pub name: String,
+    pub count: i64,
+    pub created_at: String,
+}
+
+#[tauri::command]
+pub async fn list_custom_views(
+    state: State<'_, AppPaths>,
+) -> Result<Vec<CustomViewRow>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query(
+        "SELECT cv.id, cv.name, cv.created_at, COUNT(cvg.game_id) AS cnt \
+         FROM custom_views cv \
+         LEFT JOIN custom_view_games cvg ON cvg.view_id = cv.id \
+         GROUP BY cv.id, cv.name, cv.created_at \
+         ORDER BY cv.created_at ASC",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(CustomViewRow {
+            id: row.try_get("id").map_err(err_str)?,
+            name: row.try_get("name").map_err(err_str)?,
+            count: row.try_get("cnt").unwrap_or(0),
+            created_at: row.try_get("created_at").map_err(err_str)?,
+        });
+    }
+    Ok(out)
+}
+
+#[tauri::command]
+pub async fn create_custom_view(
+    name: String,
+    state: State<'_, AppPaths>,
+) -> Result<i64, String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("视图名称不能为空".to_string());
+    }
+    if trimmed.chars().count() > 60 {
+        return Err("视图名称过长（最多 60 字符）".to_string());
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    let result = sqlx::query("INSERT INTO custom_views (name) VALUES (?)")
+        .bind(trimmed)
+        .execute(&*pool)
+        .await
+        .map_err(|e| {
+            // sqlite UNIQUE violation surfaces as "constraint" — return a
+            // user-readable Chinese error rather than the raw sqlx string.
+            let s = e.to_string();
+            if s.contains("UNIQUE") || s.contains("constraint") {
+                "已存在同名视图".to_string()
+            } else {
+                s
+            }
+        })?;
+    Ok(result.last_insert_rowid())
+}
+
+#[tauri::command]
+pub async fn rename_custom_view(
+    view_id: i64,
+    name: String,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let trimmed = name.trim();
+    if trimmed.is_empty() {
+        return Err("视图名称不能为空".to_string());
+    }
+    if trimmed.chars().count() > 60 {
+        return Err("视图名称过长（最多 60 字符）".to_string());
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    sqlx::query("UPDATE custom_views SET name = ? WHERE id = ?")
+        .bind(trimmed)
+        .bind(view_id)
+        .execute(&*pool)
+        .await
+        .map_err(|e| {
+            let s = e.to_string();
+            if s.contains("UNIQUE") || s.contains("constraint") {
+                "已存在同名视图".to_string()
+            } else {
+                s
+            }
+        })?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn delete_custom_view(
+    view_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    // ON DELETE CASCADE on custom_view_games clears the join rows too.
+    sqlx::query("DELETE FROM custom_views WHERE id = ?")
+        .bind(view_id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn add_games_to_view(
+    view_id: i64,
+    game_ids: Vec<i64>,
+    state: State<'_, AppPaths>,
+) -> Result<i64, String> {
+    if game_ids.is_empty() {
+        return Ok(0);
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    let mut tx = pool.begin().await.map_err(err_str)?;
+    let mut inserted: i64 = 0;
+    for gid in &game_ids {
+        let r = sqlx::query(
+            "INSERT OR IGNORE INTO custom_view_games (view_id, game_id) VALUES (?, ?)",
+        )
+        .bind(view_id)
+        .bind(gid)
+        .execute(&mut *tx)
+        .await
+        .map_err(err_str)?;
+        inserted += r.rows_affected() as i64;
+    }
+    tx.commit().await.map_err(err_str)?;
+    Ok(inserted)
+}
+
+#[tauri::command]
+pub async fn remove_game_from_view(
+    view_id: i64,
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    sqlx::query("DELETE FROM custom_view_games WHERE view_id = ? AND game_id = ?")
+        .bind(view_id)
+        .bind(game_id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
 }

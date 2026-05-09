@@ -43,6 +43,10 @@ interface GameGridProps {
    * target. Required: GameGrid no longer wraps itself in overflow-auto.
    */
   scrollContainerRef: React.RefObject<HTMLDivElement | null>;
+  // Quick 20260510b — batch selection mode passthrough.
+  selectMode?: boolean;
+  selectedIds?: Set<number>;
+  onToggleSelect?: (id: number) => void;
 }
 
 // Layout constants — must stay in sync with the inline style on the row div
@@ -56,6 +60,9 @@ export function GameGrid({
   onPickMetadata,
   onChildMutation,
   scrollContainerRef,
+  selectMode = false,
+  selectedIds,
+  onToggleSelect,
 }: GameGridProps) {
   const setGames = useLibraryStore((s) => s.setGames);
 
@@ -233,6 +240,9 @@ export function GameGrid({
                   onPickMetadata={onPickMetadata}
                   onRefreshCover={onRefreshCover}
                   onMutated={onChildMutated}
+                  selectMode={selectMode}
+                  selected={selectedIds?.has(g.id) ?? false}
+                  onToggleSelect={onToggleSelect}
                 />
               ))}
             </div>

@@ -45,6 +45,13 @@ interface GameCardProps {
   onPickMetadata: (game: Game) => void;
   onRefreshCover: (game: Game) => void;
   onMutated?: () => void;
+  // Quick 20260510b — batch selection mode (drives the "添加到视图" workflow).
+  /** When true, clicking the card toggles selection instead of navigating. */
+  selectMode?: boolean;
+  /** Whether this card is currently in the selection set. */
+  selected?: boolean;
+  /** Toggle this game's selection (only called in select mode). */
+  onToggleSelect?: (id: number) => void;
 }
 
 type StampStatus = "playing" | "cleared" | "dropped" | "todo";
@@ -117,6 +124,9 @@ function GameCardImpl({
   onPickMetadata,
   onRefreshCover,
   onMutated,
+  selectMode = false,
+  selected = false,
+  onToggleSelect,
 }: GameCardProps) {
   const navigate = useNavigate();
   const activeSession = useLibraryStore((s) => s.activeSession);
@@ -158,6 +168,13 @@ function GameCardImpl({
             : null;
 
   function onCardClick() {
+    // Quick 20260510b — in selection mode the card click toggles membership;
+    // navigation is intentionally suppressed so users can rapidly tag many
+    // games without bouncing in and out of detail pages.
+    if (selectMode) {
+      onToggleSelect?.(game.id);
+      return;
+    }
     navigate(`/games/${game.id}`);
   }
 
@@ -235,6 +252,8 @@ function GameCardImpl({
               // shadow-card; hover lift via transform stacks cleanly because
               // .pulse-ring only animates opacity, not transform.
               isFetchingMeta && "pulse-ring",
+              // Quick 20260510b — selection ring around cover when picked.
+              selectMode && selected && "ring-2 ring-brand ring-offset-2 ring-offset-bg-0",
             )}
             style={{ borderRadius: "var(--r-md)" }}
           >
@@ -256,29 +275,90 @@ function GameCardImpl({
               </div>
             )}
 
-            {/* 「藏书章」status stamp — top-left */}
-            <div
-              className={cn(
-                "absolute left-2 top-2 z-[3] inline-flex items-center px-1.5 py-[2px]",
-                "border border-current font-mono text-[9px] uppercase tracking-[0.12em] backdrop-blur-md",
-                "bg-black/35",
-                STAMP_COLOR[stamp.status],
-              )}
-              style={{ borderRadius: "var(--r-sm)" }}
-            >
-              {stamp.label}
-            </div>
-
-            {/* Favorite mark — top-right (review state moved to bottom-left
-                so the heart owns the right-top corner unconditionally) */}
-            {game.is_favorite && (
+            {/* 「藏书章」status stamp — top-left.
+                Quick 20260510b — hidden in select mode so the checkbox owns
+                the top-left corner; the playthrough state can still be read
+                from the meta block below. */}
+            {!selectMode && (
               <div
-                className="absolute right-2 top-2 z-[3] text-brand"
-                style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,.5))" }}
+                className={cn(
+                  "absolute left-2 top-2 z-[3] inline-flex items-center px-1.5 py-[2px]",
+                  "border border-current font-mono text-[9px] uppercase tracking-[0.12em] backdrop-blur-md",
+                  "bg-black/35",
+                  STAMP_COLOR[stamp.status],
+                )}
+                style={{ borderRadius: "var(--r-sm)" }}
               >
-                <Heart size={14} fill="currentColor" strokeWidth={1.5} />
+                {stamp.label}
               </div>
             )}
+
+            {/* Selection checkbox — Quick 20260510b. Renders only in select
+                mode; sits in the same top-left slot as the stamp. */}
+            {selectMode && (
+              <div
+                aria-hidden
+                className={cn(
+                  "absolute left-2 top-2 z-[4] grid h-6 w-6 place-items-center transition-colors",
+                  selected
+                    ? "border border-brand bg-brand text-[var(--accent-on)]"
+                    : "border border-line-strong bg-black/55 text-transparent backdrop-blur",
+                )}
+                style={{ borderRadius: "var(--r-sm)" }}
+              >
+                <svg
+                  width="13"
+                  height="13"
+                  viewBox="0 0 12 12"
+                  aria-hidden
+                  style={{ visibility: selected ? "visible" : "hidden" }}
+                >
+                  <path
+                    d="M2.5 6.4 L5 9 L9.5 3.5"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                  />
+                </svg>
+              </div>
+            )}
+
+            {/* Top-right stack — favorite heart + age-rating badge.
+                Both stack vertically (heart on top, badge below) so they
+                don't fight for the same px when both are present.
+                Quick 20260510b — age-rating badge mirrors the stamp aesthetic
+                (border-current + black/35 backdrop + mono 9px); not rendered
+                when age_rating is null (unknown / not yet enriched). */}
+            <div className="absolute right-2 top-2 z-[3] flex flex-col items-end gap-1.5">
+              {game.is_favorite && (
+                <div
+                  className="text-brand"
+                  style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,.5))" }}
+                >
+                  <Heart size={14} fill="currentColor" strokeWidth={1.5} />
+                </div>
+              )}
+              {game.age_rating === "r18" && (
+                <span
+                  className="inline-flex items-center px-1.5 py-[2px] border border-current bg-black/45 font-mono text-[9px] uppercase tracking-[0.12em] text-[#e26c5e] backdrop-blur"
+                  style={{ borderRadius: "var(--r-sm)" }}
+                  title="R18"
+                >
+                  R18
+                </span>
+              )}
+              {game.age_rating === "all_ages" && (
+                <span
+                  className="inline-flex items-center px-1.5 py-[2px] border border-current bg-black/45 font-mono text-[9px] uppercase tracking-[0.12em] text-[#6fd1c8] backdrop-blur"
+                  style={{ borderRadius: "var(--r-sm)" }}
+                  title="全年龄"
+                >
+                  全年龄
+                </span>
+              )}
+            </div>
 
             {/* Bottom-left badge — at most one renders; precedence in
                 bottomBadge is fetching > pending > review > no-exe. */}
@@ -320,11 +400,13 @@ function GameCardImpl({
               </div>
             )}
 
-            {/* Hover gradient + circular play icon overlay */}
+            {/* Hover gradient + circular play icon overlay.
+                Quick 20260510b — suppressed in select mode so the play
+                button doesn't fight the checkbox tap target. */}
             <div
               className={cn(
                 "pointer-events-none absolute inset-0 z-[2] flex items-end p-2.5 opacity-0 transition-opacity duration-200",
-                "group-hover:opacity-100 group-focus-visible:opacity-100",
+                !selectMode && "group-hover:opacity-100 group-focus-visible:opacity-100",
               )}
               style={{
                 background:

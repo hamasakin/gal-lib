@@ -16,21 +16,37 @@
  *   - Source-of-truth fetch of getSidebarCategories on mount
  */
 
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
+  Bookmark,
   Heart,
   Image as ImageIcon,
   Library as LibraryIcon,
+  Plus,
   Settings as SettingsIcon,
+  Trash2,
+  Pencil,
 } from "lucide-react";
+import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import {
+  ContextMenu,
+  ContextMenuContent,
+  ContextMenuItem,
+  ContextMenuTrigger,
+} from "@/components/ui/context-menu";
 import { cn } from "@/lib/utils";
 import { useLibraryStore } from "@/store/library";
 import { usePreferencesStore } from "@/store/preferences";
 import { getSidebarCategories } from "@/lib/search";
 import { listTags } from "@/lib/tags";
+import {
+  createCustomView,
+  deleteCustomView,
+  renameCustomView,
+} from "@/lib/customViews";
 import type { SearchFilter } from "@/lib/search";
 
 const STATUS_DISPLAY: Array<{
@@ -99,11 +115,19 @@ export function Sidebar() {
     filter.status == null &&
     !filter.favorite &&
     filter.brand == null &&
-    filter.year_decade == null;
+    filter.year_decade == null &&
+    filter.custom_view_id == null;
 
   const onLibraryRoute = location.pathname === "/";
   const isAllActive = onLibraryRoute && filterEmpty;
-  const isFavoriteActive = onLibraryRoute && filter.favorite === true && filter.tag_id == null && filter.status == null && filter.brand == null && filter.year_decade == null;
+  const isFavoriteActive =
+    onLibraryRoute &&
+    filter.favorite === true &&
+    filter.tag_id == null &&
+    filter.status == null &&
+    filter.brand == null &&
+    filter.year_decade == null &&
+    filter.custom_view_id == null;
 
   function isStatusActive(status: string): boolean {
     return (
@@ -112,7 +136,8 @@ export function Sidebar() {
       filter.tag_id == null &&
       !filter.favorite &&
       filter.brand == null &&
-      filter.year_decade == null
+      filter.year_decade == null &&
+      filter.custom_view_id == null
     );
   }
 
@@ -123,7 +148,8 @@ export function Sidebar() {
       filter.status == null &&
       !filter.favorite &&
       filter.brand == null &&
-      filter.year_decade == null
+      filter.year_decade == null &&
+      filter.custom_view_id == null
     );
   }
 
@@ -134,7 +160,8 @@ export function Sidebar() {
       filter.tag_id == null &&
       filter.status == null &&
       !filter.favorite &&
-      filter.year_decade == null
+      filter.year_decade == null &&
+      filter.custom_view_id == null
     );
   }
 
@@ -145,8 +172,82 @@ export function Sidebar() {
       filter.tag_id == null &&
       filter.status == null &&
       !filter.favorite &&
-      filter.brand == null
+      filter.brand == null &&
+      filter.custom_view_id == null
     );
+  }
+
+  function isCustomViewActive(viewId: number): boolean {
+    return (
+      onLibraryRoute &&
+      filter.custom_view_id === viewId &&
+      filter.tag_id == null &&
+      filter.status == null &&
+      !filter.favorite &&
+      filter.brand == null &&
+      filter.year_decade == null
+    );
+  }
+
+  // Quick 20260510b — track inline-rename state for one view at a time.
+  const [renamingViewId, setRenamingViewId] = useState<number | null>(null);
+  const [renameDraft, setRenameDraft] = useState<string>("");
+
+  async function refreshSidebar() {
+    try {
+      const cats = await getSidebarCategories();
+      setSidebar(cats);
+    } catch (e: unknown) {
+      // eslint-disable-next-line no-console
+      console.error("[Sidebar] refresh failed:", e);
+    }
+  }
+
+  async function onCreateView() {
+    const name = window.prompt("视图名称")?.trim();
+    if (!name) return;
+    try {
+      const id = await createCustomView(name);
+      await refreshSidebar();
+      // Auto-navigate to the new view so the user sees it active.
+      applyFilter({ custom_view_id: id });
+      toast.success(`已创建视图「${name}」`);
+    } catch (e: unknown) {
+      toast.error(`创建失败 — ${String(e)}`);
+    }
+  }
+
+  function onStartRename(id: number, currentName: string) {
+    setRenamingViewId(id);
+    setRenameDraft(currentName);
+  }
+
+  async function onCommitRename(id: number) {
+    const name = renameDraft.trim();
+    setRenamingViewId(null);
+    if (!name) return;
+    try {
+      await renameCustomView(id, name);
+      await refreshSidebar();
+      toast.success("已重命名");
+    } catch (e: unknown) {
+      toast.error(`重命名失败 — ${String(e)}`);
+    }
+  }
+
+  async function onDeleteView(id: number, name: string) {
+    if (!window.confirm(`确定删除视图「${name}」？视图内的游戏不会被删除。`)) return;
+    try {
+      await deleteCustomView(id);
+      // If the active filter was this view, reset to all.
+      if (filter.custom_view_id === id) {
+        setFilter({});
+      }
+      await refreshSidebar();
+      toast.success("已删除视图");
+    } catch (e: unknown) {
+      toast.error(`删除失败 — ${String(e)}`);
+    }
   }
 
   return (
@@ -220,6 +321,85 @@ export function Sidebar() {
             onClick={() => navigate("/settings")}
             iconMode={isIconMode}
           />
+
+          {/* Quick 20260510b — 我的视图 (custom views).
+              Rendered before 自定义标签 so curated lists stay near the top.
+              The section header has a + affordance to create a new view;
+              individual rows have a right-click menu for rename/delete. */}
+          {!isIconMode && (
+            <>
+              <div className="flex items-center justify-between pr-3">
+                <SectionLabel>我的视图</SectionLabel>
+                <button
+                  type="button"
+                  onClick={() => void onCreateView()}
+                  className="grid h-5 w-5 place-items-center text-ink-3 transition-colors hover:bg-bg-2 hover:text-ink-0"
+                  style={{ borderRadius: "var(--r-sm)" }}
+                  title="新建视图"
+                  aria-label="新建视图"
+                >
+                  <Plus size={11} strokeWidth={1.7} />
+                </button>
+              </div>
+              {(sidebar?.custom_views ?? []).length === 0 && (
+                <div className="px-[18px] pb-1 font-mono text-[10px] text-ink-3 select-none">
+                  还没有视图
+                </div>
+              )}
+              {(sidebar?.custom_views ?? []).map((cv) => (
+                <ContextMenu key={`cv-${cv.id}`}>
+                  <ContextMenuTrigger asChild>
+                    <div>
+                      {renamingViewId === cv.id ? (
+                        <div className="mx-2 px-3.5 py-1">
+                          <input
+                            type="text"
+                            autoFocus
+                            value={renameDraft}
+                            onChange={(e) => setRenameDraft(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter") {
+                                e.preventDefault();
+                                void onCommitRename(cv.id);
+                              } else if (e.key === "Escape") {
+                                setRenamingViewId(null);
+                              }
+                            }}
+                            onBlur={() => void onCommitRename(cv.id)}
+                            className="h-7 w-full border border-line-strong bg-bg-2 px-2 text-[12.5px] text-ink-0 outline-none"
+                            style={{ borderRadius: "var(--r-sm)" }}
+                          />
+                        </div>
+                      ) : (
+                        <SidebarRow
+                          label={cv.name}
+                          icon={Bookmark}
+                          count={cv.count}
+                          active={isCustomViewActive(cv.id)}
+                          onClick={() => applyFilter({ custom_view_id: cv.id })}
+                        />
+                      )}
+                    </div>
+                  </ContextMenuTrigger>
+                  <ContextMenuContent className="w-40">
+                    <ContextMenuItem
+                      onClick={() => onStartRename(cv.id, cv.name)}
+                    >
+                      <Pencil size={13} className="mr-2" />
+                      重命名
+                    </ContextMenuItem>
+                    <ContextMenuItem
+                      onClick={() => void onDeleteView(cv.id, cv.name)}
+                      className="text-destructive focus:text-destructive"
+                    >
+                      <Trash2 size={13} className="mr-2" />
+                      删除视图
+                    </ContextMenuItem>
+                  </ContextMenuContent>
+                </ContextMenu>
+              ))}
+            </>
+          )}
 
           {!isIconMode && (sidebar?.tags ?? []).length > 0 && (
             <>
