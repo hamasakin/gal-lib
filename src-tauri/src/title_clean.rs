@@ -96,13 +96,13 @@ pub fn aggressive_clean(raw: &str) -> String {
         if is_cjk_titlechar(ch) {
             current.push(ch);
         } else {
-            if current.chars().count() > best.chars().count() {
+            if has_cjk(&current) && current.chars().count() > best.chars().count() {
                 best = current.clone();
             }
             current.clear();
         }
     }
-    if current.chars().count() > best.chars().count() {
+    if has_cjk(&current) && current.chars().count() > best.chars().count() {
         best = current;
     }
     let trimmed = trim_title_punct(&best);
@@ -111,6 +111,19 @@ pub fn aggressive_clean(raw: &str) -> String {
     } else {
         trimmed.to_string()
     }
+}
+
+/// True iff `s` contains at least one Han / Hiragana / Katakana character.
+/// Used to reject pure-digit / pure-punctuation runs from the aggressive
+/// pick — those are junk fallbacks for an API search.
+fn has_cjk(s: &str) -> bool {
+    s.chars().any(|ch| {
+        let n = ch as u32;
+        let in_han = (0x4E00..=0x9FFF).contains(&n) || (0x3400..=0x4DBF).contains(&n);
+        let in_hira = (0x3040..=0x309F).contains(&n);
+        let in_kana = (0x30A0..=0x30FF).contains(&n);
+        in_han || in_hira || in_kana
+    })
 }
 
 fn is_cjk_titlechar(ch: char) -> bool {
@@ -246,6 +259,20 @@ mod tests {
     fn aggressive_trims_leading_trailing_punct() {
         // Decorative ー/〜/！ book-ends are stripped from the chosen run.
         assert_eq!(aggressive_clean("ーー雪月華〜！"), "雪月華");
+    }
+
+    #[test]
+    fn aggressive_rejects_pure_digit_runs() {
+        // Without the has_cjk guard, "Night Shift Nurses_r18" would AGG to
+        // "18" (a 2-char digit run beats no CJK run). We instead want to
+        // fall back to the standard clean so the Latin title gets a fair
+        // shot at matching by itself.
+        assert_eq!(aggressive_clean("Night Shift Nurses_r18"), "Night Shift Nurses_r18");
+        assert_eq!(
+            aggressive_clean("Applique.081023.Concerto Note"),
+            "Applique.081023.Concerto Note"
+        );
+        assert_eq!(aggressive_clean("ROOM ver.1.0.2"), "ROOM ver.1.0.2");
     }
 
     #[test]
