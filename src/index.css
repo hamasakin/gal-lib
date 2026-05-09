@@ -321,7 +321,14 @@
   }
 }
 .card-enter {
-  animation: card-enter 360ms cubic-bezier(0.16, 1, 0.3, 1);
+  /* `backwards` fill-mode — apply the from-state on the very first paint
+     frame after mount, otherwise the browser may paint the element in its
+     default state (opacity:1) for one frame before the animation kicks in,
+     making the entrance imperceptible. We only use `backwards` (not `both`)
+     so the post-animation transform isn't locked — hover's -translate-y-1
+     can still take over cleanly. */
+  animation: card-enter 360ms cubic-bezier(0.16, 1, 0.3, 1) backwards;
+  will-change: opacity, transform;
 }
 @media (prefers-reduced-motion: reduce) {
   .card-enter {
