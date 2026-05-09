@@ -3,6 +3,7 @@ import App from "./App";
 import { Library } from "./routes/Library";
 import { Settings } from "./routes/Settings";
 import Detail from "./routes/Detail";
+import Persons from "./routes/Persons";
 import Stats from "./routes/Stats";
 import Screenshots from "./routes/Screenshots";
 
@@ -38,6 +39,7 @@ export const router = createHashRouter([
       { path: "stats", element: <Stats /> },
       { path: "screenshots", element: <Screenshots /> },
       { path: "games/:id", element: <Detail /> },
+      { path: "persons/:id", element: <Persons /> },
     ],
   },
 ]);
