@@ -5,7 +5,7 @@ milestone_name: milestone
 status: Defining requirements
 stopped_at: "Completed 05-05e-PLAN.md (Phase 5 wave 5/5 FINAL — Detail page extensions: ScreenshotsTab + SavesTab + 截图间隔 select in 设置 tab); 29/29 plans done. **v1 milestone complete.**"
 last_updated: "2026-05-08T15:57:01.703Z"
-last_activity: 2026-05-09 — Completed quick task 20260509d: incremental rescan auto-retries 「待复核」 + force-refresh-all button
+last_activity: 2026-05-09 — Completed quick task 20260509e: aggressive_clean keeps digits + trims punct; rejects pure-digit runs; VNDB results 5→25 + searchrank
 progress:
   total_phases: 5
   completed_phases: 1
@@ -220,6 +220,7 @@ None yet.
 | 20260509b | detail-page top nav bar (back+breadcrumb+prev/next+Esc) + 更多 dropdown w/ 打开本地目录 + new open_in_explorer Tauri command (43→44) + launch-button play-icon centering | 2026-05-09 | 53a9182 | [20260509b-detail-topnav-launch-icon-more-menu](./quick/20260509b-detail-topnav-launch-icon-more-menu/) |
 | 20260509c | metadata match quality: parallel Bangumi+VNDB + score across all candidate names; bracket/tokuten/disc cleaning + aggressive CJK fallback; GameCard 「复核」 → 「待复核」 bottom-left | 2026-05-09 | 28ece57 | [20260509c-metadata-match-quality](./quick/20260509c-metadata-match-quality/) |
 | 20260509d | incremental rescan auto-retries 「待复核」 rows (bound + manual still skipped); 设置 「强制刷新全部元数据」 button (含已绑定，AlertDialog gated) reusing scan-progress UI | 2026-05-09 | fad2044 | [20260509d-rescan-retries-pending-and-refresh-all](./quick/20260509d-rescan-retries-pending-and-refresh-all/) |
+| 20260509e | aggressive_clean: digits in CJK run + trim book-end punctuation + reject pure-digit runs (3 new tests, 15 total passing); VNDB search results 5→25 + sort searchrank | 2026-05-09 | 8033195 | [20260509e-aggressive-trim-and-vndb-recall](./quick/20260509e-aggressive-trim-and-vndb-recall/) |
 
 ## Deferred Items
 
