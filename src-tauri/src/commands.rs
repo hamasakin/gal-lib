@@ -239,11 +239,23 @@ pub async fn start_scan(
     }
 
     // Read existing games.path set (only used in incremental mode).
+    //
+    // Filter to *bound* rows only — directories whose row has
+    // metadata_source='none' (i.e. 「待复核」: scan happened but neither
+    // Bangumi nor VNDB cleared the auto-bind threshold) are intentionally
+    // excluded so an incremental rescan re-runs the metadata pipeline on
+    // them. The standard cleaning + scoring rules may have improved
+    // (see 20260509c) and the user shouldn't have to right-click each
+    // unbound card to retry. Manual binds are kept in the skip set so
+    // a rescan never overwrites a user's explicit choice.
     let existing_paths: HashSet<PathBuf> = if incremental {
-        let rows = sqlx::query("SELECT path FROM games")
-            .fetch_all(&*pool)
-            .await
-            .map_err(err_str)?;
+        let rows = sqlx::query(
+            "SELECT path FROM games \
+             WHERE metadata_source IN ('bangumi', 'vndb', 'manual')",
+        )
+        .fetch_all(&*pool)
+        .await
+        .map_err(err_str)?;
         rows.into_iter()
             .filter_map(|r| r.try_get::<String, _>("path").ok().map(PathBuf::from))
             .collect()
