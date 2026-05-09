@@ -68,49 +68,53 @@ pub fn clean_title(raw: &str) -> String {
     s.trim().to_string()
 }
 
-/// Aggressive fallback: extract the longest contiguous "title-char" run
-/// from the standard-cleaned title.
+/// Aggressive fallback: return ALL CJK-bearing runs from the standard
+/// clean as separate query candidates. The ingest layer searches each
+/// candidate independently against Bangumi+VNDB and merges the
+/// resulting candidate pool — so a directory like
+/// `艶嬢学園２ ー熾天使たちの花園ー` produces two queries
+/// `["艶嬢学園２", "熾天使たちの花園"]` and either main title OR
+/// subtitle can drive the auto-bind.
 ///
-/// Title-chars are Han + Hiragana + Katakana + halfwidth/fullwidth digits
-/// + a few in-title punctuation marks (`・々、。〜！？ー`). Including digits
-/// matters: titles like `艶嬢学園２` / `シンフォギア２` were otherwise
-/// severed at the digit. ASCII letters are *intentionally excluded* —
-/// when a directory is dominated by Latin (e.g. `Symphonic Rain`), the
-/// standard clean is already correct and the aggressive fallback should
-/// defer to it rather than picking a sub-word like `Symphonic`.
+/// Each returned string has its leading/trailing pure-punctuation
+/// trimmed (so `ー...ー` book-ends don't survive). Order preserved
+/// (left-to-right as the runs appear in the standard clean).
 ///
-/// After picking the longest run, leading and trailing pure-punctuation
-/// chars are trimmed (so a subtitle delimited by `ー...ー` doesn't
-/// retain its decorative book-ends in the search query).
+/// Run definition:
+///   - title-chars: Han + Hiragana + Katakana + halfwidth/fullwidth
+///     digits + the in-title punctuation set (`・々、。〜！？ー`)
+///   - Latin letters are deliberately NOT title-chars — when a
+///     directory is Latin-dominated (`Symphonic Rain`), the standard
+///     clean already fits the search API; we don't want to pick
+///     sub-words like `Symphonic`.
+///   - A run is only emitted if it contains ≥1 Han/Hiragana/Katakana
+///     character. Pure-digit runs (`18`, `081023`) are dropped.
 ///
-/// Used by the ingest layer when both Bangumi and VNDB miss the standard
-/// query — isolates the core title from heavy doujin scene-release noise
-/// that survived the regex pipeline. Returns the standard clean
-/// unchanged if no CJK run exists (pure-Latin titles, all-punctuation
-/// pathological directories).
-pub fn aggressive_clean(raw: &str) -> String {
+/// Returns an empty Vec when no CJK run exists (pure-Latin titles,
+/// pathological all-punctuation directories) — caller should NOT
+/// retry, as the standard query is already the best we can do.
+pub fn aggressive_candidates(raw: &str) -> Vec<String> {
     let standard = clean_title(raw);
-    let mut best = String::new();
+    let mut out: Vec<String> = Vec::new();
     let mut current = String::new();
+    let mut flush = |buf: &mut String, out: &mut Vec<String>| {
+        if has_cjk(buf) {
+            let trimmed = trim_title_punct(buf).to_string();
+            if !trimmed.is_empty() {
+                out.push(trimmed);
+            }
+        }
+        buf.clear();
+    };
     for ch in standard.chars() {
         if is_cjk_titlechar(ch) {
             current.push(ch);
         } else {
-            if has_cjk(&current) && current.chars().count() > best.chars().count() {
-                best = current.clone();
-            }
-            current.clear();
+            flush(&mut current, &mut out);
         }
     }
-    if has_cjk(&current) && current.chars().count() > best.chars().count() {
-        best = current;
-    }
-    let trimmed = trim_title_punct(&best);
-    if trimmed.is_empty() {
-        standard
-    } else {
-        trimmed.to_string()
-    }
+    flush(&mut current, &mut out);
+    out
 }
 
 /// True iff `s` contains at least one Han / Hiragana / Katakana character.
@@ -220,59 +224,61 @@ mod tests {
     }
 
     #[test]
-    fn aggressive_picks_longest_cjk_run() {
-        // The bracket-heavy doujin example — standard clean strips brackets
-        // and parens, aggressive isolates the longest Japanese run.
+    fn aggressive_returns_all_cjk_runs() {
+        // The decorated-subtitle case the user flagged: main title and
+        // subtitle should BOTH come back as candidates so the ingest layer
+        // can search each one independently.
+        let raw = "(18禁ゲーム) [240927] [アストロノーツ・シリウス] \
+                   艶嬢学園２ ー熾天使たちの花園ー";
+        assert_eq!(
+            aggressive_candidates(raw),
+            vec!["艶嬢学園２".to_string(), "熾天使たちの花園".to_string()]
+        );
+    }
+
+    #[test]
+    fn aggressive_keeps_digits_in_run() {
+        // Digit-bearing main title must survive — was previously severed
+        // at the fullwidth digit.
+        assert_eq!(
+            aggressive_candidates("[150227] シンフォギア２"),
+            vec!["シンフォギア２".to_string()]
+        );
+    }
+
+    #[test]
+    fn aggressive_trims_book_end_punctuation() {
+        assert_eq!(
+            aggressive_candidates("ーー雪月華〜！"),
+            vec!["雪月華".to_string()]
+        );
+    }
+
+    #[test]
+    fn aggressive_rejects_pure_digit_or_latin() {
+        // No CJK runs → empty Vec → ingest doesn't retry, standard
+        // clean is the only query.
+        assert!(aggressive_candidates("Night Shift Nurses_r18").is_empty());
+        assert!(aggressive_candidates("Applique.081023.Concerto Note").is_empty());
+        assert!(aggressive_candidates("ROOM ver.1.0.2").is_empty());
+        assert!(aggressive_candidates("Symphonic Rain v1.5").is_empty());
+    }
+
+    #[test]
+    fn aggressive_emits_pulltop_runs_in_order() {
+        // The bracket-heavy doujin example — emits 15タイトル (digit + kana)
+        // and the long subtitle. Both have CJK content; both worth searching.
         let raw = "(18禁ゲーム) [PULLTOP] [180216] PULLTOP 15th X 15タイトル \
                    Premium Anniversary Pack DISC-15 見上げてごらん、夜空の星を \
                    FINE DAYS (iso+mds+rr3)";
-        let agg = aggressive_clean(raw);
-        // Longest contiguous CJK run is the title itself (or 15タイトル — but
-        // 見上げてごらん、夜空の星を is much longer).
-        assert_eq!(agg, "見上げてごらん、夜空の星を");
-    }
-
-    #[test]
-    fn aggressive_falls_back_to_standard_when_no_cjk() {
-        // Pure English / Latin titles have no CJK run — return the standard
-        // clean unchanged so we don't return an empty query.
-        assert_eq!(aggressive_clean("Symphonic Rain v1.5"), "Symphonic Rain");
-    }
-
-    #[test]
-    fn aggressive_keeps_digits_in_cjk_run() {
-        // 「艶嬢学園２」 should stay as a single 5-char run (was previously
-        // severed at the fullwidth digit ２, leaving 「艶嬢学園」 4 chars).
-        // The longer subtitle still wins overall, but the leading 「ー」
-        // is now trimmed so it returns clean.
-        let raw = "(18禁ゲーム) [240927] [アストロノーツ・シリウス] \
-                   艶嬢学園２ ー熾天使たちの花園ー";
-        let agg = aggressive_clean(raw);
-        assert_eq!(agg, "熾天使たちの花園");
-        // And the digits-in-run guarantee: a title where the digit-bearing
-        // run IS the longest must keep the digit.
-        let r2 = aggressive_clean("[150227] シンフォギア２");
-        assert_eq!(r2, "シンフォギア２");
-    }
-
-    #[test]
-    fn aggressive_trims_leading_trailing_punct() {
-        // Decorative ー/〜/！ book-ends are stripped from the chosen run.
-        assert_eq!(aggressive_clean("ーー雪月華〜！"), "雪月華");
-    }
-
-    #[test]
-    fn aggressive_rejects_pure_digit_runs() {
-        // Without the has_cjk guard, "Night Shift Nurses_r18" would AGG to
-        // "18" (a 2-char digit run beats no CJK run). We instead want to
-        // fall back to the standard clean so the Latin title gets a fair
-        // shot at matching by itself.
-        assert_eq!(aggressive_clean("Night Shift Nurses_r18"), "Night Shift Nurses_r18");
+        let cands = aggressive_candidates(raw);
         assert_eq!(
-            aggressive_clean("Applique.081023.Concerto Note"),
-            "Applique.081023.Concerto Note"
+            cands,
+            vec![
+                "15タイトル".to_string(),
+                "見上げてごらん、夜空の星を".to_string(),
+            ]
         );
-        assert_eq!(aggressive_clean("ROOM ver.1.0.2"), "ROOM ver.1.0.2");
     }
 
     #[test]

@@ -5,7 +5,7 @@
 //! Run with:
 //!   cargo run --example scan_titles -- F:\galgame
 
-use gal_lib_lib::title_clean::{aggressive_clean, clean_title};
+use gal_lib_lib::title_clean::{aggressive_candidates, clean_title};
 use std::env;
 use std::fs;
 use std::path::Path;
@@ -34,12 +34,16 @@ fn main() {
         // walker would see for an extracted directory.
         let stem = strip_archive_ext(raw);
         let std_clean = clean_title(stem);
-        let aggressive = aggressive_clean(stem);
-        let differ = std_clean != aggressive;
+        let cands = aggressive_candidates(stem);
         println!("RAW  {}", raw);
         println!("  STD {}", std_clean);
-        if differ {
-            println!("  AGG {}", aggressive);
+        // Show every aggressive candidate the ingest layer would try as a
+        // fallback query (each gets its own Bangumi+VNDB search). Skip
+        // candidates equal to STD — the dedupe also lives in ingest.
+        for c in &cands {
+            if *c != std_clean {
+                println!("  AGG {}", c);
+            }
         }
         println!();
     }

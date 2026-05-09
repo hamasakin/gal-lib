@@ -110,18 +110,30 @@ pub async fn process_game(
         return result;
     }
 
-    // 1. Search BOTH sources in parallel, merge, pick best ≥ threshold.
+    // 1. Search BOTH sources in parallel on the standard cleaned query.
     let mut final_choice = pick_best_across_sources(&discovered.clean_name).await;
 
-    // 1b. Cascade: if the standard clean missed both sources, retry once
-    //     with the aggressive clean (longest contiguous CJK run) — handles
-    //     scene-release directories like "[180216] [PULLTOP] ... 見上げて
-    //     ごらん、夜空の星を FINE DAYS (iso+mds)" where standard clean
-    //     leaves enough trailing noise to drive both APIs below threshold.
+    // 1b. Fan-out cascade: if the standard query missed, dispatch one
+    //     extra Bangumi+VNDB search per CJK-bearing run isolated from
+    //     the raw directory name. Catches the decorated-subtitle pattern
+    //     `MainTitle ーSubtitleー` where neither half plus filler scored
+    //     ≥80 against the merged query but one half alone matches.
+    //     Each candidate is deduped against the standard query so we
+    //     never double-spend the limiter on the same string.
     if final_choice.is_none() {
-        let aggressive = crate::title_clean::aggressive_clean(&discovered.raw_name);
-        if !aggressive.trim().is_empty() && aggressive != discovered.clean_name {
-            final_choice = pick_best_across_sources(&aggressive).await;
+        let candidates = crate::title_clean::aggressive_candidates(&discovered.raw_name);
+        for cand in candidates {
+            if cand == discovered.clean_name {
+                continue;
+            }
+            if let Some(c) = pick_best_across_sources(&cand).await {
+                // Keep the highest-confidence pick across all candidates.
+                final_choice = match final_choice {
+                    None => Some(c),
+                    Some(prev) if c.confidence > prev.confidence => Some(c),
+                    other => other,
+                };
+            }
         }
     }
 
