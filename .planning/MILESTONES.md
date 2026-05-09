@@ -1,5 +1,32 @@
 # Milestones
 
+## v1.1 UI Redesign (Shipped: 2026-05-09)
+
+**Phases completed:** 5 phases (6-10), 5 plans, executed in summary-only mode (no VERIFICATION.md per project autonomous-mode policy).
+**Score:** 27/30 requirements satisfied — 1 reverted (LIB-02), 2 deferred to v1.2 (PGE-01/02).
+**Audit:** [milestones/v1.1-MILESTONE-AUDIT.md](milestones/v1.1-MILESTONE-AUDIT.md) · [milestones/v1.1-INTEGRATION.md](v1.1-INTEGRATION.md)
+
+**Key accomplishments:**
+
+- **Phase 6 — Design Tokens & Tweaks** — 5-axis CSS variable system (`<html data-theme/-accent/-radius/-sidebar/-density>`) switchable without page reload; Zustand-backed `localStorage["gal-lib:prefs"]` round-trip with boot-time `applyPreferences` paint pre-React; floating Tweaks gear panel with 5 control groups + 5 page-jumps; shadcn HSL alias mapping preserved 50+ existing callsites.
+- **Phase 7 — Library Page Redesign** — 「藏书章」 mono uppercase 5-state stamp on 3:4 cover cards with hover lift + circular play; Sidebar restyled with status dot variants + 6-section nav; PageHeader pattern (mono breadcrumb + serif h1 + mono sub + actions); reusable StatusFilterChips/DensityToggle/SortSelect; ActiveSessionBar with pulse dot + serif title + mono timer; react-virtual dropped (CSS Grid auto-fill replaces it for typical 50-300 game libraries).
+- **Phase 8 — Detail Page Redesign** — 380px immersive hero with `filter:blur(36px)` cover bg + 220×293 cover overflowing -60px; signature 44px LaunchButton expanding to 240px on hover with 260px LE Profile popover (4 profiles); 1fr+320px body grid with serif accent-underline tabs (6 tabs: 总览/笔记/会话历史/截图/存档/启动配置); pills row in hero (status/playtime/rating/BGM-id/exe + 「待复核」 when match_confidence < 80).
+- **Phase 9 — Stats Dashboard** — 12-column grid: 4 KPI cards (3 cols each) + 6-month daily heatmap (full width, `color-mix` accent intensities × 4 buckets) + 30-day timeline bar chart (8 cols, period select 日/周/月) + status ring stack (4 cols) + Top 8 list (6 cols) + brand/year breakdown (6 cols); recharts removed (-380 KB JS, gzip 339 → 235 KB) replaced with pure CSS grid + flex; computeStreak + buildHeatmap helpers. PGE-01/02 standalone /scan deferred to v1.2.
+- **Phase 10 — Settings & Screenshots** — Settings 200px sticky left nav + 8 sections (外观/扫描根目录/添加单个游戏/Locale Emulator/标签管理/扫描操作/UI 偏好/调试) with IntersectionObserver scroll-spy; new `/screenshots` route with masonry 4-col layout (responsive 4/3/2) + lightbox (max 80vw × 78vh, ESC + click-outside close); Tweaks panel jumps grew to 5 (added 截图集).
+
+**Cross-phase integration verified** — All 5 design-token axes flow Phase 6 → 7/8/9/10 via `<html data-*>` + CSS variables; v1.0 IPC layer (launchGame/endActiveSession/active-session-changed/scan-progress/getScreenshots/setScreenshotInterval/updateGameLaunchConfig/addScanRoot/clearAllData) untouched; PageHeader reused across Library/Stats/Screenshots; LaunchButton consumed only by Detail (cards keep inline buttons calling same launch IPC); MetadataPicker/TagPicker/TagManager/ScreenshotsTab/SavesTab/StarRating preserved unmodified.
+
+**Bundle delta** — Phase 9 recharts removal saved ~380 KB JS; final build 776 KB JS (gzip 238 KB) + 53.73 KB CSS (Phase 10 last verified build). Tauri target < 30 MB single-exe goal preserved.
+
+**Known carry-over to v1.2:**
+- LIB-02 magazine asymmetric grid (HeroCard.tsx removed; portrait-cover cropping + density mismatch — revisit or amend spec)
+- PGE-01/02 standalone /scan route + Bangumi/VNDB review queue (needs router + IPC payload + persistent review-queue schema)
+- Detail open-directory action + Screenshots open-folder button (needs `tauri-plugin-opener` / `open_path` IPC)
+- Detail `?tab=screenshots` deeplink parsing
+- UIPreferences.tsx:135 stale "Phase 5" copy (theme switch already shipped in Phase 6)
+
+---
+
 ## v1.0 v1.0 MVP (Shipped: 2026-05-07)
 
 **Phases completed:** 5 phases, 29 plans, 36 tasks
