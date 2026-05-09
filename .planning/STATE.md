@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: TBD
 status: Between milestones (v1.2 shipped — v1.3 not yet defined)
 stopped_at: "v1.2 Metadata Enrichment & Filtering milestone complete (1 phase, 7 plans, 16/18 audit-credit). Audit + complete-milestone passed. Run /gsd-new-milestone to start v1.3."
-last_updated: "2026-05-10T00:10:00.000Z"
-last_activity: "2026-05-09 — closed v1.2 milestone (audit → archive → tag)"
+last_updated: "2026-05-10T01:00:00.000Z"
+last_activity: "2026-05-10 — quick task 20260510: 4 UI fixes (person_id wire fix, FilterPanel UNDEFINED + 透明, sidebar brand cap, Detail 更多 menu)"
 progress:
   total_phases: 0
   completed_phases: 0
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-09 after v1.2 close)
 Phase: — (no active milestone)
 Plan: —
 Status: v1.2 shipped 2026-05-09; awaiting `/gsd-new-milestone` to start v1.3
-Last activity: 2026-05-09 — milestone close (audit → archive → tag)
+Last activity: 2026-05-10 — quick task 20260510 (4 UI fixes; person_id wire-rename, FilterPanel solid bg + brand option, sidebar brand cap, Detail 更多 menu)
 
 ## Carried Tech Debt → v1.3
 
@@ -72,6 +72,12 @@ None.
 ## Blockers/Concerns
 
 None.
+
+### Quick Tasks Completed
+
+| # | Description | Date | Commit | Directory |
+|---|-------------|------|--------|-----------|
+| 20260510 | 修复 4 个 UI 问题（人物 chip 跳错 / FilterPanel UNDEFINED + 透明 / 侧边栏品牌限高 / Detail 更多菜单补全） | 2026-05-10 | 86a5f33 | [20260510-ui-fixes-detail-cards-filter-brands](./quick/20260510-ui-fixes-detail-cards-filter-brands/) |
 
 ## Session Continuity
 
