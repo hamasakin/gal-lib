@@ -239,15 +239,23 @@ export function Sidebar() {
           {!isIconMode && (sidebar?.brands ?? []).length > 0 && (
             <>
               <SectionLabel>品牌 · 厂牌</SectionLabel>
-              {sidebar!.brands.map(({ brand, count }) => (
-                <SidebarRow
-                  key={`b-${brand}`}
-                  label={brand}
-                  count={count}
-                  active={isBrandActive(brand)}
-                  onClick={() => applyFilter({ brand })}
-                />
-              ))}
+              {/* Cap visible height to ~10 rows; scroll the rest in-place so a
+                  long brand list (50+ entries) doesn't push 发行年份 below
+                  the viewport. */}
+              <div
+                className="max-h-[300px] overflow-y-auto"
+                style={{ scrollbarWidth: "thin" }}
+              >
+                {sidebar!.brands.map(({ brand, count }) => (
+                  <SidebarRow
+                    key={`b-${brand}`}
+                    label={brand}
+                    count={count}
+                    active={isBrandActive(brand)}
+                    onClick={() => applyFilter({ brand })}
+                  />
+                ))}
+              </div>
             </>
           )}
 
