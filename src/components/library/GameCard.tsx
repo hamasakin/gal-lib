@@ -17,6 +17,7 @@
  *   - Single-session lock: when another game is active, launch hidden
  */
 
+import { memo } from "react";
 import { Heart, ImageOff, Loader2, Play, Square } from "lucide-react";
 import { toast } from "sonner";
 import { useNavigate } from "react-router-dom";
@@ -110,7 +111,7 @@ function fmtPlaytime(sec: number): string {
   return m === 0 ? `${h}小时` : `${h}时${m}分`;
 }
 
-export function GameCard({
+function GameCardImpl({
   game,
   coverDataUrl,
   onPickMetadata,
@@ -242,6 +243,8 @@ export function GameCard({
                 src={coverDataUrl}
                 alt=""
                 draggable={false}
+                decoding="async"
+                loading="lazy"
                 className="h-full w-full object-cover"
                 onError={(e) => {
                   (e.currentTarget as HTMLImageElement).style.display = "none";
@@ -447,3 +450,8 @@ export function GameCard({
     </ContextMenu>
   );
 }
+
+// Memoized export — useVirtualizer recomputes virtualItems on every scroll
+// frame, which re-renders GameGrid; without memo, all 30+ visible cards
+// re-render on every frame even though their props are stable.
+export const GameCard = memo(GameCardImpl);
