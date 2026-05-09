@@ -53,6 +53,7 @@ import {
 import { RefreshCw, FolderPlus, Library as LibraryIcon, SearchX, AlertCircle } from "lucide-react";
 import type { LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useSmoothWheel } from "@/hooks/useSmoothWheel";
 
 function isFilterEmpty(f: SearchFilter): boolean {
   return (
@@ -87,6 +88,11 @@ export function Library() {
   // getScrollElement 用。Library 持有这个 ref 是因为 scroll 区是 toolbar
   // 之外的 flex-1 那一层（见 line ~258），它不在 GameGrid 内部。
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Wheel inertia — Windows wheel ticks are discrete (~100px each); lerp the
+  // target scrollTop frame-by-frame for smooth motion. react-virtual stays
+  // compatible because we still write to native scrollTop.
+  useSmoothWheel(scrollContainerRef);
 
   const refetchGrid = useCallback(async () => {
     const trimmedQuery = searchQuery.trim();
