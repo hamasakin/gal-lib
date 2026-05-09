@@ -171,6 +171,7 @@ pub fn run() {
             commands::search_metadata,
             commands::bind_metadata,
             commands::refresh_metadata,
+            commands::refresh_all_metadata,
             commands::list_games,
             // 03d — launch + sessions + LE path
             commands::launch_game,

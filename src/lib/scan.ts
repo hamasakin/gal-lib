@@ -71,6 +71,17 @@ export async function addGame(dirPath: string): Promise<number> {
 }
 
 /**
+ * Bulk version of `refresh_metadata` — re-runs the Bangumi+VNDB search
+ * for every game in the library, including already-bound rows. Reuses
+ * the `scan-progress` event stream so the existing progress bar UI
+ * surfaces progress without extra wiring. Resolves immediately after
+ * spawning the worker task on the Rust side.
+ */
+export async function refreshAllMetadata(): Promise<void> {
+  await invoke("refresh_all_metadata");
+}
+
+/**
  * Debug-only: wipe all games, scan_roots, sessions, screenshots, save
  * backups, and the on-disk cover/screenshot/save directories. Tags
  * definitions and LE path are preserved.

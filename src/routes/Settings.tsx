@@ -23,7 +23,7 @@
  * driven by scroll-spy via IntersectionObserver.
  */
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
@@ -51,6 +51,7 @@ import {
   addScanRoot,
   clearAllData,
   listScanRoots,
+  refreshAllMetadata,
   removeScanRoot,
   startScan,
 } from "@/lib/scan";
@@ -251,6 +252,16 @@ export function Settings() {
       navigate("/");
     } catch (e: unknown) {
       toast.error(`启动扫描失败 — ${String(e)}`);
+    }
+  }
+
+  async function onRefreshAllMetadata() {
+    try {
+      await refreshAllMetadata();
+      toast.info("元数据刷新已启动");
+      navigate("/");
+    } catch (e: unknown) {
+      toast.error(`启动失败 — ${String(e)}`);
     }
   }
 
@@ -470,16 +481,39 @@ export function Settings() {
           <Section
             id="scan-ops"
             title="扫描操作"
-            lede="增量扫描跳过已识别的游戏 · 全量扫描重新匹配元数据"
+            lede="增量扫描跳过已绑定的游戏，自动复审「待复核」 · 全量扫描重新发现并匹配 · 强制刷新对所有游戏（含已绑定）重跑元数据"
             sectionRefs={sectionRefs}
           >
-            <div className="flex gap-2.5">
+            <div className="flex flex-wrap gap-2.5">
               <SettingButton primary onClick={() => void onScan("full")}>
                 全量扫描
               </SettingButton>
               <SettingButton onClick={() => void onScan("incremental")}>
                 增量扫描
               </SettingButton>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <SettingButton>强制刷新全部元数据</SettingButton>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>确定刷新全部元数据？</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      会对所有游戏重新搜索 Bangumi/VNDB，
+                      <span className="text-ink-1">含已绑定与手动绑定的</span>
+                      。手动指定的封面/标题可能被覆盖。受 API 限速器约束，库越大越慢。
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>取消</AlertDialogCancel>
+                    <AlertDialogAction
+                      onClick={() => void onRefreshAllMetadata()}
+                    >
+                      确定刷新
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </div>
           </Section>
 
@@ -556,37 +590,34 @@ function Section({ id, title, lede, children, sectionRefs }: SectionProps) {
   );
 }
 
-interface SettingButtonProps {
+interface SettingButtonProps
+  extends React.ButtonHTMLAttributes<HTMLButtonElement> {
   primary?: boolean;
-  onClick: () => void;
-  disabled?: boolean;
-  className?: string;
-  children: React.ReactNode;
 }
 
-function SettingButton({
-  primary,
-  onClick,
-  disabled,
-  className,
-  children,
-}: SettingButtonProps) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
-      className={cn(
-        "inline-flex h-8 items-center border px-3.5 text-[12.5px] transition-colors",
-        primary
-          ? "bg-brand text-bg-0 border-brand hover:bg-brand-deep"
-          : "border-line bg-bg-2 text-ink-1 hover:border-line-strong hover:bg-bg-3 hover:text-ink-0",
-        disabled && "cursor-not-allowed opacity-50",
-        className,
-      )}
-      style={{ borderRadius: "var(--r-md)" }}
-    >
-      {children}
-    </button>
-  );
-}
+const SettingButton = React.forwardRef<HTMLButtonElement, SettingButtonProps>(
+  function SettingButton(
+    { primary, disabled, className, children, ...rest },
+    ref,
+  ) {
+    return (
+      <button
+        ref={ref}
+        type="button"
+        disabled={disabled}
+        className={cn(
+          "inline-flex h-8 items-center border px-3.5 text-[12.5px] transition-colors",
+          primary
+            ? "bg-brand text-bg-0 border-brand hover:bg-brand-deep"
+            : "border-line bg-bg-2 text-ink-1 hover:border-line-strong hover:bg-bg-3 hover:text-ink-0",
+          disabled && "cursor-not-allowed opacity-50",
+          className,
+        )}
+        style={{ borderRadius: "var(--r-md)" }}
+        {...rest}
+      >
+        {children}
+      </button>
+    );
+  },
+);

@@ -589,6 +589,138 @@ pub async fn refresh_metadata(
     Ok(())
 }
 
+/// Bulk version of `refresh_metadata`: iterates every game in the library
+/// and re-runs the Bangumi+VNDB search for it. Useful after the scoring
+/// rules change (e.g. 20260509c) — one click instead of right-clicking
+/// every card.
+///
+/// Reuses the `scan-progress` event stream so the existing
+/// `ScanProgressBar` UI just works (Running for each game finished, then
+/// Completed at the end). Returns immediately after spawning the worker
+/// task (mirrors `start_scan`).
+///
+/// Note: unlike incremental scan, this DOES re-search rows that are
+/// already bound (including manual). The button is gated by an
+/// AlertDialog confirmation in the frontend so this is opt-in.
+#[tauri::command]
+pub async fn refresh_all_metadata(
+    app: AppHandle,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+
+    let rows = sqlx::query(
+        "SELECT id, path, name, executable_path FROM games ORDER BY id ASC",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+
+    let total = rows.len();
+    let app_for_emit = app.clone();
+    let pool_for_task = pool.clone();
+
+    // Initial Running event so the progress bar opens at 0 / total.
+    let _ = app.emit(
+        "scan-progress",
+        scan::ScanProgress {
+            current_dir: String::new(),
+            completed: 0,
+            total,
+            status: scan::ScanStatus::Running,
+        },
+    );
+
+    if total == 0 {
+        let _ = app.emit(
+            "scan-progress",
+            scan::ScanProgress {
+                current_dir: String::new(),
+                completed: 0,
+                total: 0,
+                status: scan::ScanStatus::Completed,
+            },
+        );
+        return Ok(());
+    }
+
+    tokio::spawn(async move {
+        for (i, row) in rows.into_iter().enumerate() {
+            let id: i64 = match row.try_get("id") {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let path: String = match row.try_get("path") {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let name: String = match row.try_get("name") {
+                Ok(v) => v,
+                Err(_) => continue,
+            };
+            let exec: Option<String> = row.try_get("executable_path").ok();
+
+            let result = ingest::refresh_for_query(
+                id,
+                &data_dir,
+                &path,
+                &name,
+                exec.as_deref(),
+            )
+            .await;
+
+            // Same UPDATE shape as the single-game refresh_metadata: keep
+            // the existing cover_path / cover_url / bangumi_id / vndb_id
+            // when the new fetch returns NULL (e.g. transient network blip)
+            // so we don't blank a working row on a partial failure.
+            let _ = sqlx::query(
+                "UPDATE games SET name = ?, name_cn = ?, \
+                                  cover_path = COALESCE(?, cover_path), \
+                                  cover_url = COALESCE(?, cover_url), \
+                                  bangumi_id = COALESCE(?, bangumi_id), \
+                                  vndb_id = COALESCE(?, vndb_id), \
+                                  metadata_source = ?, match_confidence = ?, \
+                                  last_scanned_at = datetime('now') \
+                 WHERE id = ?",
+            )
+            .bind(&result.name)
+            .bind(&result.name_cn)
+            .bind(&result.cover_path)
+            .bind(&result.cover_url)
+            .bind(&result.bangumi_id)
+            .bind(&result.vndb_id)
+            .bind(&result.metadata_source)
+            .bind(result.match_confidence.map(|x| x as i64))
+            .bind(id)
+            .execute(&*pool_for_task)
+            .await;
+
+            let _ = app_for_emit.emit(
+                "scan-progress",
+                scan::ScanProgress {
+                    current_dir: path,
+                    completed: i + 1,
+                    total,
+                    status: scan::ScanStatus::Running,
+                },
+            );
+        }
+
+        let _ = app_for_emit.emit(
+            "scan-progress",
+            scan::ScanProgress {
+                current_dir: String::new(),
+                completed: total,
+                total,
+                status: scan::ScanStatus::Completed,
+            },
+        );
+    });
+
+    Ok(())
+}
+
 // ── games read API (02f) ────────────────────────────────────────────────────
 
 /// JSON shape returned by `list_games`. Mirrors the `games` table 1:1 so the
