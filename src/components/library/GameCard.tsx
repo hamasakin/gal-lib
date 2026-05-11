@@ -33,7 +33,7 @@ import {
   ContextMenuTrigger,
 } from "@/components/ui/context-menu";
 import type { Game } from "@/lib/games";
-import { updateGameFavorite, updateGameStatus } from "@/lib/games";
+import { openGameDir, updateGameFavorite, updateGameStatus } from "@/lib/games";
 import { endActiveSession, launchGame } from "@/lib/launch";
 import { useLibraryStore } from "@/store/library";
 import { cn } from "@/lib/utils";
@@ -222,6 +222,15 @@ function GameCardImpl({
       onMutated?.();
     } catch (err: unknown) {
       toast.error(`状态更新失败 — ${String(err)}`);
+    }
+  }
+
+  // Phase 14 (FS-02) — open game directory in OS file manager.
+  async function onOpenDir() {
+    try {
+      await openGameDir(game.path);
+    } catch (err: unknown) {
+      toast.error(`打开目录失败 — ${String(err)}`);
     }
   }
 
@@ -522,6 +531,9 @@ function GameCardImpl({
           </ContextMenuPortal>
         </ContextMenuSub>
         <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => void onOpenDir()}>
+          打开目录
+        </ContextMenuItem>
         <ContextMenuItem onClick={() => onPickMetadata(game)}>
           重新匹配元数据
         </ContextMenuItem>

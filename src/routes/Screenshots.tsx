@@ -25,6 +25,8 @@ import { ImageOff, X, FolderOpen } from "lucide-react";
 import { useLibraryStore } from "@/store/library";
 import { searchGames } from "@/lib/search";
 import { getScreenshots, type Screenshot } from "@/lib/screenshots";
+import { openGameDir } from "@/lib/games";
+import { toast } from "sonner";
 import { PageHeader } from "@/components/library/PageHeader";
 import type { Game } from "@/lib/games";
 import { cn } from "@/lib/utils";
@@ -151,13 +153,33 @@ export default function Screenshots() {
                     {shots.length} 张 · 最新 {fmtTime(shots[0]?.captured_at ?? "")}
                   </span>
                 </div>
-                <button
-                  type="button"
-                  onClick={() => navigate(`/games/${game.id}`)}
-                  className="font-mono text-[10.5px] text-ink-2 transition-colors hover:text-ink-0"
-                >
-                  查看游戏 →
-                </button>
+                <div className="flex items-center gap-3">
+                  <button
+                    type="button"
+                    disabled={!dataDir}
+                    onClick={async () => {
+                      if (!dataDir) return;
+                      const dir = `${dataDir.replace(/\\/g, "/")}/screenshots/${game.id}`;
+                      try {
+                        await openGameDir(dir);
+                      } catch (e: unknown) {
+                        toast.error(`打开截图目录失败 — ${String(e)}`);
+                      }
+                    }}
+                    className="inline-flex items-center gap-1.5 font-mono text-[10.5px] text-ink-2 transition-colors hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-50"
+                    title="在系统资源管理器中打开"
+                  >
+                    <FolderOpen size={12} strokeWidth={1.7} />
+                    <span>打开目录</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => navigate(`/games/${game.id}`)}
+                    className="font-mono text-[10.5px] text-ink-2 transition-colors hover:text-ink-0"
+                  >
+                    查看游戏 →
+                  </button>
+                </div>
               </header>
 
               <div
