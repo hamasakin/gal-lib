@@ -103,6 +103,7 @@ pub fn run() {
         )
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
+        .plugin(tauri_plugin_opener::init())
         .manage(AppPaths {
             data_dir,
             db_url,
@@ -242,6 +243,8 @@ pub fn run() {
             commands::delete_save_backup,
             // 20260509b — open game directory in OS file manager (1 new)
             commands::open_in_explorer,
+            // Phase 14 (FS-01) — canonical open-path IPC backed by opener plugin
+            commands::open_path,
             // 11c — Phase 11 metadata enrichment IPCs (6 new)
             commands::list_persons_for_game,
             commands::list_games_for_person,

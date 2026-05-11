@@ -186,3 +186,13 @@ export async function updateGameAgeRating(
 export async function openGameDir(path: string): Promise<void> {
   await invoke("open_in_explorer", { path });
 }
+
+/**
+ * Phase 14 (FS-01) — canonical wrapper for the `open_path` IPC. Backed by
+ * `tauri-plugin-opener` so file managers / browsers / shell handlers all
+ * route through the platform's permission-gated API. Prefer this over
+ * `openGameDir` for new callsites.
+ */
+export async function openPath(path: string): Promise<void> {
+  await invoke("open_path", { path });
+}

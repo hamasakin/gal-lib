@@ -2996,26 +2996,38 @@ pub async fn delete_save_backup(
     Ok(())
 }
 
-// ── Quick task 20260509b — open path in OS file manager ────────────────────
+// ── Quick task 20260509b / Phase 14 (FS-01,02,03) — open path in OS file manager
 //
-// Used by the Detail-page 更多 menu's 打开本地目录 entry. Validates that the
-// path exists so a stale `games.path` (deleted directory) surfaces a clean
-// error instead of Explorer's generic "location not available" dialog.
+// Originally a `Command::new("explorer")` shell-out used by Detail's 更多 menu.
+// Phase 14 routes the implementation through `tauri-plugin-opener` so the same
+// Rust function handles file managers across platforms and gets the plugin's
+// permission-gated access checks for free. Path-existence validation stays in
+// Rust so a stale `games.path` (deleted directory) surfaces a clean Chinese
+// error instead of the OS's generic "location not available" dialog.
 //
-// `Command::arg(path)` passes the path as a separate argv entry — no shell
-// interpretation, no command injection vector. The path itself originates
-// from `games.path`, which the user added during scan.
+// `open_in_explorer` keeps its name for backward compatibility with existing
+// frontend callsites; `open_path` is the canonical Phase 14 alias.
 #[tauri::command]
-pub fn open_in_explorer(path: String) -> Result<(), String> {
-    use std::process::Command;
-    if !Path::new(&path).exists() {
+pub fn open_in_explorer(app: AppHandle, path: String) -> Result<(), String> {
+    open_path_impl(&app, &path)
+}
+
+/// Phase 14 (FS-01) — canonical open-path IPC. Validates existence then
+/// delegates to `tauri-plugin-opener`. New frontend callers should prefer
+/// this over `open_in_explorer`.
+#[tauri::command]
+pub fn open_path(app: AppHandle, path: String) -> Result<(), String> {
+    open_path_impl(&app, &path)
+}
+
+fn open_path_impl(app: &AppHandle, path: &str) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
+    if !Path::new(path).exists() {
         return Err(format!("路径不存在：{}", path));
     }
-    Command::new("explorer")
-        .arg(&path)
-        .spawn()
-        .map(|_| ())
-        .map_err(|e| format!("无法打开 Explorer：{}", e))
+    app.opener()
+        .open_path(path, None::<&str>)
+        .map_err(|e| format!("无法打开目录：{}", e))
 }
 
 // ── Phase 11 / 11c — metadata enrichment IPCs ──────────────────────────────
@@ -3696,22 +3708,18 @@ pub async fn cancel_backfill(state: State<'_, BackfillState>) -> Result<(), Stri
 /// popover's "在 Bangumi/VNDB 查看" links and any other outbound link the
 /// frontend wants to surface.
 ///
-/// Windows-only implementation via `cmd /C start` — equivalent to running
-/// `start "" <url>` in a shell. The empty title argument is required by
-/// `start.exe`'s argument parser to avoid mistaking the URL for a window
-/// title. The project already targets Windows-only (per CLAUDE.md), so we
-/// don't need a cross-platform fallback.
+/// Phase 14 (FS-01) — re-routed through `tauri-plugin-opener`. The http(s)
+/// whitelist stays here so this command can't be turned into a generic
+/// shell-exec by a compromised frontend, even though the plugin itself is
+/// also permission-gated at the capabilities layer.
 #[tauri::command]
-pub fn open_external_url(url: String) -> Result<(), String> {
-    use std::process::Command;
-    // Defensive: only allow http(s) URLs. Avoid being a generic shell-exec.
+pub fn open_external_url(app: AppHandle, url: String) -> Result<(), String> {
+    use tauri_plugin_opener::OpenerExt;
     if !url.starts_with("http://") && !url.starts_with("https://") {
         return Err(format!("仅支持 http/https URL：{}", url));
     }
-    Command::new("cmd")
-        .args(["/C", "start", "", &url])
-        .spawn()
-        .map(|_| ())
+    app.opener()
+        .open_url(&url, None::<&str>)
         .map_err(|e| format!("无法打开浏览器：{}", e))
 }
 
