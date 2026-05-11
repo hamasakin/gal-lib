@@ -247,6 +247,8 @@ pub fn run() {
             commands::get_filter_options,
             commands::backfill_metadata_enrichment,
             commands::open_external_url,
+            // Phase 13 — Person enrichment
+            commands::list_co_staff_for_person,
             // Quick 20260510b — custom views (6 new)
             commands::list_custom_views,
             commands::create_custom_view,

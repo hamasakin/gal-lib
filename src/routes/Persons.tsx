@@ -24,6 +24,7 @@ import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { PageHeader } from "@/components/library/PageHeader";
 import { GameCard } from "@/components/library/GameCard";
 import { PersonTimeline } from "@/components/library/PersonTimeline";
+import { CoStaffStrip } from "@/components/library/CoStaffStrip";
 import {
   listGamesForPerson,
   listPersonsForGame,
@@ -281,6 +282,7 @@ export default function Persons() {
                 voiceCharByGame={role === "voice" ? voiceCharByGame : null}
               />
             ))}
+            <CoStaffStrip personId={personId} />
           </>
         )}
       </div>

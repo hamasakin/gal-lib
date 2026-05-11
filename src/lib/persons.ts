@@ -108,6 +108,31 @@ export async function listOfficialTagsForGame(
   return invoke<OfficialTagRow[]>("list_official_tags_for_game", { gameId });
 }
 
+/**
+ * Phase 13 (PER-03) — co-staff strip payload row. `coshare` is how many of
+ * the target person's games this person also worked on; `role_hint` is the
+ * role they most often held across those shared games (frontend tag).
+ */
+export interface CoStaffRow {
+  person_id: number;
+  name: string;
+  name_cn: string | null;
+  source: "bangumi" | "vndb";
+  source_id: string;
+  coshare: number;
+  role_hint: StaffRole | null;
+}
+
+export async function listCoStaffForPerson(
+  personId: number,
+  limit?: number,
+): Promise<CoStaffRow[]> {
+  return invoke<CoStaffRow[]>("list_co_staff_for_person", {
+    personId,
+    limit: limit ?? null,
+  });
+}
+
 export async function getFilterOptions(): Promise<FilterOptions> {
   return invoke<FilterOptions>("get_filter_options");
 }

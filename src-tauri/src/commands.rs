@@ -3643,6 +3643,80 @@ pub fn open_external_url(url: String) -> Result<(), String> {
         .map_err(|e| format!("无法打开浏览器：{}", e))
 }
 
+// ── Phase 13 (PER-03) — Co-staff aggregation ────────────────────────────────
+
+/// Row returned by `list_co_staff_for_person`. `coshare` is the count of
+/// distinct games the two persons co-occurred in; `role_hint` is the role
+/// the co-occurring person held most often across those shared games.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct CoStaffRow {
+    pub person_id: i64,
+    pub name: String,
+    pub name_cn: Option<String>,
+    pub source: String,
+    pub source_id: String,
+    pub coshare: i64,
+    pub role_hint: Option<String>,
+}
+
+/// PER-03 — "frequently appears with X" aggregation for `/persons/:id`.
+/// Returns up to `limit` (default 12) other persons who co-appeared in
+/// ≥ 2 of the target person's games, ordered by coshare desc.
+///
+/// `role_hint` is computed via correlated subquery: pick the role the
+/// co-occurring person held most often across the shared games.
+#[tauri::command]
+pub async fn list_co_staff_for_person(
+    person_id: i64,
+    limit: Option<i64>,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<CoStaffRow>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let lim = limit.unwrap_or(12).clamp(1, 50);
+
+    let rows = sqlx::query(
+        "SELECT b.id AS person_id, b.name, b.name_cn, b.source, b.source_id, \
+                COUNT(DISTINCT gs_b.game_id) AS coshare, \
+                ( \
+                  SELECT gs_b2.role \
+                  FROM game_staff gs_a2 \
+                  JOIN game_staff gs_b2 ON gs_a2.game_id = gs_b2.game_id AND gs_b2.person_id = b.id \
+                  WHERE gs_a2.person_id = ? \
+                  GROUP BY gs_b2.role \
+                  ORDER BY COUNT(*) DESC \
+                  LIMIT 1 \
+                ) AS role_hint \
+         FROM game_staff gs_a \
+         JOIN game_staff gs_b ON gs_a.game_id = gs_b.game_id AND gs_b.person_id != gs_a.person_id \
+         JOIN persons b ON b.id = gs_b.person_id \
+         WHERE gs_a.person_id = ? \
+         GROUP BY b.id, b.name, b.name_cn, b.source, b.source_id \
+         HAVING coshare >= 2 \
+         ORDER BY coshare DESC, COALESCE(b.name_cn, b.name) COLLATE NOCASE ASC \
+         LIMIT ?",
+    )
+    .bind(person_id)
+    .bind(person_id)
+    .bind(lim)
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        out.push(CoStaffRow {
+            person_id: row.try_get("person_id").map_err(err_str)?,
+            name: row.try_get("name").map_err(err_str)?,
+            name_cn: row.try_get("name_cn").ok(),
+            source: row.try_get("source").map_err(err_str)?,
+            source_id: row.try_get("source_id").map_err(err_str)?,
+            coshare: row.try_get("coshare").map_err(err_str)?,
+            role_hint: row.try_get("role_hint").ok(),
+        });
+    }
+    Ok(out)
+}
+
 // ── Custom views (Quick 20260510b) ─────────────────────────────────────────
 
 /// Row payload for sidebar rendering and view-management UI. `count` is the
