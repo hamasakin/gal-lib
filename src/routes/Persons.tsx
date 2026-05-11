@@ -27,6 +27,7 @@ import {
   listGamesForPerson,
   listPersonsForGame,
   type GameStaffRow,
+  type PersonSourceRef,
   type StaffRole,
 } from "@/lib/persons";
 import type { Game } from "@/lib/games";
@@ -45,7 +46,10 @@ const ROLE_LABELS: Record<StaffRole, string> = {
 interface PersonIdentity {
   name: string;
   name_cn: string | null;
+  /** Representative (Bangumi-preferred) source. */
   source: "bangumi" | "vndb";
+  /** Phase 13 (PER-01) — every (source, source_id) attribution after dedup. */
+  sources: PersonSourceRef[];
 }
 
 export default function Persons() {
@@ -116,19 +120,35 @@ export default function Persons() {
           try {
             const persons = await listPersonsForGame(firstGame.id);
             if (cancelled) return;
-            const me = persons.find((p) => p.person_id === personId);
+            // PER-01: a merged row covers multiple underlying person_ids;
+            // accept any of them as a hit so URL `/persons/:vndbId` still
+            // resolves when the representative became the Bangumi id.
+            const me =
+              persons.find((p) => p.person_ids.includes(personId)) ??
+              persons.find((p) => p.person_id === personId);
             if (me) {
               setIdentity({
                 name: me.name,
                 name_cn: me.name_cn,
                 source: me.source,
+                sources: me.sources,
               });
             } else {
-              setIdentity({ name: "未知人物", name_cn: null, source: "bangumi" });
+              setIdentity({
+                name: "未知人物",
+                name_cn: null,
+                source: "bangumi",
+                sources: [],
+              });
             }
           } catch {
             if (!cancelled) {
-              setIdentity({ name: "未知人物", name_cn: null, source: "bangumi" });
+              setIdentity({
+                name: "未知人物",
+                name_cn: null,
+                source: "bangumi",
+                sources: [],
+              });
             }
           }
         } else {
@@ -144,8 +164,12 @@ export default function Persons() {
               voice.map(async (g) => {
                 try {
                   const persons = await listPersonsForGame(g.id);
+                  // PER-01: match via merged person_ids so VNDB-id URLs still find their voice row.
                   const v = persons.find(
-                    (p) => p.person_id === personId && p.role === "voice",
+                    (p) =>
+                      (p.person_ids.includes(personId) ||
+                        p.person_id === personId) &&
+                      p.role === "voice",
                   );
                   return [g.id, v?.character_name ?? null] as const;
                 } catch {
@@ -216,7 +240,7 @@ export default function Persons() {
         title={<>{displayName}</>}
         sub={
           identity
-            ? `${identity.source.toUpperCase()} · 共参与 ${totalCount} 部作品`
+            ? `${sourceLabel(identity)} · 共参与 ${totalCount} 部作品`
             : loading
               ? "正在载入…"
               : "未参与任何作品"
@@ -247,6 +271,27 @@ export default function Persons() {
       </div>
     </div>
   );
+}
+
+/**
+ * Phase 13 (PER-01) — render every source attribution for the merged person.
+ * Single source: "BANGUMI". Dual source: "BANGUMI + VNDB".
+ * Falls back to the representative `source` when the array is empty (legacy).
+ */
+function sourceLabel(identity: PersonIdentity): string {
+  if (!identity.sources || identity.sources.length === 0) {
+    return identity.source.toUpperCase();
+  }
+  const seen = new Set<string>();
+  const labels: string[] = [];
+  for (const s of identity.sources) {
+    const up = s.source.toUpperCase();
+    if (!seen.has(up)) {
+      seen.add(up);
+      labels.push(up);
+    }
+  }
+  return labels.join(" + ");
 }
 
 // ── Internals ────────────────────────────────────────────────────────────

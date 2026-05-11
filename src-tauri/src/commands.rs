@@ -3004,10 +3004,25 @@ pub fn open_in_explorer(path: String) -> Result<(), String> {
 // `backfill_metadata_enrichment` migration helper, and external-link opens
 // (Bangumi/VNDB urls in the staff popover).
 
+/// Attribution for one underlying `persons` row that contributed to a merged
+/// `GameStaffRow`. Phase 13 (PER-01) — cross-source dedup at the query layer.
+#[derive(Debug, Serialize, Deserialize, Clone, PartialEq, Eq)]
+pub struct PersonSourceRef {
+    pub source: String,
+    pub source_id: String,
+}
+
 /// Row returned by `list_persons_for_game`. Joins `game_staff` ←→ `persons`
 /// so the frontend has both the role/character_name (per-game data) and the
 /// person identity (cross-game data) in one round-trip. `id` is the persons
 /// rowid — pass it back to `list_games_for_person`.
+///
+/// Phase 13 (PER-01): same person on Bangumi+VNDB (matched by name + role +
+/// character_name) is folded into a single row at the query layer. `sources`
+/// lists every source that contributed; `person_ids` lists every underlying
+/// `persons.id`. The representative `id` / `source` / `source_id` prefer
+/// Bangumi when both sides agree, so the wire contract for older clients
+/// stays meaningful (a single string source attribution).
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct GameStaffRow {
     // Renamed on the wire to match the frontend's `person_id` field.
@@ -3021,6 +3036,67 @@ pub struct GameStaffRow {
     pub source_id: String,
     pub role: String,
     pub character_name: Option<String>,
+    /// All `(source, source_id)` pairs that the merged row covers. Single
+    /// entry for the common case; two entries when Bangumi+VNDB matched.
+    pub sources: Vec<PersonSourceRef>,
+    /// All underlying `persons.id` values. Lets the frontend resolve a
+    /// merged row from a URL parameter that targets either side.
+    pub person_ids: Vec<i64>,
+}
+
+/// PER-01 — collapse same-person rows from different sources into one. Match
+/// key is `(LOWER(TRIM(name)), role, LOWER(TRIM(character_name)))`. `name_cn`
+/// is treated as supplemental: whichever side has it wins. Bangumi is
+/// preferred as the representative `source` / `source_id` / `id`.
+///
+/// Input order is preserved (first-seen wins on positional ordering); only
+/// the source/id attribution swaps when Bangumi wasn't first.
+fn merge_persons(rows: Vec<GameStaffRow>) -> Vec<GameStaffRow> {
+    use std::collections::HashMap;
+    type Key = (String, String, String);
+    let mut by_key: HashMap<Key, usize> = HashMap::new();
+    let mut out: Vec<GameStaffRow> = Vec::with_capacity(rows.len());
+    for row in rows {
+        let name_lc = row.name.trim().to_lowercase();
+        let char_lc = row
+            .character_name
+            .as_deref()
+            .unwrap_or("")
+            .trim()
+            .to_lowercase();
+        let key = (name_lc, row.role.clone(), char_lc);
+        if let Some(&idx) = by_key.get(&key) {
+            let existing = &mut out[idx];
+            // Add source attribution (de-dup defensively).
+            if !existing
+                .sources
+                .iter()
+                .any(|s| s.source == row.source && s.source_id == row.source_id)
+            {
+                existing.sources.push(PersonSourceRef {
+                    source: row.source.clone(),
+                    source_id: row.source_id.clone(),
+                });
+            }
+            if !existing.person_ids.contains(&row.id) {
+                existing.person_ids.push(row.id);
+            }
+            // Prefer Bangumi as representative.
+            if row.source == "bangumi" && existing.source != "bangumi" {
+                existing.id = row.id;
+                existing.source = row.source.clone();
+                existing.source_id = row.source_id.clone();
+            }
+            // Take name_cn from whichever side has it.
+            if existing.name_cn.is_none() && row.name_cn.is_some() {
+                existing.name_cn = row.name_cn.clone();
+            }
+        } else {
+            by_key.insert(key, out.len());
+            out.push(row);
+        }
+    }
+    out
 }
 
 #[tauri::command]
@@ -3042,6 +3118,7 @@ pub async fn list_persons_for_game(
                 WHEN 'voice'    THEN 4 \
                 ELSE 5 \
             END, \
+            CASE p.source WHEN 'bangumi' THEN 1 WHEN 'vndb' THEN 2 ELSE 3 END, \
             COALESCE(p.name_cn, p.name) COLLATE NOCASE ASC",
     )
     .bind(game_id)
@@ -3054,17 +3131,93 @@ pub async fn list_persons_for_game(
         // Map empty string back to None for the frontend so the wire contract
         // stays clean: `character_name: string | null` where null = non-voice.
         let cn: String = row.try_get("character_name").unwrap_or_default();
+        let id: i64 = row.try_get("id").map_err(err_str)?;
+        let source: String = row.try_get("source").map_err(err_str)?;
+        let source_id: String = row.try_get("source_id").map_err(err_str)?;
         out.push(GameStaffRow {
-            id: row.try_get("id").map_err(err_str)?,
+            id,
             name: row.try_get("name").map_err(err_str)?,
             name_cn: row.try_get("name_cn").ok(),
-            source: row.try_get("source").map_err(err_str)?,
-            source_id: row.try_get("source_id").map_err(err_str)?,
+            source: source.clone(),
+            source_id: source_id.clone(),
             role: row.try_get("role").map_err(err_str)?,
             character_name: if cn.is_empty() { None } else { Some(cn) },
+            sources: vec![PersonSourceRef { source, source_id }],
+            person_ids: vec![id],
         });
     }
-    Ok(out)
+    Ok(merge_persons(out))
+}
+
+#[cfg(test)]
+mod merge_persons_tests {
+    use super::*;
+
+    fn row(id: i64, name: &str, name_cn: Option<&str>, source: &str, source_id: &str, role: &str, character: Option<&str>) -> GameStaffRow {
+        GameStaffRow {
+            id,
+            name: name.into(),
+            name_cn: name_cn.map(|s| s.into()),
+            source: source.into(),
+            source_id: source_id.into(),
+            role: role.into(),
+            character_name: character.map(|s| s.into()),
+            sources: vec![PersonSourceRef { source: source.into(), source_id: source_id.into() }],
+            person_ids: vec![id],
+        }
+    }
+
+    #[test]
+    fn merges_same_name_different_source() {
+        let rows = vec![
+            row(1, "Tanaka Romeo", None, "vndb", "s17", "scenario", None),
+            row(2, "Tanaka Romeo", Some("田中ロミオ"), "bangumi", "12345", "scenario", None),
+        ];
+        let merged = merge_persons(rows);
+        assert_eq!(merged.len(), 1);
+        let m = &merged[0];
+        assert_eq!(m.sources.len(), 2);
+        assert_eq!(m.source, "bangumi"); // bangumi preferred
+        assert_eq!(m.source_id, "12345");
+        assert_eq!(m.id, 2);
+        assert!(m.person_ids.contains(&1));
+        assert!(m.person_ids.contains(&2));
+        assert_eq!(m.name_cn.as_deref(), Some("田中ロミオ"));
+    }
+
+    #[test]
+    fn does_not_merge_different_role() {
+        let rows = vec![
+            row(1, "Tanaka", None, "vndb", "s17", "scenario", None),
+            row(2, "Tanaka", None, "bangumi", "12345", "voice", None),
+        ];
+        let merged = merge_persons(rows);
+        assert_eq!(merged.len(), 2);
+    }
+
+    #[test]
+    fn does_not_merge_different_character() {
+        let rows = vec![
+            row(1, "Sakura", None, "bangumi", "111", "voice", Some("Alice")),
+            row(2, "Sakura", None, "vndb", "s222", "voice", Some("Bob")),
+        ];
+        let merged = merge_persons(rows);
+        assert_eq!(merged.len(), 2);
+    }
+
+    #[test]
+    fn preserves_input_order() {
+        let rows = vec![
+            row(1, "Alpha", None, "bangumi", "1", "scenario", None),
+            row(2, "Beta", None, "bangumi", "2", "scenario", None),
+            row(3, "Alpha", None, "vndb", "x1", "scenario", None),
+        ];
+        let merged = merge_persons(rows);
+        assert_eq!(merged.len(), 2);
+        assert_eq!(merged[0].name, "Alpha");
+        assert_eq!(merged[1].name, "Beta");
+        assert_eq!(merged[0].sources.len(), 2);
+    }
 }
 
 /// Reverse lookup: every game where `person_id` participated, optionally

@@ -20,7 +20,21 @@ import type { Game } from "./games";
 /** Locked 4-role enum mirroring `StaffRole` in `src-tauri/src/metadata/types.rs`. */
 export type StaffRole = "scenario" | "artist" | "voice" | "music";
 
-/** A row from `persons` joined with role/character_name from `game_staff`. */
+/** Phase 13 (PER-01) — attribution for one underlying persons row that
+ * contributed to a merged GameStaffRow. */
+export interface PersonSourceRef {
+  source: "bangumi" | "vndb";
+  source_id: string;
+}
+
+/** A row from `persons` joined with role/character_name from `game_staff`.
+ *
+ * Phase 13 (PER-01): same person on Bangumi+VNDB (matched by name + role +
+ * character_name) is folded into a single row by the Rust query layer.
+ * `sources` lists every source that contributed; `person_ids` lists every
+ * underlying `persons.id`. The top-level `source` / `source_id` / `person_id`
+ * are the representative (Bangumi-preferred) attribution.
+ */
 export interface GameStaffRow {
   person_id: number;
   name: string;
@@ -30,6 +44,10 @@ export interface GameStaffRow {
   role: StaffRole;
   /** Voice-only; null for non-voice roles. */
   character_name: string | null;
+  /** All (source, source_id) pairs covered by this merged row. */
+  sources: PersonSourceRef[];
+  /** All underlying persons.id values covered by this merged row. */
+  person_ids: number[];
 }
 
 /** A row from `game_official_tags` (Bangumi/VNDB official tag list). */
