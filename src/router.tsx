@@ -6,6 +6,7 @@ import Detail from "./routes/Detail";
 import Persons from "./routes/Persons";
 import Stats from "./routes/Stats";
 import Screenshots from "./routes/Screenshots";
+import Scan from "./routes/Scan";
 
 /**
  * Application router.
@@ -38,6 +39,7 @@ export const router = createHashRouter([
       { path: "settings", element: <Settings /> },
       { path: "stats", element: <Stats /> },
       { path: "screenshots", element: <Screenshots /> },
+      { path: "scan", element: <Scan /> },
       { path: "games/:id", element: <Detail /> },
       { path: "persons/:id", element: <Persons /> },
     ],

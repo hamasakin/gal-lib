@@ -28,7 +28,9 @@ import {
   Settings as SettingsIcon,
   Trash2,
   Pencil,
+  SearchCheck,
 } from "lucide-react";
+import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "sonner";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -42,6 +44,7 @@ import { useLibraryStore } from "@/store/library";
 import { usePreferencesStore } from "@/store/preferences";
 import { getSidebarCategories } from "@/lib/search";
 import { listTags } from "@/lib/tags";
+import { getScanKpis } from "@/lib/scan";
 import {
   createCustomView,
   deleteCustomView,
@@ -68,6 +71,44 @@ export function Sidebar() {
   const isSettingsActive = location.pathname === "/settings";
   const isStatsActive = location.pathname === "/stats";
   const isScreenshotsActive = location.pathname === "/screenshots";
+  const isScanActive = location.pathname === "/scan";
+
+  // Phase 12 — sidebar pulse-dot showing review_pending count. Refetched on
+  // mount + after scan-progress terminal events + after meta-fetch-progress
+  // finished (debounced 600ms) so the badge tracks actual queue state.
+  const [reviewPending, setReviewPending] = useState(0);
+  useEffect(() => {
+    let cancelled = false;
+    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
+    const refresh = () => {
+      getScanKpis()
+        .then((k) => {
+          if (!cancelled) setReviewPending(k.review_pending);
+        })
+        .catch(() => {
+          /* non-fatal */
+        });
+    };
+    refresh();
+    const debounced = () => {
+      if (pendingTimer) clearTimeout(pendingTimer);
+      pendingTimer = setTimeout(refresh, 600);
+    };
+    let unlistenA: UnlistenFn | null = null;
+    let unlistenB: UnlistenFn | null = null;
+    listen("scan-progress", debounced).then((fn) => {
+      unlistenA = fn;
+    });
+    listen("meta-fetch-progress", debounced).then((fn) => {
+      unlistenB = fn;
+    });
+    return () => {
+      cancelled = true;
+      if (pendingTimer) clearTimeout(pendingTimer);
+      unlistenA?.();
+      unlistenB?.();
+    };
+  }, []);
 
   const sidebar = useLibraryStore((s) => s.sidebar);
   const setSidebar = useLibraryStore((s) => s.setSidebar);
@@ -301,6 +342,15 @@ export function Sidebar() {
             />
           )}
           <SidebarRow
+            label="扫描复核"
+            icon={SearchCheck}
+            count={reviewPending > 0 ? reviewPending : undefined}
+            badge={reviewPending > 0}
+            active={isScanActive}
+            onClick={() => navigate("/scan")}
+            iconMode={isIconMode}
+          />
+          <SidebarRow
             label="游玩统计"
             icon={BarChart3}
             active={isStatsActive}
@@ -482,6 +532,8 @@ interface SidebarRowProps {
   onClick: () => void;
   /** When true, render as 40px square icon button with tooltip via `title`. */
   iconMode?: boolean;
+  /** Phase 12 — accent the count pill (used for scan review-pending pulse). */
+  badge?: boolean;
 }
 
 function SidebarRow({
@@ -492,6 +544,7 @@ function SidebarRow({
   active,
   onClick,
   iconMode,
+  badge,
 }: SidebarRowProps) {
   // Icon-only mode — 40px square anchored row, tooltip via title attr.
   if (iconMode) {
@@ -562,8 +615,13 @@ function SidebarRow({
         <span
           className={cn(
             "font-mono text-[10.5px] tabular-nums",
-            active ? "text-ink-0" : "text-ink-3",
+            badge
+              ? "border border-brand/40 bg-brand-soft px-1.5 py-px text-brand"
+              : active
+                ? "text-ink-0"
+                : "text-ink-3",
           )}
+          style={badge ? { borderRadius: "9999px" } : undefined}
         >
           {count}
         </span>
