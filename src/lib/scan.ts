@@ -33,6 +33,22 @@ export interface ScanProgress {
   status: "running" | "completed" | "cancelled" | "failed";
 }
 
+/**
+ * Phase 12 — KPI snapshot for the `/scan` page header strip. 4 COUNT
+ * queries combined into one round-trip on the Rust side. Frontend refetches
+ * on mount + after every scan / bind / dismiss / accept event.
+ */
+export interface ScanKpis {
+  total: number;
+  bound: number;
+  review_pending: number;
+  unmatched: number;
+}
+
+export async function getScanKpis(): Promise<ScanKpis> {
+  return invoke<ScanKpis>("get_scan_kpis");
+}
+
 // ── scan_roots CRUD ─────────────────────────────────────────────────────────
 
 export async function addScanRoot(path: string, depth: 1 | 2 | 3): Promise<number> {
