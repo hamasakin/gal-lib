@@ -81,7 +81,8 @@ export function ActiveSessionBar() {
   const displayName = game?.name_cn ?? game?.name ?? activeSession.game_name;
   const coverSrc =
     game?.cover_path && dataDir
-      ? convertFileSrc(`${dataDir.replace(/\\/g, "/")}/${game.cover_path}`)
+      ? convertFileSrc(`${dataDir.replace(/\\/g, "/")}/${game.cover_path}`) +
+        `?v=${encodeURIComponent(game.last_scanned_at ?? "")}`
       : null;
   const elapsed = elapsedSec(activeSession.started_at);
 

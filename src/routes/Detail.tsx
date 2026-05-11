@@ -575,7 +575,8 @@ export default function Detail() {
   const altName = game.name_cn ? game.name : null;
   const coverSrc =
     game.cover_path && dataDir
-      ? convertFileSrc(`${dataDir.replace(/\\/g, "/")}/${game.cover_path}`)
+      ? convertFileSrc(`${dataDir.replace(/\\/g, "/")}/${game.cover_path}`) +
+        `?v=${encodeURIComponent(game.last_scanned_at ?? "")}`
       : null;
 
   // ── Hero handlers ────────────────────────────────────────────────────────

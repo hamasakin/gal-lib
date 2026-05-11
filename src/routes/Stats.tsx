@@ -657,14 +657,22 @@ function TopRow({
   rank: number;
   game: Pick<
     Game,
-    "id" | "name" | "name_cn" | "brand" | "status" | "total_playtime_sec" | "cover_path"
+    | "id"
+    | "name"
+    | "name_cn"
+    | "brand"
+    | "status"
+    | "total_playtime_sec"
+    | "cover_path"
+    | "last_scanned_at"
   >;
   dataDir: string | null;
 }) {
   const displayName = game.name_cn ?? game.name;
   const coverSrc =
     game.cover_path && dataDir
-      ? convertFileSrc(`${dataDir.replace(/\\/g, "/")}/${game.cover_path}`)
+      ? convertFileSrc(`${dataDir.replace(/\\/g, "/")}/${game.cover_path}`) +
+        `?v=${encodeURIComponent(game.last_scanned_at ?? "")}`
       : null;
   const statusLabel: Record<Game["status"], string> = {
     unplayed: "未开始",

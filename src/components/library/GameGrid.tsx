@@ -81,7 +81,10 @@ export function GameGrid({
     return (game: Game): string | null => {
       if (game.cover_path && dataDir) {
         const abs = `${dataDir.replace(/\\/g, "/")}/${game.cover_path}`;
-        return convertFileSrc(abs);
+        return (
+          convertFileSrc(abs) +
+          `?v=${encodeURIComponent(game.last_scanned_at ?? "")}`
+        );
       }
       return game.cover_url ?? null;
     };
