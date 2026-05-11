@@ -69,9 +69,9 @@ v1.3 总计 17 个 requirement，分布在 5 个类别 / 4 个执行 phase。来
 
 | REQ-ID | Phase | Plan(s) | Status |
 |--------|-------|---------|--------|
-| SCAN-01 | Phase 12 | TBD | Active |
-| SCAN-02 | Phase 12 | TBD | Active |
-| SCAN-03 | Phase 12 | TBD | Active |
+| SCAN-01 | Phase 12 | 12a/12b/12c/12d | Implemented (smoke → Phase 15) |
+| SCAN-02 | Phase 12 | 12a/12b/12d | Implemented (smoke → Phase 15) |
+| SCAN-03 | Phase 12 | 12b/12c/12d | Implemented (smoke → Phase 15) |
 | PER-01 | Phase 13 | TBD | Active |
 | PER-02 | Phase 13 | TBD | Active |
 | PER-03 | Phase 13 | TBD | Active |

@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
-status: planning
-stopped_at: "v1.3 milestone initialized (carry-over scope: SCAN/PER/FS/POL/VER, 17 reqs). Run /gsd-plan-phase 12 to start execution."
-last_updated: "2026-05-12T00:00:00.000Z"
-last_activity: "2026-05-12 — Completed quick task 20260512: 封面 cache-buster"
+status: in_progress
+stopped_at: "Phase 12 (Scan Pipeline & Review Queue) complete — schema v9 + 5 IPCs + /scan route + ScanFeed + ReviewQueue + Sidebar nav. Real-app smoke deferred to Phase 15 VER per autonomous policy. Next: Phase 13 (Person Enrichment & Backfill UX)."
+last_updated: "2026-05-12T04:00:00.000Z"
+last_activity: "2026-05-12 — Phase 12 完成 (12a/12b/12c/12d, 6 commits) - SCAN-01/02/03 实现 + 单元测试 + 真机 smoke 推迟到 Phase 15"
 progress:
-  total_phases: 0
-  completed_phases: 0
-  total_plans: 0
-  completed_plans: 0
-  percent: 0
+  total_phases: 4
+  completed_phases: 1
+  total_plans: 4
+  completed_plans: 4
+  percent: 25
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 
 ## Current Position
 
-Phase: Not started (defining requirements)
-Plan: —
-Status: Defining requirements
-Last activity: 2026-05-12 — Milestone v1.3 started
+Phase: 12 ✅ Scan Pipeline & Review Queue (complete)
+Plan: 12a/12b/12c/12d shipped — next Phase 13
+Status: In progress — 1/4 phases done; Phase 12 real-app smoke deferred to Phase 15
+Last activity: 2026-05-12 — Phase 12 完成 (faf9cb2 12d /scan route)
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -83,6 +83,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-12T00:00:00Z
-Stopped at: Quick 20260512 完成 — 封面 cache-buster。Milestone v1.3 仍在 planning。下一步: `/gsd-plan-phase 12`。
+Last session: 2026-05-12T04:00:00Z
+Stopped at: Phase 12 完成 (SCAN-01/02/03 — schema v9 + 5 IPCs + /scan + ScanFeed + ReviewQueue + Sidebar pulse-dot)。下一步: Phase 13 (Person Enrichment & Backfill UX — PER-01/02/03/04 + POL-03)。
 Resume file: None
