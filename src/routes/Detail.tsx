@@ -37,7 +37,7 @@
  */
 
 import { useCallback, useEffect, useRef, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+import { useNavigate, useParams, useSearchParams } from "react-router-dom";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -321,10 +321,37 @@ function groupStaffByRole(
   }));
 }
 
+// Phase 14 (POL-01) — valid tab values for the controlled `?tab=` deeplink.
+const DETAIL_TABS = [
+  "overview",
+  "notes",
+  "sessions",
+  "screenshots",
+  "saves",
+  "config",
+] as const;
+type DetailTab = (typeof DETAIL_TABS)[number];
+
+function parseTab(raw: string | null): DetailTab {
+  if (raw && (DETAIL_TABS as readonly string[]).includes(raw)) {
+    return raw as DetailTab;
+  }
+  return "overview";
+}
+
 export default function Detail() {
   const { id } = useParams<{ id: string }>();
   const gameId = Number(id);
   const navigate = useNavigate();
+  // POL-01 — controlled tab. Read once on mount + sync into URL on change.
+  const [searchParams, setSearchParams] = useSearchParams();
+  const tab: DetailTab = parseTab(searchParams.get("tab"));
+  function setTab(next: string) {
+    const nextTab = parseTab(next);
+    const params = new URLSearchParams(searchParams);
+    params.set("tab", nextTab);
+    setSearchParams(params, { replace: true });
+  }
 
   const activeSession = useLibraryStore((s) => s.activeSession);
   const sessionsByGame = useLibraryStore((s) => s.sessionsByGame);
@@ -1096,7 +1123,8 @@ export default function Detail() {
         {/* Left column — tabs + content */}
         <div className="min-w-0 pr-9">
           <Tabs
-            defaultValue="overview"
+            value={tab}
+            onValueChange={setTab}
             className="detail-tabs w-full"
           >
             <TabsList
