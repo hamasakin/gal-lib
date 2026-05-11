@@ -5,7 +5,7 @@ milestone_name: Scan Pipeline & Person Polish
 status: planning
 stopped_at: "v1.3 milestone initialized (carry-over scope: SCAN/PER/FS/POL/VER, 17 reqs). Run /gsd-plan-phase 12 to start execution."
 last_updated: "2026-05-12T00:00:00.000Z"
-last_activity: "2026-05-12 — Milestone v1.3 Scan Pipeline & Person Polish started; REQUIREMENTS/ROADMAP committed"
+last_activity: "2026-05-12 — Completed quick task 20260512: 封面 cache-buster"
 progress:
   total_phases: 0
   completed_phases: 0
@@ -79,9 +79,10 @@ None.
 |---|-------------|------|--------|-----------|
 | 20260510 | 修复 4 个 UI 问题（人物 chip 跳错 / FilterPanel UNDEFINED + 透明 / 侧边栏品牌限高 / Detail 更多菜单补全） | 2026-05-10 | 86a5f33 | [20260510-ui-fixes-detail-cards-filter-brands](./quick/20260510-ui-fixes-detail-cards-filter-brands/) |
 | 20260510b | R18/全年龄 标识 + 自定义视图（schema v8、7 个新命令、网格批量选择模式） | 2026-05-10 | 68afa62 | [20260510b-r18-marker-and-custom-views](./quick/20260510b-r18-marker-and-custom-views/) |
+| 20260512 | 封面 cache-buster — bind/refresh 后前端立即显示新封面（4 处 convertFileSrc 加 ?v=last_scanned_at） | 2026-05-12 | 2cd17b8 | [20260512-cover-cache-buster](./quick/20260512-cover-cache-buster/) |
 
 ## Session Continuity
 
 Last session: 2026-05-12T00:00:00Z
-Stopped at: Milestone v1.3 initialized — REQUIREMENTS.md + ROADMAP.md committed. Next: `/gsd-plan-phase 12` (or `/gsd-autonomous` to run all v1.3 phases).
+Stopped at: Quick 20260512 完成 — 封面 cache-buster。Milestone v1.3 仍在 planning。下一步: `/gsd-plan-phase 12`。
 Resume file: None
