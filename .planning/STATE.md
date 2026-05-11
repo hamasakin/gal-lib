@@ -2,16 +2,16 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
-status: in_progress
-stopped_at: "Phase 14 (Filesystem Actions & Detail Polish) 完成；autonomous 继续 Phase 15。"
-last_updated: "2026-05-12T08:00:00.000Z"
-last_activity: "2026-05-12 — Phase 14 全 6 个 sub-plan (14a-f) 落地：opener 集成 + 「打开目录」入口 + Detail ?tab= deeplink + 真实会话数 + LIB-02 废止决策"
+status: ready_for_milestone_audit
+stopped_at: "Phase 15 完成（verification-only：4 个自动化 gate + 12-step walkthrough doc）；下一步: /gsd-audit-milestone v1.3"
+last_updated: "2026-05-12T08:30:00.000Z"
+last_activity: "2026-05-12 — Phase 15 close：自动化全绿 + 完整 real-app walkthrough 清单写入 SUMMARY。所有 4 phase 完成。"
 progress:
   total_phases: 4
-  completed_phases: 3
-  total_plans: 15
-  completed_plans: 15
-  percent: 75
+  completed_phases: 4
+  total_plans: 16
+  completed_plans: 16
+  percent: 100
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 
 ## Current Position
 
-Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ◆ next
-Plan: Phase 15 待 plan
-Status: In progress — 3/4 phases shipped; autonomous 继续 Phase 15 (v1.2 Real-app Smoke Verification)
-Last activity: 2026-05-12 — Phase 14 全 6 个 sub-plan 落地（FS-01/02/03 + POL-01/02/04），cargo+test+tsc+build 全绿；real-app smoke 与 Phase 13 一同推到 Phase 15
+Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ✅ (verification-only)
+Plan: 全部完成；下一步 /gsd-audit-milestone v1.3
+Status: 4/4 phases shipped；自动化全绿；real-app walkthrough 清单交付待 audit
+Last activity: 2026-05-12 — Phase 15 close：cargo build + test (68/68) + tsc + pnpm build 全绿，15-SUMMARY 含 12 条 walkthrough (V-01..V-12)
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -83,6 +83,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-12T08:00:00Z
-Stopped at: Phase 14 完成 (FS-01/02/03 + POL-01/02/04 全部落地)。下一步: autonomous 进入 Phase 15 v1.2 Real-app Smoke Verification — VER-01/02/03 + 兼顾 Phase 13/14 的 real-app 项。
-Resume file: `.planning/ROADMAP.md` (Phase 15 详情)
+Last session: 2026-05-12T08:30:00Z
+Stopped at: Phase 15 完成（verification-only）。下一步: `/gsd-audit-milestone v1.3` 跑 12 条 walkthrough；通过后 `/gsd-complete-milestone` + `/gsd-cleanup`。
+Resume file: `.planning/phases/15-v12-real-app-smoke/15-SUMMARY.md` (含完整 walkthrough)
