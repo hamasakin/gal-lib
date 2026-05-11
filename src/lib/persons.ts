@@ -133,6 +133,27 @@ export async function listCoStaffForPerson(
   });
 }
 
+/**
+ * Phase 13 (PER-04) — resolve a cached portrait for (source, source_id),
+ * fetching from Bangumi on cache miss. Returns the path relative to
+ * `data_dir` (e.g. `portraits/bangumi-12345.jpg`) or `null` when the source
+ * has no portrait or this is a VNDB person (v1.4 deferred). The frontend
+ * resolves it via `convertFileSrc(dataDir + '/' + rel)`.
+ *
+ * Bangumi is 1 req/s — call sites should fire-and-forget and tolerate the
+ * first hit being slow on cache miss.
+ */
+export async function getOrFetchPortrait(
+  source: "bangumi" | "vndb",
+  sourceId: string,
+): Promise<string | null> {
+  const v = await invoke<string | null>("get_or_fetch_portrait", {
+    source,
+    sourceId,
+  });
+  return v ?? null;
+}
+
 export async function getFilterOptions(): Promise<FilterOptions> {
   return invoke<FilterOptions>("get_filter_options");
 }

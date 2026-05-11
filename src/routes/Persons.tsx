@@ -26,6 +26,7 @@ import { GameCard } from "@/components/library/GameCard";
 import { PersonTimeline } from "@/components/library/PersonTimeline";
 import { CoStaffStrip } from "@/components/library/CoStaffStrip";
 import {
+  getOrFetchPortrait,
   listGamesForPerson,
   listPersonsForGame,
   type GameStaffRow,
@@ -70,6 +71,8 @@ export default function Persons() {
     music: [],
   });
   const [identity, setIdentity] = useState<PersonIdentity | null>(null);
+  /** PER-04 — relative portrait path under data_dir; null = no portrait. */
+  const [portrait, setPortrait] = useState<string | null>(null);
   /**
    * Voice-role character lookup: `{ [gameId]: characterName }`. Built from
    * the same `listPersonsForGame` call we already issue to derive identity
@@ -203,6 +206,28 @@ export default function Persons() {
     };
   }, [personId]);
 
+  // PER-04 — fetch the self-portrait once identity is resolved. Prefer the
+  // Bangumi attribution from sources[] (VNDB portraits ship in v1.4).
+  useEffect(() => {
+    if (!identity || identity.sources.length === 0) {
+      setPortrait(null);
+      return;
+    }
+    let cancelled = false;
+    const bangumi = identity.sources.find((s) => s.source === "bangumi");
+    const pick = bangumi ?? identity.sources[0];
+    getOrFetchPortrait(pick.source, pick.source_id)
+      .then((rel) => {
+        if (!cancelled) setPortrait(rel);
+      })
+      .catch(() => {
+        if (!cancelled) setPortrait(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [identity]);
+
   const totalCount = useMemo(() => {
     const seen = new Set<number>();
     for (const role of ROLE_ORDER) {
@@ -257,6 +282,19 @@ export default function Persons() {
             : loading
               ? "正在载入…"
               : "未参与任何作品"
+        }
+        actions={
+          dataDir && portrait ? (
+            <img
+              src={convertFileSrc(`${dataDir.replace(/\\/g, "/")}/${portrait}`)}
+              alt={displayName}
+              className="h-14 w-14 rounded-full object-cover ring-1 ring-line"
+            />
+          ) : identity ? (
+            <div className="flex h-14 w-14 items-center justify-center rounded-full bg-ink-3/15 font-serif text-[18px] text-ink-1 ring-1 ring-line">
+              {(identity.name_cn ?? identity.name).slice(0, 1)}
+            </div>
+          ) : null
         }
       />
 

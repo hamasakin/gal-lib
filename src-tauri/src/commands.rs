@@ -884,7 +884,7 @@ pub async fn clear_all_data(state: State<'_, AppPaths>) -> Result<(), String> {
             .map_err(err_str)?;
     }
 
-    for sub in ["covers", "screenshots", "saves"] {
+    for sub in ["covers", "screenshots", "saves", "portraits"] {
         let dir = data_dir.join(sub);
         if dir.exists() {
             let _ = std::fs::remove_dir_all(&dir);
@@ -3715,6 +3715,24 @@ pub async fn list_co_staff_for_person(
         });
     }
     Ok(out)
+}
+
+// ── Phase 13 (PER-04) — Portrait cache IPC ─────────────────────────────────
+
+/// Cache-first portrait lookup. Returns a path relative to `data_dir` (e.g.
+/// `portraits/bangumi-12345.jpg`) so the frontend can render via
+/// `convertFileSrc`. `Ok(None)` means the source has no portrait or this is
+/// a VNDB person (VNDB portraits deferred to v1.4). `Err` is network / IO
+/// failure the UI may surface as a transient warning.
+#[tauri::command]
+pub async fn get_or_fetch_portrait(
+    source: String,
+    source_id: String,
+    state: State<'_, AppPaths>,
+) -> Result<Option<String>, String> {
+    let data_dir = state.data_dir.clone();
+    let rel = crate::portrait_cache::get_or_fetch(&data_dir, &source, &source_id).await?;
+    Ok(rel.map(|p| p.to_string_lossy().replace('\\', "/")))
 }
 
 // ── Custom views (Quick 20260510b) ─────────────────────────────────────────

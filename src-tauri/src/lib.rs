@@ -5,6 +5,7 @@ mod db;
 mod ingest;
 mod launch;
 mod metadata;
+mod portrait_cache;
 mod save_backup;
 mod scan;
 mod screenshot;
@@ -249,6 +250,7 @@ pub fn run() {
             commands::open_external_url,
             // Phase 13 — Person enrichment
             commands::list_co_staff_for_person,
+            commands::get_or_fetch_portrait,
             // Quick 20260510b — custom views (6 new)
             commands::list_custom_views,
             commands::create_custom_view,
