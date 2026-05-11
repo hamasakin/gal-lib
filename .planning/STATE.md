@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: in_progress
-stopped_at: "Phase 12 (Scan Pipeline & Review Queue) shipped; Phase 13 CONTEXT + PLAN committed but execution paused. 续跑 /gsd-autonomous 会从 Phase 13 plan 13a (PER-01 dedup) 开始。"
-last_updated: "2026-05-12T05:00:00.000Z"
-last_activity: "2026-05-12 — Phase 12 完成 + Phase 13 planned (CONTEXT/PLAN); autonomous run 因上下文预算暂停"
+stopped_at: "Phase 13 (Person Enrichment & Backfill UX) 完成；autonomous 继续 Phase 14。"
+last_updated: "2026-05-12T07:00:00.000Z"
+last_activity: "2026-05-12 — Phase 13 全 5 个 sub-plan (13a-e) 落地，cargo/tsc/build 全绿"
 progress:
   total_phases: 4
-  completed_phases: 1
-  total_plans: 4
-  completed_plans: 4
-  percent: 25
+  completed_phases: 2
+  total_plans: 9
+  completed_plans: 9
+  percent: 50
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 
 ## Current Position
 
-Phase: 12 ✅ complete · 13 ◆ planned (CONTEXT + PLAN committed, execution paused)
-Plan: 13a/b/c/d/e ready
-Status: In progress — 1/4 phases shipped; Phase 13 planned at `.planning/phases/13-person-enrichment-backfill-ux/`
-Last activity: 2026-05-12 — Phase 12 完成 + Phase 13 CONTEXT/PLAN 落地，autonomous run 暂停（待下一次 /gsd-autonomous 续跑 13a–e）
+Phase: 12 ✅ complete · 13 ✅ complete · 14 ◆ next · 15 ◆ pending
+Plan: Phase 14 待 plan
+Status: In progress — 2/4 phases shipped; autonomous 继续 Phase 14 (Filesystem Actions & Detail Polish)
+Last activity: 2026-05-12 — Phase 13 全 5 个 sub-plan 落地（PER-01/02/03/04 + POL-03），cargo+test+tsc+build 全绿；real-app smoke 推迟到 Phase 15
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -83,6 +83,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-12T05:00:00Z
-Stopped at: Phase 12 完成 (SCAN-01/02/03) + Phase 13 CONTEXT/PLAN committed。下一步: 重跑 `/gsd-autonomous`，会从 Phase 13 plan 13a (PER-01 cross-source dedup) 开始连续执行 13a→b→c→d→e。
-Resume file: `.planning/phases/13-person-enrichment-backfill-ux/13-PLAN.md`
+Last session: 2026-05-12T07:00:00Z
+Stopped at: Phase 13 完成 (PER-01/02/03/04 + POL-03 全部落地)。下一步: autonomous 继续 Phase 14 (Filesystem Actions & Detail Polish — FS-01/02/03 + POL-01/02/04)。
+Resume file: `.planning/ROADMAP.md` (Phase 14 详情)

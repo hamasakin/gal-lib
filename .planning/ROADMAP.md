@@ -41,7 +41,7 @@
 ### ◆ v1.3 Scan Pipeline & Person Polish (Active — started 2026-05-12)
 
 - [x] **Phase 12: Scan Pipeline & Review Queue** — SCAN-01/02/03 (3 reqs) — completed 2026-05-12 (real-app smoke → Phase 15)
-- [ ] **Phase 13: Person Enrichment & Backfill UX** — PER-01/02/03/04 + POL-03 (5 reqs)
+- [x] **Phase 13: Person Enrichment & Backfill UX** — PER-01/02/03/04 + POL-03 (5 reqs) — completed 2026-05-12 (real-app smoke → Phase 15)
 - [ ] **Phase 14: Filesystem Actions & Detail Polish** — FS-01/02/03 + POL-01/02/04 (6 reqs)
 - [ ] **Phase 15: v1.2 Real-app Smoke Verification** — VER-01/02/03 (3 reqs)
 
@@ -123,6 +123,6 @@
 | 10. Settings & Screenshots | v1.1 | 1/1 | Complete | 2026-05-08 |
 | 11. Metadata Enrichment & Multi-dim Filtering | v1.2 | 7/7 | Complete (UI-01/02/03 human-eye deferred) | 2026-05-09 |
 | 12. Scan Pipeline & Review Queue | v1.3 | 4/4 | Complete (real-app smoke → Phase 15) | 2026-05-12 |
-| 13. Person Enrichment & Backfill UX | v1.3 | 0/? | Not started | — |
+| 13. Person Enrichment & Backfill UX | v1.3 | 5/5 | Complete (real-app smoke → Phase 15) | 2026-05-12 |
 | 14. Filesystem Actions & Detail Polish | v1.3 | 0/? | Not started | — |
 | 15. v1.2 Real-app Smoke Verification | v1.3 | 0/? | Not started | — |
