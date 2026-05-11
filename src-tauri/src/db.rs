@@ -19,6 +19,8 @@
 //! Schema v8 (Quick 20260510b) adds `games.age_rating` (R18/全年龄/NULL)
 //! and 2 new tables (`custom_views`, `custom_view_games`) for user-curated
 //! game lists.
+//! Schema v9 (Phase 12) adds 1 new table (`scan_review_queue`) for
+//! persistent low-confidence ingest matches awaiting manual review.
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -30,6 +32,7 @@ const V5_SQL: &str = include_str!("../migrations/0005_add_screenshots_and_saves.
 const V6_SQL: &str = include_str!("../migrations/0006_disable_default_screenshots.sql");
 const V7_SQL: &str = include_str!("../migrations/0007_add_metadata_enrichment.sql");
 const V8_SQL: &str = include_str!("../migrations/0008_add_age_rating_and_custom_views.sql");
+const V9_SQL: &str = include_str!("../migrations/0009_add_scan_review_queue.sql");
 
 /// All migrations to register with tauri-plugin-sql, in version order.
 /// Add future migrations as additional entries with monotonically increasing
@@ -82,6 +85,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 8,
             description: "add_age_rating_and_custom_views",
             sql: V8_SQL,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 9,
+            description: "add_scan_review_queue",
+            sql: V9_SQL,
             kind: MigrationKind::Up,
         },
     ]
@@ -411,6 +420,53 @@ mod tests {
         assert!(
             m8.sql.contains("schema_version") && m8.sql.contains("'8'"),
             "v8 bumps schema_version to '8'"
+        );
+    }
+
+    #[test]
+    fn migrations_v9_adds_scan_review_queue() {
+        let m = migrations();
+        let m9 = m.iter().find(|x| x.version == 9).expect("v9 present");
+        assert_eq!(m9.description, "add_scan_review_queue");
+
+        // No ADD COLUMN — only a new table + index
+        let add_column_count = m9
+            .sql
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("--") && t.contains("ADD COLUMN")
+            })
+            .count();
+        assert_eq!(add_column_count, 0, "v9: no ADD COLUMN statements");
+
+        // New table
+        assert!(
+            m9.sql.contains("CREATE TABLE scan_review_queue"),
+            "v9 creates scan_review_queue"
+        );
+
+        // FK ON DELETE CASCADE on game_id (drops queue rows when their game is deleted)
+        let cascade_count = m9
+            .sql
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("--") && t.contains("ON DELETE CASCADE")
+            })
+            .count();
+        assert_eq!(cascade_count, 1, "v9: 1 ON DELETE CASCADE clause");
+
+        // Index for ORDER BY created_at DESC
+        assert!(
+            m9.sql.contains("CREATE INDEX idx_scan_review_queue_created"),
+            "v9 creates idx_scan_review_queue_created"
+        );
+
+        // schema_version bumped to 9
+        assert!(
+            m9.sql.contains("schema_version") && m9.sql.contains("'9'"),
+            "v9 bumps schema_version to '9'"
         );
     }
 }
