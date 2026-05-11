@@ -161,14 +161,14 @@ v1.3 Scan Pipeline & Person Polish (defined 2026-05-12，详情见 `.planning/RE
 | `<html data-*>` 5 轴 token 系统（v1.1） | 切换无刷新、CSS 变量驱动、无 JS 重渲染 | ✓ Good — Phase 6 落地，3 主题 × 4 强调色组合全部可读 |
 | 移除虚拟化（v1.1 Phase 7） | 50-300 games 用 CSS Grid auto-fill 完全够 | ✓ Good — Bundle 缩小、density toggle 直接驱动 |
 | 移除 recharts（v1.1 Phase 9） | CSS Grid + flex 自渲染图表足够 | ✓ Good — JS bundle 1145→776 KB |
-| LIB-02 杂志式 hero band 回退（v1.1 Phase 7） | Portrait cover 在 1.6fr hero 槽位裁切异常 + density 冲突 | ⚠ Revisit — v1.3 重新评估或删除 spec |
+| LIB-02 杂志式 hero band 回退（v1.1 Phase 7） | Portrait cover 在 1.6fr hero 槽位裁切异常 + density 冲突 | ✗ 废止 — v1.3 Phase 14 (POL-04) 正式废止：a) auto-fill 网格在不同屏幕下视觉密度可控；b) 不对称布局对长名/短名游戏视觉权重不均衡；c) 实施成本相对收益过高。最终采用 `repeat(auto-fill, minmax(172px, 1fr))` 均匀网格。 |
 | PGE-01/02 standalone /scan 延后（v1.1 Phase 9） | 需要新 router + 新 IPC payload + 新表 schema —— 不是纯视觉变更 | ⚠ Revisit — v1.3 实现 |
 | Settings 外观 section 是指针（v1.1 Phase 10） | 避免与 Tweaks 面板双源 | ✓ Good |
 | 独立 persons 表 + game_staff N:M（v1.2 Phase 11） | 反范式 JSON 不能"点 X 看 X 所有作品"+ 不能交集筛选 | ✓ Good — `/persons/:id` 聚合页落地 |
 | 4-role enum 而非细分（v1.2 Phase 11） | scenario/artist/voice/music 覆盖 95% 价值，丢 director/translator | ✓ Good — VNDB chardesign 合并到 artist 解决一人多行 |
 | Bangumi 拆 3 端点 vs VNDB 1 GraphQL（v1.2 Phase 11） | Bangumi 没有合并 endpoint，VNDB 一次拉光 | ✓ Good — limiter 1req/s × 3 = 3 倍延时但可接受 |
 | 跨源人物不去重（v1.2 决策） | 同一作者 Bangumi+VNDB 各占一行 — 用户感知度低、去重复杂度高 | ⚠ Revisit — v1.3 seed |
-| `tauri-plugin-opener` 不引入（v1.2 Phase 11） | Cargo.toml 没有该依赖；Windows-only 项目用 cmd /C start fallback 即可 | ✓ Good — 包大小不变 |
+| `tauri-plugin-opener` 不引入（v1.2 Phase 11） | Cargo.toml 没有该依赖；Windows-only 项目用 cmd /C start fallback 即可 | ⤴ Reversed — v1.3 Phase 14 (FS-01) 引入：统一权限模型 + 平台一致 API；open_in_explorer/open_external_url 内部改 delegate；新 open_path IPC 作为新 callsite 首选 |
 | Brand filter 双重应用（v1.2 Phase 11） | server-side + client-side：保持 PageHeader 可见行计数跨轴一致 | ✓ Good — 零 SQL 成本 |
 
 ## Evolution
