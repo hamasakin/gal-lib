@@ -256,6 +256,8 @@ pub fn run() {
             commands::list_co_staff_for_person,
             commands::get_or_fetch_portrait,
             commands::cancel_backfill,
+            // Phase 14 — Stats KPI real session count
+            commands::get_session_count,
             // Quick 20260510b — custom views (6 new)
             commands::list_custom_views,
             commands::create_custom_view,

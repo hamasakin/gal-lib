@@ -25,7 +25,12 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useLibraryStore } from "@/store/library";
-import { getPlaytimeTrend, getTopGames, type TrendPeriod } from "@/lib/stats";
+import {
+  getPlaytimeTrend,
+  getSessionCount,
+  getTopGames,
+  type TrendPeriod,
+} from "@/lib/stats";
 import { searchGames } from "@/lib/search";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { ImageOff } from "lucide-react";
@@ -143,6 +148,23 @@ export default function Stats() {
   // 30-day daily trend for the timeline (separate from heatmap window).
   const [period, setPeriod] = useState<TrendPeriod>("daily");
 
+  // Phase 14 (POL-02) — real session count from sessions table; replaces
+  // the previous `games.length` proxy that bore no relation to playthroughs.
+  const [sessionCount, setSessionCount] = useState<number | null>(null);
+  useEffect(() => {
+    let cancelled = false;
+    getSessionCount()
+      .then((n) => {
+        if (!cancelled) setSessionCount(n);
+      })
+      .catch(() => {
+        if (!cancelled) setSessionCount(null);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
   useEffect(() => {
     invoke<string>("get_data_dir").then(setDataDir).catch(() => {});
   }, []);
@@ -190,7 +212,10 @@ export default function Stats() {
   // Derived KPIs
   const totalSec = games.reduce((a, g) => a + g.total_playtime_sec, 0);
   const totalHours = totalSec / 3600;
-  const sessions = games.length; // proxy — full session count not in cache
+  // POL-02 — real session count, falling back to the games-length proxy
+  // while the IPC is in flight or on error so the UI never shows "0 次会话"
+  // mid-load on a populated library.
+  const sessions = sessionCount ?? games.length;
   const cleared = games.filter((g) => g.status === "cleared").length;
   const playing = games.filter((g) => g.status === "playing").length;
   const dropped = games.filter((g) => g.status === "dropped").length;
@@ -262,7 +287,7 @@ export default function Stats() {
             个钟头
           </>
         }
-        sub={`数据自 ${games.length > 0 ? new Date(games[games.length - 1]?.created_at ?? Date.now()).toLocaleDateString("zh-CN") : "—"} 起 · 跨 ${games.length} 部作品 · ${sessions} 条记录`}
+        sub={`数据自 ${games.length > 0 ? new Date(games[games.length - 1]?.created_at ?? Date.now()).toLocaleDateString("zh-CN") : "—"} 起 · 跨 ${games.length} 部作品 · ${sessions} 次会话`}
       />
 
       <div className="px-8 pb-16 pt-6">

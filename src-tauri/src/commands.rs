@@ -3797,6 +3797,25 @@ pub async fn list_co_staff_for_person(
     Ok(out)
 }
 
+// ── Phase 14 (POL-02) — real session count for Stats KPI ───────────────────
+
+/// Returns the total number of completed sessions across all games.
+/// `ended_at IS NOT NULL` filters out the row representing the active
+/// in-flight session (if any) — only sessions with a recorded stop count.
+///
+/// Used by `Stats.tsx` to replace the previous `games.length` proxy that
+/// undercounted multi-session games and overcounted unplayed ones.
+#[tauri::command]
+pub async fn get_session_count(state: State<'_, AppPaths>) -> Result<i64, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let row = sqlx::query("SELECT COUNT(*) AS cnt FROM sessions WHERE ended_at IS NOT NULL")
+        .fetch_one(&*pool)
+        .await
+        .map_err(err_str)?;
+    let cnt: i64 = row.try_get("cnt").map_err(err_str)?;
+    Ok(cnt)
+}
+
 // ── Phase 13 (PER-04) — Portrait cache IPC ─────────────────────────────────
 
 /// Cache-first portrait lookup. Returns a path relative to `data_dir` (e.g.

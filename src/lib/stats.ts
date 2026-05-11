@@ -80,3 +80,12 @@ export async function getPlaytimeTrend(
 export async function getTopGames(limit: number): Promise<TopGame[]> {
   return invoke<TopGame[]>("get_top_games", { limit });
 }
+
+/**
+ * Phase 14 (POL-02) — total completed-session count across all games.
+ * Backed by `SELECT COUNT(*) FROM sessions WHERE ended_at IS NOT NULL`.
+ * Replaces the `games.length` proxy used in Stats.tsx prior to Phase 14.
+ */
+export async function getSessionCount(): Promise<number> {
+  return invoke<number>("get_session_count");
+}
