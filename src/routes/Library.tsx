@@ -35,6 +35,7 @@ import { GameList } from "@/components/library/GameList";
 import { ViewToggle } from "@/components/library/ViewToggle";
 import { FilterPanel } from "@/components/library/FilterPanel";
 import { ScanProgressBar } from "@/components/library/ScanProgressBar";
+import { BackfillProgressBar } from "@/components/library/BackfillProgressBar";
 import { ActiveSessionBar } from "@/components/library/ActiveSessionBar";
 import { MetadataPicker } from "@/components/library/MetadataPicker";
 import { SearchBar } from "@/components/library/SearchBar";
@@ -373,6 +374,8 @@ export function Library() {
             </>
           }
         />
+
+        <BackfillProgressBar />
 
         <ActiveSessionBar />
 

@@ -110,6 +110,7 @@ pub fn run() {
             pool: OnceCell::new(),
         })
         .manage(commands::ScanState::new())
+        .manage(commands::BackfillState::new())
         .manage(commands::ActiveSessionState(std::sync::Mutex::new(None)))
         .setup(|app| {
             // 03e — system tray (icon + 「显示主窗口」/「退出应用」 menu + tooltip).
@@ -251,6 +252,7 @@ pub fn run() {
             // Phase 13 — Person enrichment
             commands::list_co_staff_for_person,
             commands::get_or_fetch_portrait,
+            commands::cancel_backfill,
             // Quick 20260510b — custom views (6 new)
             commands::list_custom_views,
             commands::create_custom_view,

@@ -170,6 +170,37 @@ export async function backfillMetadataEnrichment(): Promise<void> {
 }
 
 /**
+ * Phase 13 (POL-03) — request the in-flight backfill to stop at the next
+ * iteration boundary. Idempotent and safe when no backfill is running.
+ */
+export async function cancelBackfill(): Promise<void> {
+  await invoke("cancel_backfill");
+}
+
+/**
+ * Phase 13 (POL-03) — payload shapes for the backfill progress bar.
+ *
+ * Two complementary event channels:
+ *   • `meta-fetch-progress-meta` — coarse lifecycle ticks: total at start,
+ *     {cancelled: true} on user cancel, {done: true} on natural completion.
+ *   • `meta-fetch-progress` — per-game ticks: phase started / finished
+ *     with the current game's `name` for the "正在抓取：xxx" line.
+ *
+ * Backfill is fire-and-forget; both events arrive after the IPC returns.
+ */
+export interface MetaFetchProgressMeta {
+  total?: number;
+  done?: boolean;
+  cancelled?: boolean;
+}
+
+export interface MetaFetchProgress {
+  game_id: number;
+  phase: "started" | "finished";
+  name?: string;
+}
+
+/**
  * Open an external http(s) URL in the user's default browser via
  * `cmd /C start` (Windows-only; project is Windows-locked per CLAUDE.md).
  * Backend rejects non-http(s) schemes for safety.

@@ -67,6 +67,28 @@ impl Default for ScanState {
     }
 }
 
+/// Phase 13 (POL-03) — shared cancel flag for the in-flight backfill loop.
+/// One `AtomicBool` is enough because `backfill_metadata_enrichment` already
+/// fire-and-forgets a single tokio task; the per-iteration check is the only
+/// way `cancel_backfill` can stop it.
+pub struct BackfillState {
+    pub cancel: std::sync::atomic::AtomicBool,
+}
+
+impl BackfillState {
+    pub fn new() -> Self {
+        Self {
+            cancel: std::sync::atomic::AtomicBool::new(false),
+        }
+    }
+}
+
+impl Default for BackfillState {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 /// Helper: stringify any error for Tauri's String error contract.
 fn err_str<E: std::fmt::Display>(e: E) -> String {
     format!("{}", e)
@@ -3460,11 +3482,12 @@ pub async fn get_filter_options(
 pub async fn backfill_metadata_enrichment(
     app: AppHandle,
     state: State<'_, AppPaths>,
+    backfill_state: State<'_, BackfillState>,
 ) -> Result<(), String> {
     let pool = state.pool().await.map_err(err_str)?;
 
     let rows = sqlx::query(
-        "SELECT id, bangumi_id, vndb_id, metadata_source FROM games \
+        "SELECT id, name, bangumi_id, vndb_id, metadata_source FROM games \
          WHERE (bangumi_id IS NOT NULL OR vndb_id IS NOT NULL) \
            AND id NOT IN (SELECT DISTINCT game_id FROM game_staff)",
     )
@@ -3476,15 +3499,46 @@ pub async fn backfill_metadata_enrichment(
         return Ok(());
     }
 
+    // POL-03 — reset cancel flag for this run + announce total before the
+    // task spawns, so the frontend can render the progress bar immediately.
+    backfill_state
+        .cancel
+        .store(false, std::sync::atomic::Ordering::Relaxed);
+    let total: i64 = rows.len() as i64;
+    let _ = app.emit(
+        "meta-fetch-progress-meta",
+        serde_json::json!({ "total": total }),
+    );
+
     // Spawn so the command returns immediately; the frontend listens on the
     // existing `meta-fetch-progress` channel.
     let pool_for_task = pool.clone();
+    // Clone the AtomicBool's owning Arc-like handle. State<'_, BackfillState>
+    // is a Tauri-managed ref; we resolve and clone the inner state via
+    // app.state::<BackfillState>() inside the task to get a 'static borrow.
+    let app_for_state = app.clone();
     tokio::spawn(async move {
+        let cancel_handle = app_for_state.state::<BackfillState>();
         for row in rows {
+            // POL-03 — cancel check at the top of every iteration. Any
+            // in-flight HTTP for the current game finishes (the limiter wait
+            // is fast), and the rest of the queue is skipped.
+            if cancel_handle
+                .cancel
+                .load(std::sync::atomic::Ordering::Relaxed)
+            {
+                let _ = app_for_state.emit(
+                    "meta-fetch-progress-meta",
+                    serde_json::json!({ "cancelled": true }),
+                );
+                break;
+            }
+
             let game_id: i64 = match row.try_get("id") {
                 Ok(v) => v,
                 Err(_) => continue,
             };
+            let game_name: String = row.try_get("name").unwrap_or_default();
             let bangumi_id: Option<String> = row.try_get("bangumi_id").ok();
             let vndb_id: Option<String> = row.try_get("vndb_id").ok();
             let metadata_source: Option<String> = row.try_get("metadata_source").ok();
@@ -3514,7 +3568,7 @@ pub async fn backfill_metadata_enrichment(
 
             let _ = app.emit(
                 "meta-fetch-progress",
-                serde_json::json!({ "game_id": game_id, "phase": "started" }),
+                serde_json::json!({ "game_id": game_id, "phase": "started", "name": game_name }),
             );
 
             // 3 fetches: detail (summary/brand/tags) + persons + characters.
@@ -3612,11 +3666,29 @@ pub async fn backfill_metadata_enrichment(
 
             let _ = app.emit(
                 "meta-fetch-progress",
-                serde_json::json!({ "game_id": game_id, "phase": "finished" }),
+                serde_json::json!({ "game_id": game_id, "phase": "finished", "name": game_name }),
             );
         }
+        // POL-03 — signal final state. If we exited via cancel we already
+        // emitted `cancelled: true`; emit a `done` so the bar can dismiss.
+        let _ = app_for_state.emit(
+            "meta-fetch-progress-meta",
+            serde_json::json!({ "done": true }),
+        );
     });
 
+    Ok(())
+}
+
+/// POL-03 — request that the in-flight backfill loop stop at the next
+/// iteration boundary. Idempotent and safe to call when no backfill is
+/// running (flag just sits true until the next `backfill_metadata_enrichment`
+/// resets it). Returns immediately.
+#[tauri::command]
+pub async fn cancel_backfill(state: State<'_, BackfillState>) -> Result<(), String> {
+    state
+        .cancel
+        .store(true, std::sync::atomic::Ordering::Relaxed);
     Ok(())
 }
 
