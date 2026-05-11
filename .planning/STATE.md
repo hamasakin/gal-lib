@@ -3,15 +3,15 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: in_progress
-stopped_at: "Phase 13 (Person Enrichment & Backfill UX) 完成；autonomous 继续 Phase 14。"
-last_updated: "2026-05-12T07:00:00.000Z"
-last_activity: "2026-05-12 — Phase 13 全 5 个 sub-plan (13a-e) 落地，cargo/tsc/build 全绿"
+stopped_at: "Phase 14 (Filesystem Actions & Detail Polish) 完成；autonomous 继续 Phase 15。"
+last_updated: "2026-05-12T08:00:00.000Z"
+last_activity: "2026-05-12 — Phase 14 全 6 个 sub-plan (14a-f) 落地：opener 集成 + 「打开目录」入口 + Detail ?tab= deeplink + 真实会话数 + LIB-02 废止决策"
 progress:
   total_phases: 4
-  completed_phases: 2
-  total_plans: 9
-  completed_plans: 9
-  percent: 50
+  completed_phases: 3
+  total_plans: 15
+  completed_plans: 15
+  percent: 75
 ---
 
 # Project State
@@ -25,10 +25,10 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 
 ## Current Position
 
-Phase: 12 ✅ complete · 13 ✅ complete · 14 ◆ next · 15 ◆ pending
-Plan: Phase 14 待 plan
-Status: In progress — 2/4 phases shipped; autonomous 继续 Phase 14 (Filesystem Actions & Detail Polish)
-Last activity: 2026-05-12 — Phase 13 全 5 个 sub-plan 落地（PER-01/02/03/04 + POL-03），cargo+test+tsc+build 全绿；real-app smoke 推迟到 Phase 15
+Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ◆ next
+Plan: Phase 15 待 plan
+Status: In progress — 3/4 phases shipped; autonomous 继续 Phase 15 (v1.2 Real-app Smoke Verification)
+Last activity: 2026-05-12 — Phase 14 全 6 个 sub-plan 落地（FS-01/02/03 + POL-01/02/04），cargo+test+tsc+build 全绿；real-app smoke 与 Phase 13 一同推到 Phase 15
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -83,6 +83,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-12T07:00:00Z
-Stopped at: Phase 13 完成 (PER-01/02/03/04 + POL-03 全部落地)。下一步: autonomous 继续 Phase 14 (Filesystem Actions & Detail Polish — FS-01/02/03 + POL-01/02/04)。
-Resume file: `.planning/ROADMAP.md` (Phase 14 详情)
+Last session: 2026-05-12T08:00:00Z
+Stopped at: Phase 14 完成 (FS-01/02/03 + POL-01/02/04 全部落地)。下一步: autonomous 进入 Phase 15 v1.2 Real-app Smoke Verification — VER-01/02/03 + 兼顾 Phase 13/14 的 real-app 项。
+Resume file: `.planning/ROADMAP.md` (Phase 15 详情)
