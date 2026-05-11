@@ -74,6 +74,30 @@ pub struct IngestResult {
     /// preserved as "no opinion" so `apply_ingest_result` uses COALESCE
     /// to keep any prior value (including manual override).
     pub is_r18: Option<bool>,
+    /// Quick 20260512b — release year parsed from `MetadataDetail.release_date`
+    /// (formats: "YYYY", "YYYY-MM", "YYYY-MM-DD"). `None` is preserved as
+    /// "no opinion" so the apply path uses COALESCE to keep a prior manual
+    /// year (symmetric with brand / age_rating).
+    pub release_year: Option<i32>,
+}
+
+/// Quick 20260512b — parse a 4-digit year from the leading portion of a
+/// `release_date` string (Bangumi `air_date` / VNDB `released` are both
+/// `YYYY-MM-DD`, occasionally `YYYY-MM` or `YYYY`). Returns `None` when the
+/// prefix isn't a 4-digit number or the year falls outside 1980..=2100
+/// (galgame era guard — protects against junk like "9999-12" that some
+/// VNDB rows carry for TBA titles).
+pub fn parse_release_year(s: Option<&str>) -> Option<i32> {
+    let raw = s?.trim();
+    if raw.len() < 4 {
+        return None;
+    }
+    let year: i32 = raw.get(..4)?.parse().ok()?;
+    if (1980..=2100).contains(&year) {
+        Some(year)
+    } else {
+        None
+    }
 }
 
 /// Auto-bind threshold (locked in 02-CONTEXT § Metadata Match Pipeline).
@@ -169,21 +193,25 @@ async fn fetch_enrichment(
     Vec<PersonRef>,
     Vec<OfficialTagRef>,
     Option<bool>,
+    Option<i32>,
 ) {
-    // 1. Detail (summary, brand, tags, is_r18). On error: log + empty.
+    // 1. Detail (summary, brand, tags, is_r18, release_year). On error: log + empty.
     let detail = match source {
         MetadataSource::Bangumi => metadata::bangumi::fetch_detail(source_id).await,
         MetadataSource::Vndb => metadata::vndb::fetch_detail(source_id).await,
-        _ => return (None, None, Vec::new(), Vec::new(), None),
+        _ => return (None, None, Vec::new(), Vec::new(), None, None),
     };
-    let (summary, brand, tags, is_r18) = match detail {
-        Ok(d) => (d.summary, d.brand, d.tags, d.is_r18),
+    let (summary, brand, tags, is_r18, release_year) = match detail {
+        Ok(d) => {
+            let year = parse_release_year(d.release_date.as_deref());
+            (d.summary, d.brand, d.tags, d.is_r18, year)
+        }
         Err(e) => {
             eprintln!(
                 "[ingest] fetch_detail failed for {:?}/{}: {}",
                 source, source_id, e
             );
-            (None, None, Vec::new(), None)
+            (None, None, Vec::new(), None, None)
         }
     };
 
@@ -218,7 +246,7 @@ async fn fetch_enrichment(
         ),
     }
 
-    (summary, brand, staff, tags, is_r18)
+    (summary, brand, staff, tags, is_r18, release_year)
 }
 
 /// Process one discovered game: search → fallback → cover-cache.
@@ -261,6 +289,7 @@ pub async fn process_game(
         staff: Vec::new(),
         tags: Vec::new(),
         is_r18: None,
+        release_year: None,
     };
 
     // Skip metadata search entirely when clean_name is empty (defensive).
@@ -327,14 +356,15 @@ pub async fn process_game(
 
         // 4. Phase 11 — best-effort enrichment fetch (summary / brand /
         //    staff / tags). Any failure logs and leaves the field empty;
-        //    never aborts ingest.
-        let (summary, brand, staff, tags, is_r18) =
+        //    never aborts ingest. Quick 20260512b — also captures release_year.
+        let (summary, brand, staff, tags, is_r18, release_year) =
             fetch_enrichment(c.source, &c.source_id).await;
         result.summary = summary;
         result.brand = brand;
         result.staff = staff;
         result.tags = tags;
         result.is_r18 = is_r18;
+        result.release_year = release_year;
     }
 
     result
@@ -381,6 +411,7 @@ pub async fn process_game_cached(
         staff: Vec::new(),
         tags: Vec::new(),
         is_r18: None,
+        release_year: None,
     };
 
     if discovered.clean_name.trim().is_empty() {
@@ -438,14 +469,15 @@ pub async fn process_game_cached(
         // Phase 11 — same enrichment fetch as `process_game`. The query
         // dedup cache only covers `pick_best_*` (search results); detail/
         // persons/characters aren't cached because each game's source_id
-        // is unique by construction.
-        let (summary, brand, staff, tags, is_r18) =
+        // is unique by construction. Quick 20260512b — release_year too.
+        let (summary, brand, staff, tags, is_r18, release_year) =
             fetch_enrichment(c.source, &c.source_id).await;
         result.summary = summary;
         result.brand = brand;
         result.staff = staff;
         result.tags = tags;
         result.is_r18 = is_r18;
+        result.release_year = release_year;
     }
 
     result

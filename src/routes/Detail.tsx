@@ -1513,7 +1513,7 @@ function ExtSourcePill({
         });
       }}
       title={title}
-      className="inline-flex h-6 cursor-pointer items-center gap-1.5 border border-line bg-black/35 px-2.5 font-mono text-[10.5px] text-ink-1 transition-colors hover:border-line-strong hover:bg-black/55 hover:text-accent"
+      className="inline-flex h-6 cursor-pointer items-center gap-1.5 border border-line bg-black/35 px-2.5 font-mono text-[10.5px] text-ink-1 transition-colors hover:border-line-strong hover:bg-black/55 hover:text-brand"
       style={{ borderRadius: "9999px" }}
     >
       <span>{label}</span>
@@ -1550,7 +1550,7 @@ function PersonChip({
       type="button"
       onClick={onOpen}
       title={altTitle}
-      className="inline-flex h-7 cursor-pointer items-center gap-1.5 border border-line bg-bg-1 px-2.5 font-serif text-[12px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-accent"
+      className="inline-flex h-7 cursor-pointer items-center gap-1.5 border border-line bg-bg-1 px-2.5 font-serif text-[12px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-brand"
       style={{ borderRadius: "9999px" }}
     >
       <span className="truncate max-w-[220px]">{label}</span>

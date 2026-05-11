@@ -32,6 +32,7 @@ import { GameCard } from "./GameCard";
 import { refreshMetadata } from "@/lib/metadata";
 import { listGames, type Game } from "@/lib/games";
 import { useLibraryStore } from "@/store/library";
+import { usePreferencesStore } from "@/store/preferences";
 import { searchGames } from "@/lib/search";
 
 interface GameGridProps {
@@ -98,6 +99,11 @@ export function GameGrid({
   const innerRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
   const [cardWidth, setCardWidth] = useState(172);
+  // Density preference subscription — changing density only mutates the
+  // `--card-w` CSS variable, which doesn't trigger ResizeObserver
+  // (clientWidth unchanged). Re-running the effect on density flips
+  // re-reads the var so column count updates immediately.
+  const density = usePreferencesStore((s) => s.density);
 
   useEffect(() => {
     const el = innerRef.current;
@@ -123,7 +129,7 @@ export function GameGrid({
     const ro = new ResizeObserver(measure);
     ro.observe(el);
     return () => ro.disconnect();
-  }, []);
+  }, [density]);
 
   // Estimated row height — cover (3:4) + meta + row gap.
   // Used both for virtualizer estimateSize and for the absolute-positioned

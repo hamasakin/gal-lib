@@ -154,12 +154,16 @@ async fn apply_ingest_result(
     let age_rating_str: Option<&'static str> = result
         .is_r18
         .map(|b| if b { "r18" } else { "all_ages" });
+    // Quick 20260512b — release_year written via COALESCE (preserve manual
+    // year override, symmetric with brand / age_rating).
+    let release_year_i64: Option<i64> = result.release_year.map(|y| y as i64);
     sqlx::query(
         "UPDATE games SET name = ?, name_cn = ?, cover_path = ?, cover_url = ?, \
                           bangumi_id = ?, vndb_id = ?, metadata_source = ?, \
                           match_confidence = ?, summary = ?, \
                           brand = COALESCE(?, brand), \
                           age_rating = COALESCE(?, age_rating), \
+                          release_year = COALESCE(?, release_year), \
                           last_scanned_at = datetime('now') \
          WHERE id = ?",
     )
@@ -174,6 +178,7 @@ async fn apply_ingest_result(
     .bind(&result.summary)
     .bind(&result.brand)
     .bind(age_rating_str)
+    .bind(release_year_i64)
     .bind(game_id)
     .execute(pool)
     .await
@@ -987,16 +992,20 @@ pub async fn bind_metadata(
         // COALESCE (preserve manual brand). cover_path keeps its original
         // COALESCE so a transient cover-cache failure doesn't blank an
         // already-cached cover. Quick 20260510b — age_rating uses COALESCE
-        // so a manual override survives a re-bind.
+        // so a manual override survives a re-bind. Quick 20260512b —
+        // release_year parsed from detail.release_date, same COALESCE shape.
         let age_rating_str: Option<&'static str> = detail
             .is_r18
             .map(|b| if b { "r18" } else { "all_ages" });
+        let release_year_i64: Option<i64> =
+            ingest::parse_release_year(detail.release_date.as_deref()).map(|y| y as i64);
         sqlx::query(
             "UPDATE games SET name = ?, name_cn = ?, cover_path = COALESCE(?, cover_path), \
                               cover_url = ?, bangumi_id = ?, vndb_id = ?, \
                               metadata_source = ?, match_confidence = 100, \
                               summary = ?, brand = COALESCE(?, brand), \
                               age_rating = COALESCE(?, age_rating), \
+                              release_year = COALESCE(?, release_year), \
                               last_scanned_at = datetime('now') \
              WHERE id = ?",
         )
@@ -1010,6 +1019,7 @@ pub async fn bind_metadata(
         .bind(&detail.summary)
         .bind(&detail.brand)
         .bind(age_rating_str)
+        .bind(release_year_i64)
         .bind(game_id)
         .execute(&*pool)
         .await
@@ -1033,6 +1043,7 @@ pub async fn bind_metadata(
             staff,
             tags: detail.tags.clone(),
             is_r18: detail.is_r18,
+            release_year: release_year_i64.map(|y| y as i32),
         };
         write_staff_and_tags(&*pool, game_id, &source, &synthetic).await?;
 
@@ -1092,6 +1103,7 @@ pub async fn refresh_metadata(
         let age_rating_str: Option<&'static str> = result
             .is_r18
             .map(|b| if b { "r18" } else { "all_ages" });
+        let release_year_i64: Option<i64> = result.release_year.map(|y| y as i64);
         sqlx::query(
             "UPDATE games SET name = ?, name_cn = ?, cover_path = COALESCE(?, cover_path), \
                               cover_url = COALESCE(?, cover_url), \
@@ -1100,6 +1112,7 @@ pub async fn refresh_metadata(
                               metadata_source = ?, match_confidence = ?, \
                               summary = ?, brand = COALESCE(?, brand), \
                               age_rating = COALESCE(?, age_rating), \
+                              release_year = COALESCE(?, release_year), \
                               last_scanned_at = datetime('now') \
              WHERE id = ?",
         )
@@ -1114,6 +1127,7 @@ pub async fn refresh_metadata(
         .bind(&result.summary)
         .bind(&result.brand)
         .bind(age_rating_str)
+        .bind(release_year_i64)
         .bind(game_id)
         .execute(&*pool)
         .await
@@ -1261,6 +1275,7 @@ pub async fn refresh_all_metadata(
             let age_rating_str: Option<&'static str> = result
                 .is_r18
                 .map(|b| if b { "r18" } else { "all_ages" });
+            let release_year_i64: Option<i64> = result.release_year.map(|y| y as i64);
             let _ = sqlx::query(
                 "UPDATE games SET name = ?, name_cn = ?, \
                                   cover_path = COALESCE(?, cover_path), \
@@ -1270,6 +1285,7 @@ pub async fn refresh_all_metadata(
                                   metadata_source = ?, match_confidence = ?, \
                                   summary = ?, brand = COALESCE(?, brand), \
                                   age_rating = COALESCE(?, age_rating), \
+                                  release_year = COALESCE(?, release_year), \
                                   last_scanned_at = datetime('now') \
                  WHERE id = ?",
             )
@@ -1284,6 +1300,7 @@ pub async fn refresh_all_metadata(
             .bind(&result.summary)
             .bind(&result.brand)
             .bind(age_rating_str)
+            .bind(release_year_i64)
             .bind(id)
             .execute(&*pool_for_task)
             .await;
@@ -3354,14 +3371,19 @@ pub async fn backfill_metadata_enrichment(
                 MetadataSource::Vndb => metadata::vndb::fetch_detail(&source_id).await,
                 _ => continue,
             };
-            let (summary, brand, tags, is_r18) = match detail {
-                Ok(d) => (d.summary, d.brand, d.tags, d.is_r18),
+            // Quick 20260512b — also capture release_year so backfill fills the
+            // column for old library rows missing release_year.
+            let (summary, brand, tags, is_r18, release_year) = match detail {
+                Ok(d) => {
+                    let year = ingest::parse_release_year(d.release_date.as_deref());
+                    (d.summary, d.brand, d.tags, d.is_r18, year)
+                }
                 Err(e) => {
                     eprintln!(
                         "[backfill] fetch_detail failed for game {} ({:?}): {}",
                         game_id, source_enum, e
                     );
-                    (None, None, Vec::new(), None)
+                    (None, None, Vec::new(), None, None)
                 }
             };
             let persons = match source_enum {
@@ -3386,19 +3408,23 @@ pub async fn backfill_metadata_enrichment(
                 ),
             }
 
-            // Update games row with summary/brand/age_rating (preserve
-            // manual values via COALESCE — symmetric with apply_ingest_result).
+            // Update games row with summary/brand/age_rating/release_year
+            // (preserve manual values via COALESCE — symmetric with
+            // apply_ingest_result).
             let age_rating_str: Option<&'static str> =
                 is_r18.map(|b| if b { "r18" } else { "all_ages" });
+            let release_year_i64: Option<i64> = release_year.map(|y| y as i64);
             let _ = sqlx::query(
                 "UPDATE games SET summary = ?, brand = COALESCE(?, brand), \
                                   age_rating = COALESCE(?, age_rating), \
+                                  release_year = COALESCE(?, release_year), \
                                   last_scanned_at = datetime('now') \
                  WHERE id = ?",
             )
             .bind(&summary)
             .bind(&brand)
             .bind(age_rating_str)
+            .bind(release_year_i64)
             .bind(game_id)
             .execute(&*pool_for_task)
             .await;
@@ -3420,6 +3446,7 @@ pub async fn backfill_metadata_enrichment(
                 staff,
                 tags,
                 is_r18,
+                release_year,
             };
             if let Err(e) =
                 write_staff_and_tags(&*pool_for_task, game_id, &source_str, &synthetic).await
