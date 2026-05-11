@@ -186,6 +186,100 @@ async fn apply_ingest_result(
     // is a fast no-op (DELETE clears stale rows + the loops exit on empty).
     write_staff_and_tags(pool, game_id, &result.metadata_source, result).await?;
 
+    // Phase 12 — sync scan_review_queue. Low-confidence or no-match ingests
+    // enqueue the game for manual review; high-confidence ingests clear any
+    // stale queue entry so a re-scan that finally succeeded auto-dismisses
+    // the row.
+    sync_review_queue_for_game(
+        pool,
+        game_id,
+        &result.games_path,
+        &result.metadata_source,
+        result.match_confidence,
+    )
+    .await?;
+
+    Ok(())
+}
+
+/// Phase 12 — keep `scan_review_queue` in sync with the latest ingest outcome.
+///
+/// Two paths:
+///   1. metadata_source == "none" OR match_confidence < 80 → INSERT OR REPLACE
+///      a queue row. INSERT OR REPLACE on the (game_id) PK keeps a single most-
+///      recent entry per game and refreshes `created_at` so freshly-rescanned
+///      items rise to the top of the user's review list.
+///   2. otherwise (confident bind / re-scan succeeded) → DELETE any existing
+///      queue row for this game so the queue reflects current state.
+///
+/// `metadata_source_id` is NULL when the source returned no match (suggested
+/// fields are NULL in that case); for low-confidence Bangumi/VNDB binds the
+/// source itself goes in `suggested_source` and the bound id in `suggested_id`
+/// so the review-queue UI can pre-select the source the auto-bind chose.
+async fn sync_review_queue_for_game(
+    pool: &SqlitePool,
+    game_id: i64,
+    game_path: &str,
+    metadata_source: &str,
+    match_confidence: Option<u8>,
+) -> Result<(), String> {
+    let confidence = match_confidence.unwrap_or(0) as i64;
+    let needs_review = metadata_source == "none" || confidence < 80;
+
+    if needs_review {
+        let (suggested_source, suggested_id) = if metadata_source == "none" {
+            (None, None)
+        } else {
+            // bound row id is on `games.bangumi_id` / `games.vndb_id`; cheap
+            // round-trip is fine here since the queue insert is rare (only
+            // when confidence < 80).
+            let row = sqlx::query("SELECT bangumi_id, vndb_id FROM games WHERE id = ?")
+                .bind(game_id)
+                .fetch_optional(pool)
+                .await
+                .map_err(err_str)?;
+            let sid = row.and_then(|r| {
+                match metadata_source {
+                    "bangumi" => r.try_get::<Option<String>, _>("bangumi_id").ok().flatten(),
+                    "vndb" => r.try_get::<Option<String>, _>("vndb_id").ok().flatten(),
+                    _ => None,
+                }
+            });
+            (Some(metadata_source.to_string()), sid)
+        };
+
+        sqlx::query(
+            "INSERT OR REPLACE INTO scan_review_queue \
+                 (game_id, game_path, current_confidence, suggested_source, suggested_id, created_at) \
+             VALUES (?, ?, ?, ?, ?, strftime('%Y-%m-%dT%H:%M:%fZ','now'))",
+        )
+        .bind(game_id)
+        .bind(game_path)
+        .bind(confidence)
+        .bind(suggested_source)
+        .bind(suggested_id)
+        .execute(pool)
+        .await
+        .map_err(err_str)?;
+    } else {
+        sqlx::query("DELETE FROM scan_review_queue WHERE game_id = ?")
+            .bind(game_id)
+            .execute(pool)
+            .await
+            .map_err(err_str)?;
+    }
+    Ok(())
+}
+
+/// Phase 12 — remove a game from the review queue. Used by `bind_metadata`
+/// (manual bind = confidence 100, no longer needs review) and the explicit
+/// `dismiss_review_item` / `accept_review_candidate` IPCs.
+async fn delete_from_review_queue(pool: &SqlitePool, game_id: i64) -> Result<(), String> {
+    sqlx::query("DELETE FROM scan_review_queue WHERE game_id = ?")
+        .bind(game_id)
+        .execute(pool)
+        .await
+        .map_err(err_str)?;
     Ok(())
 }
 
@@ -772,6 +866,10 @@ pub async fn clear_all_data(state: State<'_, AppPaths>) -> Result<(), String> {
         "save_backups",
         "sessions",
         "game_tags",
+        // Phase 12 — drop review queue rows before games (CASCADE handles it
+        // implicitly, but explicit is friendlier when debugging FK-disabled
+        // sqlite connections).
+        "scan_review_queue",
         "games",
         "scan_roots",
     ] {
@@ -937,6 +1035,9 @@ pub async fn bind_metadata(
             is_r18: detail.is_r18,
         };
         write_staff_and_tags(&*pool, game_id, &source, &synthetic).await?;
+
+        // Phase 12 — manual bind = confidence 100 → drop any stale review row.
+        delete_from_review_queue(&*pool, game_id).await?;
 
         Ok(())
     }
@@ -3519,4 +3620,181 @@ pub async fn remove_game_from_view(
         .await
         .map_err(err_str)?;
     Ok(())
+}
+
+// ── Phase 12 — Scan review queue IPCs ─────────────────────────────────────
+
+/// 4-tile KPI snapshot for the `/scan` page header. Combines four COUNT
+/// queries into one round-trip so the strip can refresh in <50 ms after
+/// scan / bind / dismiss events.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ScanKpis {
+    pub total: i64,
+    pub bound: i64,
+    pub review_pending: i64,
+    pub unmatched: i64,
+}
+
+#[tauri::command]
+pub async fn get_scan_kpis(state: State<'_, AppPaths>) -> Result<ScanKpis, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let row = sqlx::query(
+        "SELECT \
+           (SELECT COUNT(*) FROM games) AS total, \
+           (SELECT COUNT(*) FROM games WHERE metadata_source IN ('bangumi','vndb','manual')) AS bound, \
+           (SELECT COUNT(*) FROM scan_review_queue) AS review_pending, \
+           (SELECT COUNT(*) FROM games WHERE metadata_source = 'none') AS unmatched",
+    )
+    .fetch_one(&*pool)
+    .await
+    .map_err(err_str)?;
+
+    Ok(ScanKpis {
+        total: row.try_get("total").map_err(err_str)?,
+        bound: row.try_get("bound").map_err(err_str)?,
+        review_pending: row.try_get("review_pending").map_err(err_str)?,
+        unmatched: row.try_get("unmatched").map_err(err_str)?,
+    })
+}
+
+/// Row payload for the `ReviewQueue` UI. Joins `scan_review_queue` with
+/// `games` so the frontend has the user-visible game name (which may have
+/// changed since the queue row was created) plus the queue's snapshot fields.
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ReviewItem {
+    pub game_id: i64,
+    pub game_path: String,
+    pub name: Option<String>,
+    pub cover_path: Option<String>,
+    pub current_confidence: i64,
+    pub current_source: Option<String>,
+    pub current_source_id: Option<String>,
+    pub suggested_source: Option<String>,
+    pub suggested_id: Option<String>,
+    pub created_at: String,
+}
+
+#[tauri::command]
+pub async fn list_scan_review_queue(
+    state: State<'_, AppPaths>,
+) -> Result<Vec<ReviewItem>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query(
+        "SELECT q.game_id, q.game_path, q.current_confidence, q.suggested_source, \
+                q.suggested_id, q.created_at, \
+                g.name AS name, g.cover_path AS cover_path, \
+                g.metadata_source AS current_source, \
+                CASE g.metadata_source \
+                  WHEN 'bangumi' THEN g.bangumi_id \
+                  WHEN 'vndb' THEN g.vndb_id \
+                  ELSE NULL \
+                END AS current_source_id \
+         FROM scan_review_queue q \
+         LEFT JOIN games g ON g.id = q.game_id \
+         ORDER BY q.created_at DESC",
+    )
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+
+    let mut out = Vec::with_capacity(rows.len());
+    for r in rows {
+        out.push(ReviewItem {
+            game_id: r.try_get("game_id").map_err(err_str)?,
+            game_path: r.try_get("game_path").map_err(err_str)?,
+            name: r.try_get::<Option<String>, _>("name").ok().flatten(),
+            cover_path: r.try_get::<Option<String>, _>("cover_path").ok().flatten(),
+            current_confidence: r.try_get("current_confidence").map_err(err_str)?,
+            current_source: r
+                .try_get::<Option<String>, _>("current_source")
+                .ok()
+                .flatten(),
+            current_source_id: r
+                .try_get::<Option<String>, _>("current_source_id")
+                .ok()
+                .flatten(),
+            suggested_source: r
+                .try_get::<Option<String>, _>("suggested_source")
+                .ok()
+                .flatten(),
+            suggested_id: r
+                .try_get::<Option<String>, _>("suggested_id")
+                .ok()
+                .flatten(),
+            created_at: r.try_get("created_at").map_err(err_str)?,
+        });
+    }
+    Ok(out)
+}
+
+/// Drop a game from the review queue without re-binding. The user has decided
+/// the current metadata (or lack thereof) is good enough; they can rebind
+/// later via `MetadataPicker` if they change their mind. The games row stays
+/// untouched.
+#[tauri::command]
+pub async fn dismiss_review_item(
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    delete_from_review_queue(&*pool, game_id).await
+}
+
+/// Accept a Bangumi or VNDB candidate from the review-queue UI. Thin wrapper
+/// over `bind_metadata` — semantic alias so callers don't conflate the
+/// review-queue flow with the standard MetadataPicker rebind path.
+/// `bind_metadata` already clears the queue row on success.
+#[tauri::command]
+pub async fn accept_review_candidate(
+    game_id: i64,
+    source: String,
+    source_id: String,
+    app: AppHandle,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    bind_metadata(game_id, source, source_id, app, state).await
+}
+
+/// Side-by-side Bangumi vs VNDB top candidates for a queued game. Each source
+/// is searched independently with the game's current `name`; results are
+/// capped to the top-1 per source so the UI's 2-column compare card has a
+/// clear "Bangumi 候选 / VNDB 候选" structure. Sources that fail or return
+/// zero hits yield `None`, which the frontend renders as "未找到匹配".
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ReviewCandidates {
+    pub bangumi: Option<metadata::Candidate>,
+    pub vndb: Option<metadata::Candidate>,
+}
+
+#[tauri::command]
+pub async fn fetch_review_candidates(
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<ReviewCandidates, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let row = sqlx::query("SELECT name FROM games WHERE id = ?")
+        .bind(game_id)
+        .fetch_optional(&*pool)
+        .await
+        .map_err(err_str)?;
+    let name: String = match row {
+        Some(r) => r.try_get("name").map_err(err_str)?,
+        None => return Err(format!("game {} not found", game_id)),
+    };
+
+    // Best-effort dual fetch. tokio::join! runs both searches concurrently —
+    // bangumi 1 req/s limiter and vndb 100 req/min limiter are independent
+    // governors, so this saves ~1 s typical.
+    let (bgm_res, vndb_res) = tokio::join!(
+        metadata::bangumi::search(&name),
+        metadata::vndb::search(&name),
+    );
+    let bangumi = bgm_res
+        .ok()
+        .and_then(|mut v| if v.is_empty() { None } else { Some(v.remove(0)) });
+    let vndb = vndb_res
+        .ok()
+        .and_then(|mut v| if v.is_empty() { None } else { Some(v.remove(0)) });
+
+    Ok(ReviewCandidates { bangumi, vndb })
 }

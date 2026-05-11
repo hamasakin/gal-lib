@@ -254,6 +254,12 @@ pub fn run() {
             commands::delete_custom_view,
             commands::add_games_to_view,
             commands::remove_game_from_view,
+            // Phase 12 — scan review queue (5 new)
+            commands::get_scan_kpis,
+            commands::list_scan_review_queue,
+            commands::dismiss_review_item,
+            commands::accept_review_candidate,
+            commands::fetch_review_candidates,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
