@@ -3,9 +3,9 @@ gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: in_progress
-stopped_at: "Phase 12 (Scan Pipeline & Review Queue) complete — schema v9 + 5 IPCs + /scan route + ScanFeed + ReviewQueue + Sidebar nav. Real-app smoke deferred to Phase 15 VER per autonomous policy. Next: Phase 13 (Person Enrichment & Backfill UX)."
-last_updated: "2026-05-12T04:00:00.000Z"
-last_activity: "2026-05-12 — Phase 12 完成 (12a/12b/12c/12d, 6 commits) - SCAN-01/02/03 实现 + 单元测试 + 真机 smoke 推迟到 Phase 15"
+stopped_at: "Phase 12 (Scan Pipeline & Review Queue) shipped; Phase 13 CONTEXT + PLAN committed but execution paused. 续跑 /gsd-autonomous 会从 Phase 13 plan 13a (PER-01 dedup) 开始。"
+last_updated: "2026-05-12T05:00:00.000Z"
+last_activity: "2026-05-12 — Phase 12 完成 + Phase 13 planned (CONTEXT/PLAN); autonomous run 因上下文预算暂停"
 progress:
   total_phases: 4
   completed_phases: 1
@@ -25,10 +25,10 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 
 ## Current Position
 
-Phase: 12 ✅ Scan Pipeline & Review Queue (complete)
-Plan: 12a/12b/12c/12d shipped — next Phase 13
-Status: In progress — 1/4 phases done; Phase 12 real-app smoke deferred to Phase 15
-Last activity: 2026-05-12 — Phase 12 完成 (faf9cb2 12d /scan route)
+Phase: 12 ✅ complete · 13 ◆ planned (CONTEXT + PLAN committed, execution paused)
+Plan: 13a/b/c/d/e ready
+Status: In progress — 1/4 phases shipped; Phase 13 planned at `.planning/phases/13-person-enrichment-backfill-ux/`
+Last activity: 2026-05-12 — Phase 12 完成 + Phase 13 CONTEXT/PLAN 落地，autonomous run 暂停（待下一次 /gsd-autonomous 续跑 13a–e）
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -83,6 +83,6 @@ None.
 
 ## Session Continuity
 
-Last session: 2026-05-12T04:00:00Z
-Stopped at: Phase 12 完成 (SCAN-01/02/03 — schema v9 + 5 IPCs + /scan + ScanFeed + ReviewQueue + Sidebar pulse-dot)。下一步: Phase 13 (Person Enrichment & Backfill UX — PER-01/02/03/04 + POL-03)。
-Resume file: None
+Last session: 2026-05-12T05:00:00Z
+Stopped at: Phase 12 完成 (SCAN-01/02/03) + Phase 13 CONTEXT/PLAN committed。下一步: 重跑 `/gsd-autonomous`，会从 Phase 13 plan 13a (PER-01 cross-source dedup) 开始连续执行 13a→b→c→d→e。
+Resume file: `.planning/phases/13-person-enrichment-backfill-ux/13-PLAN.md`
