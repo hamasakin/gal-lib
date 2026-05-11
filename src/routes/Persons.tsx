@@ -23,6 +23,7 @@ import { useParams } from "react-router-dom";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { PageHeader } from "@/components/library/PageHeader";
 import { GameCard } from "@/components/library/GameCard";
+import { PersonTimeline } from "@/components/library/PersonTimeline";
 import {
   listGamesForPerson,
   listPersonsForGame,
@@ -209,6 +210,17 @@ export default function Persons() {
     return seen.size;
   }, [byRole]);
 
+  /** PER-02 — flat dedup'd games list across all 4 roles, for PersonTimeline. */
+  const mergedGames = useMemo(() => {
+    const seen = new Map<number, Game>();
+    for (const role of ROLE_ORDER) {
+      for (const g of byRole[role]) {
+        if (!seen.has(g.id)) seen.set(g.id, g);
+      }
+    }
+    return [...seen.values()];
+  }, [byRole]);
+
   const resolveCover = useMemo(() => {
     return (game: Game): string | null => {
       if (game.cover_path && dataDir) {
@@ -258,15 +270,18 @@ export default function Persons() {
             </p>
           </div>
         ) : (
-          nonEmptyRoles.map((role) => (
-            <RoleSection
-              key={role}
-              role={role}
-              games={byRole[role]}
-              resolveCover={resolveCover}
-              voiceCharByGame={role === "voice" ? voiceCharByGame : null}
-            />
-          ))
+          <>
+            <PersonTimeline games={mergedGames} />
+            {nonEmptyRoles.map((role) => (
+              <RoleSection
+                key={role}
+                role={role}
+                games={byRole[role]}
+                resolveCover={resolveCover}
+                voiceCharByGame={role === "voice" ? voiceCharByGame : null}
+              />
+            ))}
+          </>
         )}
       </div>
     </div>
