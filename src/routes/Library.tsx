@@ -54,6 +54,10 @@ import {
 import { getFilterOptions, type FilterOptions } from "@/lib/persons";
 import { addGamesToView, createCustomView } from "@/lib/customViews";
 import {
+  ViewNameDialog,
+  type ViewNameDialogMode,
+} from "@/components/library/ViewNameDialog";
+import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
@@ -117,6 +121,11 @@ export function Library() {
   const sidebar = useLibraryStore((s) => s.sidebar);
   const customViews = sidebar?.custom_views ?? [];
 
+  // Quick 20260512f — 批量选择→新建视图 走正经 Dialog，不再 window.prompt。
+  // 打开时把当前选中 ids 暂存，提交后 createCustomView + addGamesToView 一气呵成。
+  const [createViewDialog, setCreateViewDialog] =
+    useState<ViewNameDialogMode | null>(null);
+
   function toggleSelected(id: number) {
     setSelectedIds((prev) => {
       const next = new Set(prev);
@@ -153,11 +162,15 @@ export function Library() {
     }
   }
 
-  async function onCreateAndAdd() {
+  function onCreateAndAdd() {
+    if (selectedIds.size === 0) return;
+    setCreateViewDialog({ kind: "create" });
+  }
+
+  async function handleCreateViewSubmit(name: string) {
+    // 提交时再快照一次 selectedIds，防止开 dialog 期间用户改动选择。
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
-    const name = window.prompt("新视图名称")?.trim();
-    if (!name) return;
     try {
       const newId = await createCustomView(name);
       const inserted = await addGamesToView(newId, ids);
@@ -540,7 +553,7 @@ export function Library() {
                   </DropdownMenuItem>
                 ))}
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => void onCreateAndAdd()}>
+                <DropdownMenuItem onClick={onCreateAndAdd}>
                   <Plus size={13} className="mr-2" />
                   新建视图…
                 </DropdownMenuItem>
@@ -561,6 +574,12 @@ export function Library() {
       )}
 
       <MetadataPicker game={pickerGame} onClose={() => setPickerGame(null)} />
+
+      <ViewNameDialog
+        mode={createViewDialog}
+        onClose={() => setCreateViewDialog(null)}
+        onSubmit={handleCreateViewSubmit}
+      />
     </div>
   );
 }
