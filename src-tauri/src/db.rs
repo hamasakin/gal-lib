@@ -21,6 +21,8 @@
 //! game lists.
 //! Schema v9 (Phase 12) adds 1 new table (`scan_review_queue`) for
 //! persistent low-confidence ingest matches awaiting manual review.
+//! Schema v10 (Quick 260513-404) drops `games.age_rating` column
+//! (R18 分类整体删除；custom_views / custom_view_games 表保留)。
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -33,6 +35,7 @@ const V6_SQL: &str = include_str!("../migrations/0006_disable_default_screenshot
 const V7_SQL: &str = include_str!("../migrations/0007_add_metadata_enrichment.sql");
 const V8_SQL: &str = include_str!("../migrations/0008_add_age_rating_and_custom_views.sql");
 const V9_SQL: &str = include_str!("../migrations/0009_add_scan_review_queue.sql");
+const V10_SQL: &str = include_str!("../migrations/0010_drop_age_rating.sql");
 
 /// All migrations to register with tauri-plugin-sql, in version order.
 /// Add future migrations as additional entries with monotonically increasing
@@ -91,6 +94,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 9,
             description: "add_scan_review_queue",
             sql: V9_SQL,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 10,
+            description: "drop_age_rating",
+            sql: V10_SQL,
             kind: MigrationKind::Up,
         },
     ]
@@ -467,6 +476,37 @@ mod tests {
         assert!(
             m9.sql.contains("schema_version") && m9.sql.contains("'9'"),
             "v9 bumps schema_version to '9'"
+        );
+    }
+
+    #[test]
+    fn migrations_v10_drops_age_rating() {
+        let m = migrations();
+        let m10 = m.iter().find(|x| x.version == 10).expect("v10 present");
+        assert_eq!(m10.description, "drop_age_rating");
+
+        // No ADD COLUMN — this migration only drops a column.
+        let add_column_count = m10
+            .sql
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("--") && t.contains("ADD COLUMN")
+            })
+            .count();
+        assert_eq!(add_column_count, 0, "v10: no ADD COLUMN statements");
+
+        // DROP COLUMN age_rating — sqlx 0.8 bundles SQLite >= 3.42 so the
+        // native `ALTER TABLE ... DROP COLUMN` form is fine.
+        assert!(
+            m10.sql.contains("DROP COLUMN age_rating"),
+            "v10 drops age_rating column"
+        );
+
+        // schema_version bumped to 10
+        assert!(
+            m10.sql.contains("schema_version") && m10.sql.contains("'10'"),
+            "v10 bumps schema_version to '10'"
         );
     }
 }

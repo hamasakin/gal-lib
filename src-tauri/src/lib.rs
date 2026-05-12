@@ -227,8 +227,6 @@ pub fn run() {
             commands::update_game_rating,
             commands::update_game_notes,
             commands::update_game_brand_year,
-            // Quick 20260510b — R18 marker manual override
-            commands::update_game_age_rating,
             // 05b — stats (2) + screenshots (5) + save backups (5) = 12 new
             commands::get_playtime_trend,
             commands::get_top_games,
