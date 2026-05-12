@@ -271,6 +271,7 @@ pub fn run() {
             commands::dismiss_review_item,
             commands::accept_review_candidate,
             commands::fetch_review_candidates,
+            commands::reseed_review_queue,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

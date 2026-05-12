@@ -22,7 +22,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "sonner";
-import { RefreshCw, Search, X } from "lucide-react";
+import { ListRestart, RefreshCw, Search, X } from "lucide-react";
 import { PageHeader } from "@/components/library/PageHeader";
 import { ScanProgressBar } from "@/components/library/ScanProgressBar";
 import { ScanFeed } from "@/components/library/ScanFeed";
@@ -35,6 +35,7 @@ import {
   type ScanKpis,
   type ScanProgress,
 } from "@/lib/scan";
+import { reseedReviewQueue } from "@/lib/scanReview";
 import { cn } from "@/lib/utils";
 import { useLibraryStore } from "@/store/library";
 
@@ -46,6 +47,11 @@ export default function Scan() {
   const scanProgress = useLibraryStore((s) => s.scanProgress);
   const scanRunning = scanProgress?.status === "running";
   const [kpis, setKpis] = useState<ScanKpis | null>(null);
+  // Quick 20260512c — bumped on every reseed to force ReviewQueue to refetch
+  // (reseed doesn't emit scan-progress / meta-fetch-progress events, so the
+  // queue's existing event-driven debounced refresh wouldn't pick it up).
+  const [reseedSeq, setReseedSeq] = useState(0);
+  const [reseeding, setReseeding] = useState(false);
 
   const refreshKpis = useCallback(async () => {
     try {
@@ -103,6 +109,24 @@ export default function Scan() {
     }
   }, []);
 
+  const onReseed = useCallback(async () => {
+    setReseeding(true);
+    try {
+      const n = await reseedReviewQueue();
+      setReseedSeq((s) => s + 1);
+      void refreshKpis();
+      toast.success(
+        n > 0
+          ? `已把 ${n} 部未匹配/低置信度游戏放入复核队列`
+          : "没有需要复核的游戏（库里都已绑定）",
+      );
+    } catch (e: unknown) {
+      toast.error(`回灌失败 — ${String(e)}`);
+    } finally {
+      setReseeding(false);
+    }
+  }, [refreshKpis]);
+
   const total = kpis?.total ?? 0;
   const bound = kpis?.bound ?? 0;
   const reviewPending = kpis?.review_pending ?? 0;
@@ -146,6 +170,17 @@ export default function Scan() {
             >
               <Search size={14} strokeWidth={1.7} />
               <span>全量重扫</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => void onReseed()}
+              disabled={reseeding}
+              className={cn(TOOLBAR_BTN, reseeding && "cursor-not-allowed opacity-60")}
+              style={{ borderRadius: "var(--r-md)" }}
+              title="把所有未匹配 / 低置信度的游戏一次性加入复核队列（包含历史老库 unmatched 项）"
+            >
+              <ListRestart size={14} strokeWidth={1.7} />
+              <span>{reseeding ? "回灌中…" : "重新生成待复核队列"}</span>
             </button>
             {scanRunning && (
               <button
@@ -194,7 +229,10 @@ export default function Scan() {
             <ScanFeed />
           </div>
           <div className="lg:col-span-7">
-            <ReviewQueue onMutated={() => void refreshKpis()} />
+            <ReviewQueue
+              reseedSeq={reseedSeq}
+              onMutated={() => void refreshKpis()}
+            />
           </div>
         </div>
       </div>

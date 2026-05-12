@@ -49,9 +49,13 @@ interface ReviewQueueProps {
   /** Called after accept / dismiss completes so the parent can refresh the
    *  KPI strip (and any sidebar pulse-dot). */
   onMutated?: () => void;
+  /** Quick 20260512c — bumped by the parent after a reseed_review_queue IPC
+   *  so the queue refetches even though reseed doesn't emit scan-progress
+   *  events. Optional; omit for non-Scan-page mounts. */
+  reseedSeq?: number;
 }
 
-export function ReviewQueue({ onMutated }: ReviewQueueProps) {
+export function ReviewQueue({ onMutated, reseedSeq }: ReviewQueueProps) {
   const [items, setItems] = useState<ReviewItem[] | null>(null);
   const [expandedId, setExpandedId] = useState<number | null>(null);
   const [candidates, setCandidates] = useState<ReviewCandidates | null>(null);
@@ -112,6 +116,13 @@ export function ReviewQueue({ onMutated }: ReviewQueueProps) {
       unlistenB?.();
     };
   }, [refetch]);
+
+  // Quick 20260512c — refetch on reseedSeq bump (parent just called reseed
+  // IPC). Skip the initial mount value (handled by the effect above).
+  useEffect(() => {
+    if (reseedSeq === undefined || reseedSeq === 0) return;
+    void refetch();
+  }, [reseedSeq, refetch]);
 
   const expand = useCallback(
     async (id: number) => {

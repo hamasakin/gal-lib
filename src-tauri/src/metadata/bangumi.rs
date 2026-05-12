@@ -105,6 +105,15 @@ pub async fn fetch_detail(bangumi_id: &str) -> Result<MetadataDetail, MetadataEr
             weight: t.count.unwrap_or(0),
         })
         .collect();
+    // Quick 20260512c — Bangumi's top-level `date` field is often an empty
+    // string on game subjects (doujin / 老游戏 / 未发售). Fall back to the
+    // infobox 发售日 / 発売日 / 发行日期 entry so release_year parsing later
+    // has something to work with. Empty string treated as None to keep
+    // parse_release_year defensive.
+    let release_date = raw
+        .date
+        .filter(|s| !s.trim().is_empty())
+        .or_else(|| extract_release_date_from_infobox(&raw.infobox));
     Ok(MetadataDetail {
         source: MetadataSource::Bangumi,
         source_id: raw.id.to_string(),
@@ -112,7 +121,7 @@ pub async fn fetch_detail(bangumi_id: &str) -> Result<MetadataDetail, MetadataEr
         title_cn: raw.name_cn,
         cover_url: raw.images.and_then(|i| i.large),
         summary: raw.summary,
-        release_date: raw.date,
+        release_date,
         brand,
         tags,
         // Quick 20260510b — Bangumi exposes `nsfw: bool` on the subject
@@ -202,6 +211,67 @@ fn extract_brand_from_infobox(infobox: &Option<Vec<InfoboxEntry>>) -> Option<Str
         }
     }
     None
+}
+
+/// Quick 20260512c — fall back to the infobox 发售日 / 発売日 / 发行日 entry
+/// when Bangumi's top-level `date` field is empty (common on game subjects).
+///
+/// Tries to normalize a few human-written formats so `parse_release_year`
+/// downstream can grab the year cleanly:
+///   - `2020-04-24` → returned as-is
+///   - `2020年4月24日` → coerced to `2020-04-24`
+///   - `2020-04` / `2020年4月` / `2020` → year prefix is still recoverable
+///
+/// Only the leading 4 digits really matter for year parsing; the coercion
+/// just keeps the column readable when surfaced elsewhere (e.g. detail page).
+fn extract_release_date_from_infobox(infobox: &Option<Vec<InfoboxEntry>>) -> Option<String> {
+    let entries = infobox.as_ref()?;
+    const DATE_KEYS: &[&str] = &["发售日", "发行日", "発売日", "发行日期", "发售日期"];
+    for entry in entries {
+        if !DATE_KEYS.contains(&entry.key.as_str()) {
+            continue;
+        }
+        let s = infobox_value_to_string(&entry.value)?;
+        let normalized = normalize_jp_date(&s);
+        return Some(normalized);
+    }
+    None
+}
+
+/// Coerce `YYYY年M月D日` / `YYYY年M月` / `YYYY年` shapes to `YYYY-MM-DD`-ish.
+/// Anything that doesn't match these shapes is returned unchanged so the
+/// downstream parser still gets a chance at the raw string.
+fn normalize_jp_date(s: &str) -> String {
+    let s = s.trim();
+    if !s.contains('年') {
+        return s.to_string();
+    }
+    let mut year = String::new();
+    let mut month = String::new();
+    let mut day = String::new();
+    let mut stage = 0u8; // 0=year, 1=month, 2=day
+    for c in s.chars() {
+        match c {
+            '年' => stage = 1,
+            '月' => stage = 2,
+            '日' => break,
+            d if d.is_ascii_digit() => match stage {
+                0 => year.push(d),
+                1 => month.push(d),
+                2 => day.push(d),
+                _ => {}
+            },
+            _ => {}
+        }
+    }
+    if year.len() < 4 {
+        return s.to_string();
+    }
+    match (month.is_empty(), day.is_empty()) {
+        (true, _) => year,
+        (false, true) => format!("{}-{:0>2}", year, month),
+        (false, false) => format!("{}-{:0>2}-{:0>2}", year, month, day),
+    }
 }
 
 /// Coerce a Bangumi infobox value (string or array of {k,v}) to a single
@@ -390,5 +460,63 @@ mod tests {
         }]);
         assert!(extract_brand_from_infobox(&infobox).is_none());
         assert!(extract_brand_from_infobox(&None).is_none());
+    }
+
+    #[test]
+    fn extract_release_date_iso_format() {
+        let infobox = Some(vec![
+            InfoboxEntry { key: "中文名".into(), value: Value::String("X".into()) },
+            InfoboxEntry { key: "发售日".into(), value: Value::String("2020-04-24".into()) },
+        ]);
+        assert_eq!(
+            extract_release_date_from_infobox(&infobox).as_deref(),
+            Some("2020-04-24")
+        );
+    }
+
+    #[test]
+    fn extract_release_date_japanese_format() {
+        let infobox = Some(vec![InfoboxEntry {
+            key: "発売日".into(),
+            value: Value::String("2020年4月24日".into()),
+        }]);
+        assert_eq!(
+            extract_release_date_from_infobox(&infobox).as_deref(),
+            Some("2020-04-24")
+        );
+    }
+
+    #[test]
+    fn extract_release_date_year_only() {
+        let infobox = Some(vec![InfoboxEntry {
+            key: "发行日期".into(),
+            value: Value::String("2020年".into()),
+        }]);
+        assert_eq!(
+            extract_release_date_from_infobox(&infobox).as_deref(),
+            Some("2020")
+        );
+    }
+
+    #[test]
+    fn extract_release_date_year_month() {
+        let infobox = Some(vec![InfoboxEntry {
+            key: "发售日".into(),
+            value: Value::String("2020年4月".into()),
+        }]);
+        assert_eq!(
+            extract_release_date_from_infobox(&infobox).as_deref(),
+            Some("2020-04")
+        );
+    }
+
+    #[test]
+    fn extract_release_date_missing_returns_none() {
+        let infobox = Some(vec![InfoboxEntry {
+            key: "中文名".into(),
+            value: Value::String("X".into()),
+        }]);
+        assert!(extract_release_date_from_infobox(&infobox).is_none());
+        assert!(extract_release_date_from_infobox(&None).is_none());
     }
 }

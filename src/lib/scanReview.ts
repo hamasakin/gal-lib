@@ -70,3 +70,11 @@ export async function fetchReviewCandidates(
 ): Promise<ReviewCandidates> {
   return invoke<ReviewCandidates>("fetch_review_candidates", { gameId });
 }
+
+/** Quick 20260512c — one-shot reseed: enqueue every `metadata_source='none'`
+ *  or low-confidence-non-manual game currently in the library. Use to recover
+ *  pre-Phase-12 orphans that never went through `sync_review_queue_for_game`.
+ *  Returns the number of rows inserted/replaced. */
+export async function reseedReviewQueue(): Promise<number> {
+  return invoke<number>("reseed_review_queue");
+}

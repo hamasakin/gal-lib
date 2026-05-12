@@ -4169,3 +4169,42 @@ pub async fn fetch_review_candidates(
 
     Ok(ReviewCandidates { bangumi, vndb })
 }
+
+/// Quick 20260512c — backfill the review queue from the existing `games`
+/// table. `sync_review_queue_for_game` only fires on new ingest events, so
+/// any `metadata_source='none'` row that pre-dates Phase 12 is invisible to
+/// the Scan page's ReviewQueue. This IPC reseeds the queue in one shot so
+/// the user can manually rebind those orphans.
+///
+/// Scope: every game where `metadata_source='none'` OR (source is not
+/// 'manual' AND match_confidence < 80). `manual` rows are excluded —
+/// they're the user's confirmed bindings; revisiting them via the queue
+/// would be noise.
+///
+/// `INSERT OR REPLACE` semantics: rows already in the queue keep their PK
+/// but their `created_at` is refreshed so the UI's ORDER BY DESC surfaces
+/// reseeded entries at the top. Previously dismissed games will reappear —
+/// that's the intended "let me see them again" behavior.
+#[tauri::command]
+pub async fn reseed_review_queue(state: State<'_, AppPaths>) -> Result<i64, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let result = sqlx::query(
+        "INSERT OR REPLACE INTO scan_review_queue \
+             (game_id, game_path, current_confidence, suggested_source, suggested_id, created_at) \
+         SELECT id, path, COALESCE(match_confidence, 0), \
+                CASE WHEN metadata_source IN ('bangumi','vndb') THEN metadata_source ELSE NULL END, \
+                CASE metadata_source \
+                  WHEN 'bangumi' THEN bangumi_id \
+                  WHEN 'vndb' THEN vndb_id \
+                  ELSE NULL \
+                END, \
+                strftime('%Y-%m-%dT%H:%M:%fZ','now') \
+         FROM games \
+         WHERE metadata_source = 'none' \
+            OR (metadata_source != 'manual' AND COALESCE(match_confidence, 0) < 80)",
+    )
+    .execute(&*pool)
+    .await
+    .map_err(err_str)?;
+    Ok(result.rows_affected() as i64)
+}
