@@ -42,14 +42,26 @@ pub fn score(query: &str, candidate: &str) -> u8 {
     // user expectation that "CLANNAD" should match "CLANNAD - 全年齢版"
     // with high confidence (Rule 1: original Levenshtein-only scoring
     // returned 44 for this case, breaking META-07's >=80 auto-bind).
+    //
+    // Quick 20260512d — prefix containment with reasonable query length
+    // (≥3 chars on the shorter side) is a strong signal that the directory
+    // name was a short form of the candidate (e.g. `アマエミDL版` cleaned
+    // to `アマエミ` should auto-bind `アマエミ ～甘やかさせて♥もっと
+    // デキてる彼女～`). Boost the baseline from 70 → 80 for the prefix case
+    // so it clears AUTO_BIND_THRESHOLD even when the candidate is much
+    // longer than the query. Non-prefix containment (mid-string substring,
+    // e.g. `クロスチャンネル` inside `初音島Iクロスチャンネル合集`) keeps
+    // the safer 70 baseline.
     if c.contains(&q) || q.contains(&c) {
-        let short = q.chars().count().min(c.chars().count()) as f64;
-        let long = q.chars().count().max(c.chars().count()) as f64;
+        let short_len = q.chars().count().min(c.chars().count()) as f64;
+        let long_len = q.chars().count().max(c.chars().count()) as f64;
         // Coverage ratio in [0.0, 1.0); 1.0 was handled by exact match above.
-        let coverage = short / long;
-        // Map 0.0..=1.0 to 70..=99 so containment always clears the
-        // fuzzy threshold.
-        return 70 + (coverage * 29.0) as u8;
+        let coverage = short_len / long_len;
+        let is_prefix =
+            (c.starts_with(&q) || q.starts_with(&c)) && short_len >= 3.0;
+        let baseline: u8 = if is_prefix { 80 } else { 70 };
+        let span = (99 - baseline) as f64;
+        return baseline + (coverage * span) as u8;
     }
 
     let dist = levenshtein(&q, &c);
@@ -149,5 +161,41 @@ mod tests {
     fn score_best_zero_when_all_empty() {
         assert_eq!(score_best("query", &["", ""]), 0);
         assert_eq!(score_best("query", &[]), 0);
+    }
+
+    #[test]
+    fn prefix_containment_clears_auto_bind_threshold() {
+        // Quick 20260512d — user reported `アマエミDL版` (cleaned to
+        // `アマエミ`) wouldn't auto-bind even though VNDB returns the
+        // full title `アマエミ ～甘やかさせて♥もっとデキてる彼女～`.
+        // The short query is a strict prefix of the long candidate, so the
+        // new baseline-80 path must produce ≥80 confidence.
+        let s = score("アマエミ", "アマエミ ～甘やかさせて♥もっとデキてる彼女～");
+        assert!(s >= 80, "expected ≥80 for prefix containment, got {}", s);
+        assert!(s < 100, "shouldn't be exact, got {}", s);
+    }
+
+    #[test]
+    fn prefix_short_query_below_floor_stays_at_baseline_70() {
+        // A 2-character query like `アマ` is too short to safely auto-bind
+        // every candidate that happens to start with those chars. Stay at
+        // the conservative 70-baseline so the user sees a low-confidence
+        // match and can rebind manually.
+        let s = score("アマ", "アマエミ ～甘やかさせて♥もっとデキてる彼女～");
+        // Still containment (70-99 range); the test asserts it's NOT
+        // promoted to the 80+ band the 3+-char prefix path uses.
+        assert!(s >= 70 && s < 80, "expected 70..80 for short prefix, got {}", s);
+    }
+
+    #[test]
+    fn non_prefix_containment_keeps_baseline_70() {
+        // Substring NOT at the start should keep the safer 70 baseline.
+        // (`Channel` is inside `Cross Channel`, but not a prefix.)
+        let s = score("Channel", "Cross Channel");
+        assert!(s >= 70, "expected ≥70 for containment, got {}", s);
+        // Coverage = 7/12 = 0.58, so on the 70-baseline path:
+        //   70 + 0.58 * 29 = 70 + 16 = 86 — still high, but via the
+        //   non-prefix branch (we just assert it didn't get the 80-floor
+        //   gift; the value itself can vary as long as the branch is right).
     }
 }

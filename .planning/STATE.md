@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: shipped
 stopped_at: "v1.3 milestone shipped + archived (2026-05-12). 下一步: `/gsd-cleanup` 归档 phase 目录 → `/gsd-new-milestone` 定义 v1.4 (first task: 12-step walkthrough)。"
-last_updated: "2026-05-12T10:00:00.000Z"
-last_activity: "2026-05-12 — Quick 20260512c: MetadataPicker 遮罩加深 + Bangumi 年份 infobox 兜底 + reseed_review_queue IPC（让用户手动回灌历史 unmatched 游戏到复核队列）。"
+last_updated: "2026-05-12T10:30:00.000Z"
+last_activity: "2026-05-12 — Quick 20260512d: alert-dialog overlay 同步加深 + match_score 前缀包含 baseline 80（修复 アマエミDL版 等短前缀场景不自动绑定的问题）。"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -81,6 +81,7 @@ None.
 | 20260510b | R18/全年龄 标识 + 自定义视图（schema v8、7 个新命令、网格批量选择模式） | 2026-05-10 | 68afa62 | [20260510b-r18-marker-and-custom-views](./quick/20260510b-r18-marker-and-custom-views/) |
 | 20260512 | 封面 cache-buster — bind/refresh 后前端立即显示新封面（4 处 convertFileSrc 加 ?v=last_scanned_at） | 2026-05-12 | 2cd17b8 | [20260512-cover-cache-buster](./quick/20260512-cover-cache-buster/) |
 | 20260512c | MetadataPicker 遮罩加深 + Bangumi infobox 发售日兜底 + reseed_review_queue IPC + Scan 页按钮 | 2026-05-12 | f38d4a6 | [20260512c-picker-overlay-year-fallback-reseed-review](./quick/20260512c-picker-overlay-year-fallback-reseed-review/) |
+| 20260512d | alert-dialog overlay 同步加深 + match_score 前缀包含 baseline 80（修复 アマエミDL版 等短前缀场景不自动绑） | 2026-05-12 | （pending commit） | [20260512d-overlay-followup-prefix-confidence](./quick/20260512d-overlay-followup-prefix-confidence/) |
 
 ## Session Continuity
 
