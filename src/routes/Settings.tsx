@@ -51,11 +51,10 @@ import {
   addScanRoot,
   clearAllData,
   listScanRoots,
-  refreshAllMetadata,
+  refreshMetadataSmart,
   removeScanRoot,
   startScan,
 } from "@/lib/scan";
-import { backfillReleaseYear } from "@/lib/persons";
 import { getSidebarCategories, searchGames } from "@/lib/search";
 import { getLePath, setLePath as applyLePath } from "@/lib/launch";
 import { useLibraryStore } from "@/store/library";
@@ -256,20 +255,10 @@ export function Settings() {
     }
   }
 
-  async function onRefreshAllMetadata() {
+  async function onRefreshMetadata() {
     try {
-      await refreshAllMetadata();
-      toast.info("元数据刷新已启动");
-      navigate("/");
-    } catch (e: unknown) {
-      toast.error(`启动失败 — ${String(e)}`);
-    }
-  }
-
-  async function onBackfillReleaseYear() {
-    try {
-      await backfillReleaseYear();
-      toast.info("已开始补全发行年份 — 后台运行，受 API 限速影响可能耗时数分钟");
+      await refreshMetadataSmart();
+      toast.info("刷新元数据已启动");
       navigate("/");
     } catch (e: unknown) {
       toast.error(`启动失败 — ${String(e)}`);
@@ -492,42 +481,16 @@ export function Settings() {
           <Section
             id="scan-ops"
             title="扫描操作"
-            lede="增量扫描跳过已绑定的游戏，自动复审「待复核」 · 全量扫描重新发现并匹配 · 强制刷新重跑全部元数据 · 补全发行年份只对历史绑定但缺年份的游戏拉取（不改其它字段）"
+            lede="全量扫描发现并匹配新游戏；刷新元数据对已收录游戏重抓元数据（已绑定的按 ID 直拉、未绑定的走模糊匹配）"
             sectionRefs={sectionRefs}
           >
             <div className="flex flex-wrap gap-2.5">
               <SettingButton primary onClick={() => void onScan("full")}>
                 全量扫描
               </SettingButton>
-              <SettingButton onClick={() => void onScan("incremental")}>
-                增量扫描
+              <SettingButton onClick={() => void onRefreshMetadata()}>
+                刷新元数据
               </SettingButton>
-              <SettingButton onClick={() => void onBackfillReleaseYear()}>
-                补全发行年份
-              </SettingButton>
-              <AlertDialog>
-                <AlertDialogTrigger asChild>
-                  <SettingButton>强制刷新全部元数据</SettingButton>
-                </AlertDialogTrigger>
-                <AlertDialogContent>
-                  <AlertDialogHeader>
-                    <AlertDialogTitle>确定刷新全部元数据？</AlertDialogTitle>
-                    <AlertDialogDescription>
-                      会对所有游戏重新搜索 Bangumi/VNDB，
-                      <span className="text-ink-1">含已绑定与手动绑定的</span>
-                      。手动指定的封面/标题可能被覆盖。受 API 限速器约束，库越大越慢。若只想给历史绑定补回发行年份（不改其它字段），请使用「补全发行年份」按钮。
-                    </AlertDialogDescription>
-                  </AlertDialogHeader>
-                  <AlertDialogFooter>
-                    <AlertDialogCancel>取消</AlertDialogCancel>
-                    <AlertDialogAction
-                      onClick={() => void onRefreshAllMetadata()}
-                    >
-                      确定刷新
-                    </AlertDialogAction>
-                  </AlertDialogFooter>
-                </AlertDialogContent>
-              </AlertDialog>
             </div>
           </Section>
 

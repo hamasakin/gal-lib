@@ -6,7 +6,6 @@
  *   - `list_games_for_person(person_id, role?)` — backlinks for `/persons/:id`
  *   - `list_official_tags_for_game(game_id)` — Bangumi/VNDB tag list
  *   - `get_filter_options()` — distinct facet options for FilterPanel
- *   - `backfill_release_year()` — 补全发行年份（仅 release_year，对 manual 绑定无损）
  *   - `open_external_url(url)` — opens default browser via shell start (http(s) only)
  *
  * Field names use snake_case to match Rust serde-deserialized payloads
@@ -159,22 +158,11 @@ export async function getFilterOptions(): Promise<FilterOptions> {
 }
 
 /**
- * Quick 260513-2nx — 补全所有已绑定（bangumi_id 或 vndb_id 非空）但
- * `release_year` 为 NULL 的游戏年份。按 source_id 直连 `fetch_detail`
- * （不重做模糊匹配），只写 release_year + last_scanned_at —— 对 manual
- * 绑定零损伤。
- *
- * Fire-and-forget；进度走现有 `meta-fetch-progress-meta` /
- * `meta-fetch-progress` 事件通道（BackfillProgressBar 已订阅）。
- * 可通过 `cancelBackfill()` 中止。
- */
-export async function backfillReleaseYear(): Promise<void> {
-  await invoke("backfill_release_year");
-}
-
-/**
  * Phase 13 (POL-03) — request the in-flight backfill to stop at the next
  * iteration boundary. Idempotent and safe when no backfill is running.
+ * Quick 260513-3df: 当前没有 IPC 消费这个 flag——`backfillReleaseYear`
+ * 已折进 `refreshMetadataSmart`（走 ScanState + cancelScan）；该 wrapper
+ * 保留作为向前兼容点。
  */
 export async function cancelBackfill(): Promise<void> {
   await invoke("cancel_backfill");

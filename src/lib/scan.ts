@@ -87,14 +87,15 @@ export async function addGame(dirPath: string): Promise<number> {
 }
 
 /**
- * Bulk version of `refresh_metadata` — re-runs the Bangumi+VNDB search
- * for every game in the library, including already-bound rows. Reuses
- * the `scan-progress` event stream so the existing progress bar UI
- * surfaces progress without extra wiring. Resolves immediately after
- * spawning the worker task on the Rust side.
+ * Quick 260513-3df — 统一刷新元数据入口。对未绑定行做模糊匹配（用
+ * `games.name` 当 query），对已绑定行按 source_id 直拉
+ * `fetch_detail` / `fetch_persons` / `fetch_characters`（不重做匹配，
+ * manual 安全）。共享 `scan-progress` + `meta-fetch-progress` 事件通道；
+ * 可被 `cancelScan` 中止。Resolves immediately after spawning the worker
+ * task on the Rust side.
  */
-export async function refreshAllMetadata(): Promise<void> {
-  await invoke("refresh_all_metadata");
+export async function refreshMetadataSmart(): Promise<void> {
+  await invoke("refresh_metadata_smart");
 }
 
 /**
