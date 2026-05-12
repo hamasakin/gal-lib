@@ -1,12 +1,12 @@
 /**
  * Phase 11 — invoke wrappers for the metadata-enrichment IPC layer.
  *
- * Mirrors the 6 commands registered in `src-tauri/src/lib.rs` (Phase 11):
+ * Mirrors the commands registered in `src-tauri/src/lib.rs` (Phase 11):
  *   - `list_persons_for_game(game_id)` — staff + voice for a single game
  *   - `list_games_for_person(person_id, role?)` — backlinks for `/persons/:id`
  *   - `list_official_tags_for_game(game_id)` — Bangumi/VNDB tag list
  *   - `get_filter_options()` — distinct facet options for FilterPanel
- *   - `backfill_metadata_enrichment()` — async batch enrichment for already-bound games
+ *   - `backfill_release_year()` — 补全发行年份（仅 release_year，对 manual 绑定无损）
  *   - `open_external_url(url)` — opens default browser via shell start (http(s) only)
  *
  * Field names use snake_case to match Rust serde-deserialized payloads
@@ -159,14 +159,17 @@ export async function getFilterOptions(): Promise<FilterOptions> {
 }
 
 /**
- * Trigger backfill enrichment for all games with a bound source-id but no
- * `game_staff` rows. Fire-and-forget — progress is reported through the
- * existing `meta-fetch-progress` event channel (subscribed in main.tsx).
- * Bangumi's 1req/s limiter caps real-world throughput at ~3 games/sec
- * (3 endpoints per game) so a 200-game library takes ≈10 minutes.
+ * Quick 260513-2nx — 补全所有已绑定（bangumi_id 或 vndb_id 非空）但
+ * `release_year` 为 NULL 的游戏年份。按 source_id 直连 `fetch_detail`
+ * （不重做模糊匹配），只写 release_year + last_scanned_at —— 对 manual
+ * 绑定零损伤。
+ *
+ * Fire-and-forget；进度走现有 `meta-fetch-progress-meta` /
+ * `meta-fetch-progress` 事件通道（BackfillProgressBar 已订阅）。
+ * 可通过 `cancelBackfill()` 中止。
  */
-export async function backfillMetadataEnrichment(): Promise<void> {
-  await invoke("backfill_metadata_enrichment");
+export async function backfillReleaseYear(): Promise<void> {
+  await invoke("backfill_release_year");
 }
 
 /**
