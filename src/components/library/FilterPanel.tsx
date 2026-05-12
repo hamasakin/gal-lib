@@ -27,7 +27,6 @@ import {
 import { cn } from "@/lib/utils";
 import {
   type AdvancedFilter,
-  type AgeRatingSlice,
   type DurationBucket,
   countActiveSlices,
   EMPTY_ADV_FILTER,
@@ -69,12 +68,6 @@ const DURATION_OPTIONS: Array<{ value: DurationBucket; label: string }> = [
   { value: "h50plus", label: "50 h+" },
 ];
 
-const AGE_RATING_OPTIONS: Array<{ value: AgeRatingSlice; label: string }> = [
-  { value: "r18", label: "R18" },
-  { value: "all_ages", label: "全年龄" },
-  { value: "unknown", label: "未知 / 未抓取" },
-];
-
 function cloneFilter(f: AdvancedFilter): AdvancedFilter {
   return {
     statuses: new Set(f.statuses),
@@ -86,7 +79,6 @@ function cloneFilter(f: AdvancedFilter): AdvancedFilter {
     brands: new Set(f.brands),
     staffIds: new Set(f.staffIds),
     officialTags: new Set(f.officialTags),
-    ageRatings: new Set(f.ageRatings),
   };
 }
 
@@ -296,25 +288,6 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
                     setDraft({
                       ...draft,
                       durations: toggleSet(draft.durations, value),
-                    })
-                  }
-                />
-              ))}
-            </div>
-          </Section>
-
-          {/* 年龄分级 — Quick 20260510b */}
-          <Section label="年龄分级">
-            <div className="flex flex-col gap-1.5">
-              {AGE_RATING_OPTIONS.map(({ value, label }) => (
-                <CheckRow
-                  key={value}
-                  label={label}
-                  on={draft.ageRatings.has(value)}
-                  onClick={() =>
-                    setDraft({
-                      ...draft,
-                      ageRatings: toggleSet(draft.ageRatings, value),
                     })
                   }
                 />

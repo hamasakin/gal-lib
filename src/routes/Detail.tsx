@@ -83,7 +83,6 @@ import { LaunchButton } from "@/components/library/LaunchButton";
 import {
   listGames,
   openGameDir,
-  updateGameAgeRating,
   updateGameFavorite,
   updateGameNotes,
   updateGameRating,
@@ -637,23 +636,6 @@ export default function Detail() {
     }
   }
 
-  async function onSetAgeRating(next: "r18" | "all_ages" | null) {
-    if (!game || next === (game.age_rating ?? null)) return;
-    try {
-      await updateGameAgeRating(game.id, next);
-      await refreshGame();
-      toast.success(
-        next === "r18"
-          ? "已标记为 R18"
-          : next === "all_ages"
-            ? "已标记为全年龄"
-            : "已清除年龄分级",
-      );
-    } catch (e: unknown) {
-      toast.error(`分级更新失败 — ${String(e)}`);
-    }
-  }
-
   async function onTagsChanged() {
     try {
       const [tags, gtags] = await Promise.all([
@@ -1067,31 +1049,6 @@ export default function Detail() {
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onClick={() => void onCreateAndAddView()}>
                         新建视图…
-                      </DropdownMenuItem>
-                    </DropdownMenuSubContent>
-                  </DropdownMenuPortal>
-                </DropdownMenuSub>
-                <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>标记年龄分级</DropdownMenuSubTrigger>
-                  <DropdownMenuPortal>
-                    <DropdownMenuSubContent>
-                      <DropdownMenuItem
-                        disabled={game.age_rating === "r18"}
-                        onClick={() => void onSetAgeRating("r18")}
-                      >
-                        R18
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={game.age_rating === "all_ages"}
-                        onClick={() => void onSetAgeRating("all_ages")}
-                      >
-                        全年龄
-                      </DropdownMenuItem>
-                      <DropdownMenuItem
-                        disabled={game.age_rating == null}
-                        onClick={() => void onSetAgeRating(null)}
-                      >
-                        清除（未知）
                       </DropdownMenuItem>
                     </DropdownMenuSubContent>
                   </DropdownMenuPortal>

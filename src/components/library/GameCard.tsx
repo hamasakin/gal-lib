@@ -334,12 +334,8 @@ function GameCardImpl({
               </div>
             )}
 
-            {/* Top-right stack — favorite heart + age-rating badge.
-                Both stack vertically (heart on top, badge below) so they
-                don't fight for the same px when both are present.
-                Quick 20260510b — age-rating badge mirrors the stamp aesthetic
-                (border-current + black/35 backdrop + mono 9px); not rendered
-                when age_rating is null (unknown / not yet enriched). */}
+            {/* Top-right — favorite heart only (no age-rating badge after
+                Quick 260513-404). */}
             <div className="absolute right-2 top-2 z-[3] flex flex-col items-end gap-1.5">
               {game.is_favorite && (
                 <div
@@ -348,24 +344,6 @@ function GameCardImpl({
                 >
                   <Heart size={14} fill="currentColor" strokeWidth={1.5} />
                 </div>
-              )}
-              {game.age_rating === "r18" && (
-                <span
-                  className="inline-flex items-center px-1.5 py-[2px] border border-current bg-black/45 font-mono text-[9px] uppercase tracking-[0.12em] text-[#e26c5e] backdrop-blur"
-                  style={{ borderRadius: "var(--r-sm)" }}
-                  title="R18"
-                >
-                  R18
-                </span>
-              )}
-              {game.age_rating === "all_ages" && (
-                <span
-                  className="inline-flex items-center px-1.5 py-[2px] border border-current bg-black/45 font-mono text-[9px] uppercase tracking-[0.12em] text-[#6fd1c8] backdrop-blur"
-                  style={{ borderRadius: "var(--r-sm)" }}
-                  title="全年龄"
-                >
-                  全年龄
-                </span>
               )}
             </div>
 

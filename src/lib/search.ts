@@ -66,12 +66,6 @@ export interface SearchFilter {
   brands?: string[];
   staff_ids?: number[];
   official_tags?: string[];
-  // Quick 20260510b
-  /**
-   * Multi-select age rating. Each entry is one of `"r18"` (R18), `"all_ages"`
-   * (全年龄), or `"unknown"` (matches NULL). OR within the list.
-   */
-  age_ratings?: Array<"r18" | "all_ages" | "unknown">;
   /** Restrict to games belonging to this custom view. */
   custom_view_id?: number;
 }

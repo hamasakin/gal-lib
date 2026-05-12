@@ -20,9 +20,6 @@ export type DurationBucket =
   | "h10to50"
   | "h50plus";
 
-/** Quick 20260510b — slice value for the age-rating section. "unknown" matches `age_rating == null`. */
-export type AgeRatingSlice = "r18" | "all_ages" | "unknown";
-
 export interface AdvancedFilter {
   /** Multi-status include set; empty = no constraint. */
   statuses: Set<Game["status"]>;
@@ -48,8 +45,6 @@ export interface AdvancedFilter {
   staffIds: Set<number>;
   /** Official tag-name set; empty = no constraint. */
   officialTags: Set<string>;
-  /** Quick 20260510b — age-rating multi-select; empty = no constraint. */
-  ageRatings: Set<AgeRatingSlice>;
 }
 
 export const EMPTY_ADV_FILTER: AdvancedFilter = {
@@ -62,7 +57,6 @@ export const EMPTY_ADV_FILTER: AdvancedFilter = {
   brands: new Set(),
   staffIds: new Set(),
   officialTags: new Set(),
-  ageRatings: new Set(),
 };
 
 /** True iff the filter would narrow the input set. */
@@ -76,8 +70,7 @@ export function isAdvFilterActive(f: AdvancedFilter): boolean {
     f.reviewOnly ||
     f.brands.size > 0 ||
     f.staffIds.size > 0 ||
-    f.officialTags.size > 0 ||
-    f.ageRatings.size > 0
+    f.officialTags.size > 0
   );
 }
 
@@ -92,7 +85,6 @@ export function countActiveSlices(f: AdvancedFilter): number {
   if (f.brands.size > 0) n++;
   if (f.staffIds.size > 0) n++;
   if (f.officialTags.size > 0) n++;
-  if (f.ageRatings.size > 0) n++;
   return n;
 }
 
@@ -134,12 +126,6 @@ export function applyAdvancedFilter(
     // already narrowed server-side by the time we get here.
     if (f.brands.size > 0) {
       if (g.brand == null || !f.brands.has(g.brand)) return false;
-    }
-    // Quick 20260510b — age_rating is on the Game row, so we can filter
-    // client-side. "unknown" is the sentinel for `age_rating == null`.
-    if (f.ageRatings.size > 0) {
-      const slice: AgeRatingSlice = g.age_rating ?? "unknown";
-      if (!f.ageRatings.has(slice)) return false;
     }
     return true;
   });

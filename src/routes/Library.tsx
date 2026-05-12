@@ -90,8 +90,7 @@ function isFilterEmpty(f: SearchFilter): boolean {
     f.custom_view_id == null &&
     (f.brands == null || f.brands.length === 0) &&
     (f.staff_ids == null || f.staff_ids.length === 0) &&
-    (f.official_tags == null || f.official_tags.length === 0) &&
-    (f.age_ratings == null || f.age_ratings.length === 0)
+    (f.official_tags == null || f.official_tags.length === 0)
   );
 }
 
