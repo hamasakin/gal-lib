@@ -201,7 +201,9 @@ pub fn run() {
             commands::search_metadata,
             commands::bind_metadata,
             commands::refresh_metadata,
-            commands::refresh_all_metadata,
+            // Quick 260513-3df — unified two-button refresh entry; replaces
+            // refresh_all_metadata + backfill_release_year.
+            commands::refresh_metadata_smart,
             commands::list_games,
             // 03d — launch + sessions + LE path
             commands::launch_game,
@@ -250,7 +252,6 @@ pub fn run() {
             commands::list_games_for_person,
             commands::list_official_tags_for_game,
             commands::get_filter_options,
-            commands::backfill_release_year,
             commands::open_external_url,
             // Phase 13 — Person enrichment
             commands::list_co_staff_for_person,
