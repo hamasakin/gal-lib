@@ -2,10 +2,10 @@
 gsd_state_version: 1.0
 milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
-status: ready_for_milestone_audit
-stopped_at: "Phase 15 完成（verification-only：4 个自动化 gate + 12-step walkthrough doc）；下一步: /gsd-audit-milestone v1.3"
-last_updated: "2026-05-12T08:30:00.000Z"
-last_activity: "2026-05-12 — Phase 15 close：自动化全绿 + 完整 real-app walkthrough 清单写入 SUMMARY。所有 4 phase 完成。"
+status: shipped
+stopped_at: "v1.3 milestone shipped + archived (2026-05-12). 下一步: `/gsd-cleanup` 归档 phase 目录 → `/gsd-new-milestone` 定义 v1.4 (first task: 12-step walkthrough)。"
+last_updated: "2026-05-12T09:00:00.000Z"
+last_activity: "2026-05-12 — v1.3 milestone close: roadmap + requirements archived to milestones/v1.3-*.md；ROADMAP.md collapsed；PROJECT.md updated；git tag v1.3 pending."
 progress:
   total_phases: 4
   completed_phases: 4

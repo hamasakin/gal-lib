@@ -1,5 +1,36 @@
 # Milestones
 
+## v1.3 Scan Pipeline & Person Polish (Shipped: 2026-05-12)
+
+**Phases completed:** 4 phases (12-15), 16 plans, executed via /gsd-autonomous across two sessions.
+**Score:** 17/17 requirements code-shipped; real-app smoke deferred — 12-step walkthrough V-01..V-12 in `milestones/v1.3-phases/15-v12-real-app-smoke/15-SUMMARY.md` carries to v1.4 (will be archived to `milestones/v1.3-phases/` by `/gsd-cleanup`).
+**Audit:** [milestones/v1.3-MILESTONE-AUDIT.md](milestones/v1.3-MILESTONE-AUDIT.md)
+**Archive:** [milestones/v1.3-ROADMAP.md](milestones/v1.3-ROADMAP.md) · [milestones/v1.3-REQUIREMENTS.md](milestones/v1.3-REQUIREMENTS.md)
+
+**Key accomplishments:**
+
+- **Phase 12 — Scan Pipeline & Review Queue** — 上线独立 `/scan` 路由（无 Library 侧栏 + 顶部窄返回 nav + KPI 4 联：已扫游戏 / 已绑定 / 待复核 / 不匹配）；新表 `scan_review_queue`（schema v9）持久化待复核卡片；双栏 feed — 左 ScanFeed 增量日志，右 ReviewQueue 卡片队列；展开卡片显示 Bangumi vs VNDB 并排候选对比，一键采用触发 ingest 重抓 + 队列移除；5 新 IPC（get_scan_kpis / list_scan_review_queue / dismiss_review_item / accept_review_candidate / fetch_review_candidates）；侧栏 pulse-dot 在 review queue 非空时常驻。
+
+- **Phase 13 — Person Enrichment & Backfill UX** — PER-01 commands.rs `merge_persons()` 按 (name_lc, role, character_lc) 折叠 Bangumi+VNDB 同人，sources/person_ids attribution 保留 (4 fixture tests)。PER-02 `PersonTimeline.tsx` 横向年份气泡 sqrt(playtime)→8..28px + Tooltip。PER-03 `list_co_staff_for_person` SQL HAVING coshare ≥ 2 + role_hint 子查询 + `CoStaffStrip.tsx`。PER-04 `portrait_cache.rs` cache-first `data/portraits/`，Bangumi `/v0/persons/{id}` images.medium，VNDB v1.4；Persons.tsx + CoStaffStrip 接入头像 + monogram fallback。POL-03 BackfillState AtomicBool + `cancel_backfill` IPC + `meta-fetch-progress-meta {total,done,cancelled}` + per-game name；BackfillProgressBar 2px 渐变条 + cancel AlertDialog + 5s auto-hide。
+
+- **Phase 14 — Filesystem Actions & Detail Polish** — FS-01 引入 `tauri-plugin-opener = "2"`，新 `open_path` IPC 走 OpenerExt，`open_in_explorer` / `open_external_url` 内部 delegate；capabilities default.json 增 3 行 opener 权限。FS-02 GameCard ContextMenu「打开目录」。FS-03 Screenshots 每组 header「打开目录」拼 `${dataDir}/screenshots/${id}`。POL-01 Detail.tsx DETAIL_TABS 6 个 + useSearchParams 受控 Tabs，`?tab=` deeplink + URL replace 写回。POL-02 新 `get_session_count` IPC（`SELECT COUNT(*) FROM sessions WHERE ended_at IS NOT NULL`），Stats sub 改「N 次会话」+ fallback。POL-04 PROJECT.md Key Decisions LIB-02 「✗ 废止」+ tauri-plugin-opener「⤴ Reversed」。
+
+- **Phase 15 — v1.2 Real-app Smoke Verification (verification-only)** — Autonomous 模式下不能跑 GUI；重跑全套自动化 (cargo build + 68/68 tests + tsc + pnpm build 全绿) 确认无回归；写入 12-step walkthrough V-01..V-12 SUMMARY（v1.2 VER-01/02/03 + Phase 13 5 项 + Phase 14 4 项），由 v1.4 milestone audit 期间执行。
+
+**Cross-phase integration**: 4 phase 共 16 plan + 5 个 docs commit；schema v9 单一 migration 一次迁完；自动化层全程绿；Bundle 730 KB JS（v1.2 776 KB → -46 KB）。
+
+**Bundle delta**: backend cargo build OK (5 pre-existing dead-code warnings)；frontend 730 KB JS gzip 219 KB / 58 KB CSS gzip 12 KB（vs v1.2 ~776 KB JS）。
+
+**Known carry-over to v1.4:**
+- 12-step walkthrough V-01..V-12 真机执行（最高优先级，blocking v1.4 第一件事）
+- VNDB portrait 抓取（PER-04 二期，GraphQL person query image.url）
+- 跨源 persons 物理合并（迁移 game_staff FK）
+- co-staff 复杂权重（voice ↔ scenario 的 affinity）
+- 完成度 chip / 自动定时 backfill / portrait CDN 代理 / Stats 会话相关 KPI 增量分组
+- 5 个 pre-existing cargo warnings 清理
+
+---
+
 ## v1.2 Metadata Enrichment & Filtering (Shipped: 2026-05-09)
 
 **Phases completed:** 1 phase (11), 7 plans (11a-g), executed via /gsd-autonomous in single session.
