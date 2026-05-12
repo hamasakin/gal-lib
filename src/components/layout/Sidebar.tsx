@@ -1,19 +1,21 @@
 /**
  * Sidebar — left rail navigation.
  *
- * v1.1 redesign — adopts design contract `.sb-*` aesthetic:
- *   - Width driven by --sidebar-w (narrow/regular/wide via Tweaks)
- *   - Section labels in mono uppercase 9.5px tracking 0.14em
- *   - Status rows use colored 6px square dots (s-playing/cleared/dropped/todo)
- *   - Hover bg-2 / active bg-accent-soft + ink-stamp accent left bar replaced
- *     by a subtle background highlight (matches design's full-row active state)
- *   - 全部 / 收藏 / 通关状态 / 标签 / 品牌 / 年代 + 底部 统计 + 设置
+ * Structure (v1.4 redesign — Quick 20260512e):
+ *   ScrollArea (主区)
+ *     图书馆      · 图书馆全景 · 收藏夹 · 扫描复核(badge)
+ *     通关状态    · 游玩中 · 已通关 · 未开始 · 弃坑
+ *     我的视图    · custom_views… (＋ 新建)
+ *     自定义标签  · # tag…
+ *   底部固定区 (border-t)
+ *     · 游玩统计 · 截图集 · 设置
  *
- * Functional logic preserved from v1.0:
- *   - Single-axis activation (clicking a leaf REPLACES filter slice)
- *   - "全部" resets filter AND searchQuery
- *   - Route bounce to "/" when clicking from Settings/Stats
- *   - Source-of-truth fetch of getSidebarCategories on mount
+ * 已移除：品牌·厂牌 / 发行年份 — 这些与 toolbar 上 FilterPanel 的多维筛选完全
+ * 重叠，旧的 `filter.brand` / `filter.year_decade` 单字段筛选不再从这里进入
+ * （后端字段保留，FilterChip 仍能显示兜底）。
+ *
+ * 行为不变：单击 leaf REPLACES filter slice；"全部" 同时清空 searchQuery；
+ * 跨路由点击会先 navigate("/")。
  */
 
 import { useEffect, useState } from "react";
@@ -194,30 +196,6 @@ export function Sidebar() {
     );
   }
 
-  function isBrandActive(brand: string): boolean {
-    return (
-      onLibraryRoute &&
-      filter.brand === brand &&
-      filter.tag_id == null &&
-      filter.status == null &&
-      !filter.favorite &&
-      filter.year_decade == null &&
-      filter.custom_view_id == null
-    );
-  }
-
-  function isDecadeActive(decade: number): boolean {
-    return (
-      onLibraryRoute &&
-      filter.year_decade === decade &&
-      filter.tag_id == null &&
-      filter.status == null &&
-      !filter.favorite &&
-      filter.brand == null &&
-      filter.custom_view_id == null
-    );
-  }
-
   function isCustomViewActive(viewId: number): boolean {
     return (
       onLibraryRoute &&
@@ -299,7 +277,7 @@ export function Sidebar() {
     >
       <ScrollArea className="flex-1">
         <div className="flex flex-col py-2">
-          {!isIconMode && <SectionLabel>视图</SectionLabel>}
+          {!isIconMode && <SectionLabel>图书馆</SectionLabel>}
           <SidebarRow
             label="图书馆全景"
             icon={LibraryIcon}
@@ -316,8 +294,18 @@ export function Sidebar() {
             onClick={() => applyFilter({ favorite: true })}
             iconMode={isIconMode}
           />
+          <SidebarRow
+            label="扫描复核"
+            icon={SearchCheck}
+            count={reviewPending > 0 ? reviewPending : undefined}
+            badge={reviewPending > 0}
+            active={isScanActive}
+            onClick={() => navigate("/scan")}
+            iconMode={isIconMode}
+          />
 
           {!isIconMode && <SectionLabel>通关状态</SectionLabel>}
+          {isIconMode && <div aria-hidden className="mx-3 my-2 h-px bg-line" />}
           {STATUS_DISPLAY.map(({ value, label, dotClass }) => {
             const count =
               sidebar?.statuses.find((s) => s.status === value)?.count ?? 0;
@@ -334,48 +322,8 @@ export function Sidebar() {
             );
           })}
 
-          {!isIconMode && <SectionLabel>工具</SectionLabel>}
-          {isIconMode && (
-            <div
-              aria-hidden
-              className="mx-3 my-2 h-px bg-line"
-            />
-          )}
-          <SidebarRow
-            label="扫描复核"
-            icon={SearchCheck}
-            count={reviewPending > 0 ? reviewPending : undefined}
-            badge={reviewPending > 0}
-            active={isScanActive}
-            onClick={() => navigate("/scan")}
-            iconMode={isIconMode}
-          />
-          <SidebarRow
-            label="游玩统计"
-            icon={BarChart3}
-            active={isStatsActive}
-            onClick={() => navigate("/stats")}
-            iconMode={isIconMode}
-          />
-          <SidebarRow
-            label="截图集"
-            icon={ImageIcon}
-            active={isScreenshotsActive}
-            onClick={() => navigate("/screenshots")}
-            iconMode={isIconMode}
-          />
-          <SidebarRow
-            label="设置"
-            icon={SettingsIcon}
-            active={isSettingsActive}
-            onClick={() => navigate("/settings")}
-            iconMode={isIconMode}
-          />
-
-          {/* Quick 20260510b — 我的视图 (custom views).
-              Rendered before 自定义标签 so curated lists stay near the top.
-              The section header has a + affordance to create a new view;
-              individual rows have a right-click menu for rename/delete. */}
+          {/* 我的视图 — 用户自定义视图（custom views）。右键菜单可重命名/删除；
+              section header 的 ＋ 直接新建。 */}
           {!isIconMode && (
             <>
               <div className="flex items-center justify-between pr-3">
@@ -465,46 +413,33 @@ export function Sidebar() {
               ))}
             </>
           )}
-
-          {!isIconMode && (sidebar?.brands ?? []).length > 0 && (
-            <>
-              <SectionLabel>品牌 · 厂牌</SectionLabel>
-              {/* Cap visible height to ~10 rows; scroll the rest in-place so a
-                  long brand list (50+ entries) doesn't push 发行年份 below
-                  the viewport. */}
-              <div
-                className="max-h-[300px] overflow-y-auto"
-                style={{ scrollbarWidth: "thin" }}
-              >
-                {sidebar!.brands.map(({ brand, count }) => (
-                  <SidebarRow
-                    key={`b-${brand}`}
-                    label={brand}
-                    count={count}
-                    active={isBrandActive(brand)}
-                    onClick={() => applyFilter({ brand })}
-                  />
-                ))}
-              </div>
-            </>
-          )}
-
-          {!isIconMode && (sidebar?.year_decades ?? []).length > 0 && (
-            <>
-              <SectionLabel>发行年份</SectionLabel>
-              {sidebar!.year_decades.map(({ decade, count }) => (
-                <SidebarRow
-                  key={`y-${decade}`}
-                  label={`${decade}s 年代`}
-                  count={count}
-                  active={isDecadeActive(decade)}
-                  onClick={() => applyFilter({ year_decade: decade })}
-                />
-              ))}
-            </>
-          )}
         </div>
       </ScrollArea>
+
+      {/* 底部固定导航 — 次要页面入口，不参与筛选，不随主区滚动 */}
+      <div className="flex shrink-0 flex-col border-t border-line py-1.5">
+        <SidebarRow
+          label="游玩统计"
+          icon={BarChart3}
+          active={isStatsActive}
+          onClick={() => navigate("/stats")}
+          iconMode={isIconMode}
+        />
+        <SidebarRow
+          label="截图集"
+          icon={ImageIcon}
+          active={isScreenshotsActive}
+          onClick={() => navigate("/screenshots")}
+          iconMode={isIconMode}
+        />
+        <SidebarRow
+          label="设置"
+          icon={SettingsIcon}
+          active={isSettingsActive}
+          onClick={() => navigate("/settings")}
+          iconMode={isIconMode}
+        />
+      </div>
     </aside>
   );
 }

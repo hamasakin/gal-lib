@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: shipped
 stopped_at: "v1.3 milestone shipped + archived (2026-05-12). 下一步: `/gsd-cleanup` 归档 phase 目录 → `/gsd-new-milestone` 定义 v1.4 (first task: 12-step walkthrough)。"
-last_updated: "2026-05-12T10:30:00.000Z"
-last_activity: "2026-05-12 — Quick 20260512d: alert-dialog overlay 同步加深 + match_score 前缀包含 baseline 80（修复 アマエミDL版 等短前缀场景不自动绑定的问题）。"
+last_updated: "2026-05-12T12:00:00.000Z"
+last_activity: "2026-05-12 — Quick 20260512e: main overflow-hidden 修双滚动条 + Sidebar 去掉与 FilterPanel 重复的品牌/年份并把次要导航移到底部固定区。"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -82,6 +82,7 @@ None.
 | 20260512 | 封面 cache-buster — bind/refresh 后前端立即显示新封面（4 处 convertFileSrc 加 ?v=last_scanned_at） | 2026-05-12 | 2cd17b8 | [20260512-cover-cache-buster](./quick/20260512-cover-cache-buster/) |
 | 20260512c | MetadataPicker 遮罩加深 + Bangumi infobox 发售日兜底 + reseed_review_queue IPC + Scan 页按钮 | 2026-05-12 | f38d4a6 | [20260512c-picker-overlay-year-fallback-reseed-review](./quick/20260512c-picker-overlay-year-fallback-reseed-review/) |
 | 20260512d | alert-dialog overlay 同步加深 + match_score 前缀包含 baseline 80（修复 アマエミDL版 等短前缀场景不自动绑） | 2026-05-12 | 8b717e2 | [20260512d-overlay-followup-prefix-confidence](./quick/20260512d-overlay-followup-prefix-confidence/) |
+| 20260512e | main overflow-hidden 修双滚动条 + Sidebar 去掉与 FilterPanel 重复的品牌/年份 + 次要导航底部固定 | 2026-05-12 | (pending) | [20260512e-sidebar-redesign-outer-scrollbar](./quick/20260512e-sidebar-redesign-outer-scrollbar/) |
 
 ## Session Continuity
 

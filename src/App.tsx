@@ -51,7 +51,7 @@ export default function App() {
       <TitlebarSlot />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <main className="min-w-0 flex-1 bg-background">
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
           <Outlet />
         </main>
       </div>
