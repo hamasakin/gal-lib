@@ -82,7 +82,7 @@ None.
 | 20260512 | 封面 cache-buster — bind/refresh 后前端立即显示新封面（4 处 convertFileSrc 加 ?v=last_scanned_at） | 2026-05-12 | 2cd17b8 | [20260512-cover-cache-buster](./quick/20260512-cover-cache-buster/) |
 | 20260512c | MetadataPicker 遮罩加深 + Bangumi infobox 发售日兜底 + reseed_review_queue IPC + Scan 页按钮 | 2026-05-12 | f38d4a6 | [20260512c-picker-overlay-year-fallback-reseed-review](./quick/20260512c-picker-overlay-year-fallback-reseed-review/) |
 | 20260512d | alert-dialog overlay 同步加深 + match_score 前缀包含 baseline 80（修复 アマエミDL版 等短前缀场景不自动绑） | 2026-05-12 | 8b717e2 | [20260512d-overlay-followup-prefix-confidence](./quick/20260512d-overlay-followup-prefix-confidence/) |
-| 20260512e | main overflow-hidden 修双滚动条 + Sidebar 去掉与 FilterPanel 重复的品牌/年份 + 次要导航底部固定 | 2026-05-12 | (pending) | [20260512e-sidebar-redesign-outer-scrollbar](./quick/20260512e-sidebar-redesign-outer-scrollbar/) |
+| 20260512e | main overflow-hidden 修双滚动条 + Sidebar 去掉与 FilterPanel 重复的品牌/年份 + 次要导航底部固定 | 2026-05-12 | d8e7d7e | [20260512e-sidebar-redesign-outer-scrollbar](./quick/20260512e-sidebar-redesign-outer-scrollbar/) |
 
 ## Session Continuity
 
