@@ -250,7 +250,7 @@ pub fn run() {
             commands::list_games_for_person,
             commands::list_official_tags_for_game,
             commands::get_filter_options,
-            commands::backfill_metadata_enrichment,
+            commands::backfill_release_year,
             commands::open_external_url,
             // Phase 13 — Person enrichment
             commands::list_co_staff_for_person,

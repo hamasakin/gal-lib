@@ -68,9 +68,9 @@ impl Default for ScanState {
 }
 
 /// Phase 13 (POL-03) — shared cancel flag for the in-flight backfill loop.
-/// One `AtomicBool` is enough because `backfill_metadata_enrichment` already
-/// fire-and-forgets a single tokio task; the per-iteration check is the only
-/// way `cancel_backfill` can stop it.
+/// One `AtomicBool` is enough because the backfill IPC (now
+/// `backfill_release_year`) fire-and-forgets a single tokio task; the
+/// per-iteration check is the only way `cancel_backfill` can stop it.
 pub struct BackfillState {
     pub cancel: std::sync::atomic::AtomicBool,
 }
@@ -3032,10 +3032,11 @@ fn open_path_impl(app: &AppHandle, path: &str) -> Result<(), String> {
 
 // ── Phase 11 / 11c — metadata enrichment IPCs ──────────────────────────────
 //
-// Six commands powering the Detail-page enrichment panel (staff list, official
+// Commands powering the Detail-page enrichment panel (staff list, official
 // tags), the multi-dim filter sidebar (`get_filter_options`), the cross-page
 // "browse by person" navigation (`list_games_for_person`), the
-// `backfill_metadata_enrichment` migration helper, and external-link opens
+// `backfill_release_year` migration helper (quick 260513-2nx — replaced the
+// older enrichment-backfill IPC), and external-link opens
 // (Bangumi/VNDB urls in the staff popover).
 
 /// Attribution for one underlying `persons` row that contributed to a merged
@@ -3482,16 +3483,20 @@ pub async fn get_filter_options(
     })
 }
 
-/// Backfill staff + official tags for every already-bound game that's still
-/// missing them. The query targets games with a non-NULL bangumi_id or
-/// vndb_id AND zero rows in `game_staff` — a precise selector that picks up
-/// pre-Phase 11 rows without re-touching games already enriched.
+/// Quick 260513-2nx — 仅回灌 release_year。
 ///
-/// Re-uses the existing source_id (no re-search), respects the per-source
-/// rate limiters, and emits `meta-fetch-progress` events so the existing
-/// card-pulse UX surfaces the work.
+/// 针对历史绑定（bangumi_id 或 vndb_id 非空）但 `release_year IS NULL` 的
+/// 游戏行：按已绑定的 source_id 直连 `fetch_detail`（**不重做模糊匹配**，
+/// 对 manual 绑定无损），解析 `release_date` → year，写回 `release_year` +
+/// `last_scanned_at`。**不写** summary/brand/age_rating/tags/staff —— 这是
+/// 与旧 enrichment backfill 行为分道扬镳的核心点（v1.3 enrichment 主流程
+/// 已覆盖那些列）。
+///
+/// 复用 `BackfillState` 与既有事件协议（`meta-fetch-progress-meta` /
+/// `meta-fetch-progress`），BackfillProgressBar 无需改动；可被
+/// `cancel_backfill` 中止。
 #[tauri::command]
-pub async fn backfill_metadata_enrichment(
+pub async fn backfill_release_year(
     app: AppHandle,
     state: State<'_, AppPaths>,
     backfill_state: State<'_, BackfillState>,
@@ -3500,8 +3505,8 @@ pub async fn backfill_metadata_enrichment(
 
     let rows = sqlx::query(
         "SELECT id, name, bangumi_id, vndb_id, metadata_source FROM games \
-         WHERE (bangumi_id IS NOT NULL OR vndb_id IS NOT NULL) \
-           AND id NOT IN (SELECT DISTINCT game_id FROM game_staff)",
+         WHERE release_year IS NULL \
+           AND (bangumi_id IS NOT NULL OR vndb_id IS NOT NULL)",
     )
     .fetch_all(&*pool)
     .await
@@ -3511,8 +3516,7 @@ pub async fn backfill_metadata_enrichment(
         return Ok(());
     }
 
-    // POL-03 — reset cancel flag for this run + announce total before the
-    // task spawns, so the frontend can render the progress bar immediately.
+    // 重置 cancel flag + 先 emit total，frontend 立即能渲染进度条。
     backfill_state
         .cancel
         .store(false, std::sync::atomic::Ordering::Relaxed);
@@ -3522,19 +3526,12 @@ pub async fn backfill_metadata_enrichment(
         serde_json::json!({ "total": total }),
     );
 
-    // Spawn so the command returns immediately; the frontend listens on the
-    // existing `meta-fetch-progress` channel.
     let pool_for_task = pool.clone();
-    // Clone the AtomicBool's owning Arc-like handle. State<'_, BackfillState>
-    // is a Tauri-managed ref; we resolve and clone the inner state via
-    // app.state::<BackfillState>() inside the task to get a 'static borrow.
     let app_for_state = app.clone();
     tokio::spawn(async move {
         let cancel_handle = app_for_state.state::<BackfillState>();
         for row in rows {
-            // POL-03 — cancel check at the top of every iteration. Any
-            // in-flight HTTP for the current game finishes (the limiter wait
-            // is fast), and the rest of the queue is skipped.
+            // 每次迭代开头检查 cancel；命中即广播并 break。
             if cancel_handle
                 .cancel
                 .load(std::sync::atomic::Ordering::Relaxed)
@@ -3555,23 +3552,22 @@ pub async fn backfill_metadata_enrichment(
             let vndb_id: Option<String> = row.try_get("vndb_id").ok();
             let metadata_source: Option<String> = row.try_get("metadata_source").ok();
 
-            // Decide which source to enrich from. Prefer the bound
-            // metadata_source; fall back to whichever id is present.
-            let (source_enum, source_id, source_str) = match metadata_source.as_deref() {
+            // 与旧函数 match 块完全一致：按 metadata_source 优先选源，
+            // manual/None/其它 fallback 到「先 bangumi_id 后 vndb_id」。
+            let (source_enum, source_id) = match metadata_source.as_deref() {
                 Some("bangumi") => match bangumi_id.as_ref() {
-                    Some(id) => (MetadataSource::Bangumi, id.clone(), "bangumi".to_string()),
+                    Some(id) => (MetadataSource::Bangumi, id.clone()),
                     None => continue,
                 },
                 Some("vndb") => match vndb_id.as_ref() {
-                    Some(id) => (MetadataSource::Vndb, id.clone(), "vndb".to_string()),
+                    Some(id) => (MetadataSource::Vndb, id.clone()),
                     None => continue,
                 },
                 _ => {
-                    // Manual or none: fall back to whichever id is present.
                     if let Some(id) = bangumi_id.as_ref() {
-                        (MetadataSource::Bangumi, id.clone(), "bangumi".to_string())
+                        (MetadataSource::Bangumi, id.clone())
                     } else if let Some(id) = vndb_id.as_ref() {
-                        (MetadataSource::Vndb, id.clone(), "vndb".to_string())
+                        (MetadataSource::Vndb, id.clone())
                     } else {
                         continue;
                     }
@@ -3583,97 +3579,42 @@ pub async fn backfill_metadata_enrichment(
                 serde_json::json!({ "game_id": game_id, "phase": "started", "name": game_name }),
             );
 
-            // 3 fetches: detail (summary/brand/tags) + persons + characters.
-            // Best-effort each; the helper module already logs on failure.
+            // **只调一次** fetch_detail；不拉 persons / characters。
             let detail = match source_enum {
                 MetadataSource::Bangumi => metadata::bangumi::fetch_detail(&source_id).await,
                 MetadataSource::Vndb => metadata::vndb::fetch_detail(&source_id).await,
-                _ => continue,
+                _ => {
+                    let _ = app.emit(
+                        "meta-fetch-progress",
+                        serde_json::json!({ "game_id": game_id, "phase": "finished", "name": game_name }),
+                    );
+                    continue;
+                }
             };
-            // Quick 20260512b — also capture release_year so backfill fills the
-            // column for old library rows missing release_year.
-            let (summary, brand, tags, is_r18, release_year) = match detail {
+
+            match detail {
                 Ok(d) => {
-                    let year = ingest::parse_release_year(d.release_date.as_deref());
-                    (d.summary, d.brand, d.tags, d.is_r18, year)
+                    // 复用 quick 20260512b 加的解析器。
+                    if let Some(year) = ingest::parse_release_year(d.release_date.as_deref()) {
+                        // **唯一**这条 UPDATE — 仅写 release_year + last_scanned_at。
+                        let _ = sqlx::query(
+                            "UPDATE games SET release_year = ?, \
+                                              last_scanned_at = datetime('now') \
+                             WHERE id = ?",
+                        )
+                        .bind(year as i64)
+                        .bind(game_id)
+                        .execute(&*pool_for_task)
+                        .await;
+                    }
+                    // year.is_none() → 跳过 UPDATE，仍发 finished 事件。
                 }
                 Err(e) => {
                     eprintln!(
-                        "[backfill] fetch_detail failed for game {} ({:?}): {}",
+                        "[backfill-year] fetch_detail failed for game {} ({:?}): {}",
                         game_id, source_enum, e
                     );
-                    (None, None, Vec::new(), None, None)
                 }
-            };
-            let persons = match source_enum {
-                MetadataSource::Bangumi => metadata::bangumi::fetch_persons(&source_id).await,
-                MetadataSource::Vndb => metadata::vndb::fetch_persons(&source_id).await,
-                _ => Ok(Vec::new()),
-            };
-            let mut staff = persons.unwrap_or_else(|e| {
-                eprintln!("[backfill] fetch_persons failed for game {}: {}", game_id, e);
-                Vec::new()
-            });
-            let characters = match source_enum {
-                MetadataSource::Bangumi => metadata::bangumi::fetch_characters(&source_id).await,
-                MetadataSource::Vndb => metadata::vndb::fetch_characters(&source_id).await,
-                _ => Ok(Vec::new()),
-            };
-            match characters {
-                Ok(v) => staff.extend(v),
-                Err(e) => eprintln!(
-                    "[backfill] fetch_characters failed for game {}: {}",
-                    game_id, e
-                ),
-            }
-
-            // Update games row with summary/brand/age_rating/release_year
-            // (preserve manual values via COALESCE — symmetric with
-            // apply_ingest_result).
-            let age_rating_str: Option<&'static str> =
-                is_r18.map(|b| if b { "r18" } else { "all_ages" });
-            let release_year_i64: Option<i64> = release_year.map(|y| y as i64);
-            let _ = sqlx::query(
-                "UPDATE games SET summary = ?, brand = COALESCE(?, brand), \
-                                  age_rating = COALESCE(?, age_rating), \
-                                  release_year = COALESCE(?, release_year), \
-                                  last_scanned_at = datetime('now') \
-                 WHERE id = ?",
-            )
-            .bind(&summary)
-            .bind(&brand)
-            .bind(age_rating_str)
-            .bind(release_year_i64)
-            .bind(game_id)
-            .execute(&*pool_for_task)
-            .await;
-
-            // Synthetic IngestResult so we can reuse the helper.
-            let synthetic = ingest::IngestResult {
-                games_path: String::new(),
-                name: String::new(),
-                name_cn: None,
-                executable_path: None,
-                cover_path: None,
-                cover_url: None,
-                bangumi_id: bangumi_id.clone(),
-                vndb_id: vndb_id.clone(),
-                metadata_source: source_str.clone(),
-                match_confidence: None,
-                summary,
-                brand,
-                staff,
-                tags,
-                is_r18,
-                release_year,
-            };
-            if let Err(e) =
-                write_staff_and_tags(&*pool_for_task, game_id, &source_str, &synthetic).await
-            {
-                eprintln!(
-                    "[backfill] staff/tags write failed for game {}: {}",
-                    game_id, e
-                );
             }
 
             let _ = app.emit(
@@ -3681,8 +3622,7 @@ pub async fn backfill_metadata_enrichment(
                 serde_json::json!({ "game_id": game_id, "phase": "finished", "name": game_name }),
             );
         }
-        // POL-03 — signal final state. If we exited via cancel we already
-        // emitted `cancelled: true`; emit a `done` so the bar can dismiss.
+        // 无论是否中途 cancel 都补一发 done，与旧函数一致。
         let _ = app_for_state.emit(
             "meta-fetch-progress-meta",
             serde_json::json!({ "done": true }),
@@ -3694,7 +3634,7 @@ pub async fn backfill_metadata_enrichment(
 
 /// POL-03 — request that the in-flight backfill loop stop at the next
 /// iteration boundary. Idempotent and safe to call when no backfill is
-/// running (flag just sits true until the next `backfill_metadata_enrichment`
+/// running (flag just sits true until the next `backfill_release_year`
 /// resets it). Returns immediately.
 #[tauri::command]
 pub async fn cancel_backfill(state: State<'_, BackfillState>) -> Result<(), String> {
