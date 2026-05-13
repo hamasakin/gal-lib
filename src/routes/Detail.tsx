@@ -58,6 +58,7 @@ import {
   Search,
 } from "lucide-react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
+import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { toastLaunchSuccess } from "@/lib/toast";
 import { Input } from "@/components/ui/input";
@@ -672,7 +673,9 @@ export default function Detail() {
         cwd: cwd.length > 0 ? cwd : undefined,
         executable_path: exePath.length > 0 ? exePath : undefined,
       });
-      await launchGame(gameId, false);
+      // 详情页的启动按钮只暴露 LE profile（Japanese / 简中 / 繁中 / Custom），
+      // 设计上始终走 Locale Emulator。主界面的「直接启动」走 GameCard 的菜单。
+      await launchGame(gameId, true);
       toastLaunchSuccess(displayName, profile);
     } catch (e: unknown) {
       toast.error(`启动失败 — ${String(e)}`);
@@ -686,6 +689,24 @@ export default function Detail() {
       toast.success("已设置截图间隔");
     } catch (e: unknown) {
       toast.error(`设置截图间隔失败 — ${String(e)}`);
+    }
+  }
+
+  async function onPickExePath() {
+    if (!game) return;
+    try {
+      const picked = await openDialog({
+        multiple: false,
+        directory: false,
+        title: "选择可执行文件",
+        defaultPath: exePath.length > 0 ? exePath : game.path,
+        filters: [{ name: "Executable", extensions: ["exe"] }],
+      });
+      if (typeof picked === "string" && picked.length > 0) {
+        setExePath(picked);
+      }
+    } catch (e: unknown) {
+      toast.error(`选择失败 — ${String(e)}`);
     }
   }
 
@@ -1262,12 +1283,24 @@ export default function Detail() {
                     label="已识别可执行文件"
                     className="md:col-span-2"
                   >
-                    <Input
-                      value={exePath}
-                      onChange={(e) => setExePath(e.target.value)}
-                      placeholder="留空 = 自动识别"
-                      className="font-mono bg-bg-2"
-                    />
+                    <div className="flex items-center gap-2">
+                      <Input
+                        value={exePath}
+                        onChange={(e) => setExePath(e.target.value)}
+                        placeholder="留空 = 自动识别"
+                        className="font-mono bg-bg-2 flex-1"
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void onPickExePath()}
+                        title="浏览本地 .exe 文件"
+                        className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 border border-line bg-bg-2 px-3 text-[12px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-3 hover:text-ink-0"
+                        style={{ borderRadius: "var(--r-md)" }}
+                      >
+                        <FolderOpen size={12} />
+                        浏览…
+                      </button>
+                    </div>
                   </ConfigField>
                   <ConfigField label="截图间隔">
                     <Select
