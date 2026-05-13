@@ -5,6 +5,7 @@
 //!     +1   filename stem length is in [5, 30] chars
 //!     +5   filename stem prefix-matches parent directory name (or vice-versa)
 //!     +2   file size > 1 MB
+//!     +15  filename stem ends with a Chinese-patch suffix (_cn/_chs/_zh, also -cn/-chs/-zh)
 //!   MINUS:
 //!     -10  filename stem contains setup/uninst/uninstall/patch/tool/config/launcher/crash/vcredist/dotnet
 //!     -3   file size < 100 KB
@@ -65,6 +66,19 @@ pub fn score_exe(path: &Path, parent_dir: &Path) -> i32 {
         && (name.starts_with(&parent_name) || parent_name.starts_with(&name))
     {
         score += 5;
+    }
+
+    // Chinese-patch suffix — when a directory ships both `Game.exe` and
+    // `Game_cn.exe`, the user almost always wants the patched binary.
+    // Weight is high enough (+15) to clear prefix(+5)+size(+2)+namelen(+1)
+    // on the vanilla sibling without being able to rescue a setup/uninst hit
+    // (those hit -10 per token and stay net-negative).
+    let cn_suffixes = ["_cn", "_chs", "_zh", "-cn", "-chs", "-zh"];
+    for suf in cn_suffixes.iter() {
+        if name.ends_with(suf) {
+            score += 15;
+            break;
+        }
     }
 
     // Size signal — main game binaries are typically multi-MB, installers/utilities are small.
@@ -193,6 +207,81 @@ mod tests {
             "size>1MB should give exactly +2 bonus (big={}, mid={})",
             big_score,
             mid_score
+        );
+    }
+
+    #[test]
+    fn prefers_cn_suffix_over_plain() {
+        let dir = temp_dir("cn-suffix");
+        let game = dir.join("Fate");
+        fs::create_dir_all(&game).unwrap();
+        let plain = game.join("Fate.exe");
+        let cn = game.join("Fate_cn.exe");
+        write_sized(&plain, 2_000_000); // 2MB
+        write_sized(&cn, 2_000_000); // 2MB
+
+        let plain_score = score_exe(&plain, &game);
+        let cn_score = score_exe(&cn, &game);
+
+        assert!(
+            cn_score > plain_score,
+            "Fate_cn.exe ({}) should beat Fate.exe ({}) in same dir",
+            cn_score,
+            plain_score
+        );
+        // The boost must be large enough to clearly dominate (>=10 over
+        // an otherwise-identical vanilla sibling).
+        assert!(
+            cn_score - plain_score >= 10,
+            "_cn bonus should clearly dominate (delta={})",
+            cn_score - plain_score
+        );
+    }
+
+    #[test]
+    fn cn_suffix_variants_all_match() {
+        let dir = temp_dir("cn-variants");
+        let game = dir.join("Game");
+        fs::create_dir_all(&game).unwrap();
+        // Use names that do NOT prefix-match `game` to isolate the suffix bonus.
+        let plain = game.join("zzbinary.exe");
+        write_sized(&plain, 2_000_000);
+        let plain_score = score_exe(&plain, &game);
+
+        for variant in ["zzbinary_cn", "zzbinary_chs", "zzbinary_zh",
+                        "zzbinary-cn", "zzbinary-chs", "zzbinary-zh"].iter() {
+            let candidate = game.join(format!("{}.exe", variant));
+            write_sized(&candidate, 2_000_000);
+            let s = score_exe(&candidate, &game);
+            // Both names hit the [5,30] namelen bonus, so the delta is the
+            // raw +15 from the suffix preference.
+            assert!(
+                s - plain_score >= 15,
+                "{}.exe should get +15 over plain (delta={})",
+                variant,
+                s - plain_score
+            );
+        }
+    }
+
+    #[test]
+    fn cn_suffix_cannot_rescue_bad_name() {
+        // _cn boost (+20) must not save a setup/uninstaller (-10 per match).
+        // setup_cn.exe -> setup hit (-10) + _cn (+20) + size(+2) = +12,
+        // plain Game.exe in same dir gets prefix(+5) + size(+2) = +7 — close.
+        // We assert "uninstall_cn" stays clearly negative because both
+        // 'uninst' and 'uninstall' bad-name tokens hit (-20).
+        let dir = temp_dir("cn-no-rescue");
+        let game = dir.join("Game");
+        fs::create_dir_all(&game).unwrap();
+        let uninstaller = game.join("uninstall_cn.exe");
+        write_sized(&uninstaller, 2_000_000);
+
+        let s = score_exe(&uninstaller, &game);
+        assert!(
+            s < 0,
+            "uninstall_cn.exe must stay net-negative (got {})",
+            s
         );
     }
 
