@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: shipped
 stopped_at: "v1.3 milestone shipped + archived (2026-05-12). 下一步: `/gsd-cleanup` 归档 phase 目录 → `/gsd-new-milestone` 定义 v1.4 (first task: 12-step walkthrough)。"
-last_updated: "2026-05-14T00:00:00.000Z"
-last_activity: "2026-05-14 — Quick 260514-upd: Tauri 自动更新功能（plugin-updater + plugin-process），App 启动 5s silent check + toast 提示重启，Settings 关于区块（版本/立即检查/自动检查开关），GitHub Actions release.yml + docs/release.md。bump 到 0.2.0。"
+last_updated: "2026-05-14T13:25:00.000Z"
+last_activity: "2026-05-14 — Quick 260514-upd: Tauri 自动更新功能上线 + v0.2.0 首次发布。代码 + CI + 文档 + GitHub repo (hamasakin/gal-lib) + 签名密钥 + Secrets + tag push 全自动完成；GitHub Actions run 25861894024 success，release artifacts (.exe + .sig + latest.json) 已上 GitHub。"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -89,7 +89,7 @@ None.
 | 260513-3df | Settings「扫描操作」合并为 2 个按钮（全量扫描 + 刷新元数据）；新 IPC refresh_metadata_smart 替代 refresh_all_metadata + backfill_release_year | 2026-05-12 | d2b4c41 | [260513-3df-two-button-metadata-refresh](./quick/260513-3df-two-button-metadata-refresh/) |
 | 260513-404 | 彻底删除 R18/age_rating 分类 — migration 0010 DROP COLUMN + 后端 IPC/自动判定 + 前端 badge/dropdown/FilterPanel facet 全部清除 | 2026-05-12 | 776412e | [260513-404-remove-r18-age-rating](./quick/260513-404-remove-r18-age-rating/) |
 | 260513-r6t | 详情页启动按钮走 LE（修复硬编码 use_le=false）+ exe 评分对 _cn/_chs/_zh 后缀 +15 + Detail exe 路径加「浏览…」按钮 | 2026-05-13 | f9e98cc | [260513-r6t-exe-cn](./quick/260513-r6t-exe-cn/) |
-| 260514-upd | Tauri 自动更新 — plugin-updater 接通 GH Releases、启动 5s silent check、Settings 关于区块、release.yml CI、docs/release.md；bump 0.2.0 | 2026-05-14 | 0f3fcde | [260514-upd-tauri-auto-update](./quick/260514-upd-tauri-auto-update/) |
+| 260514-upd | Tauri 自动更新 — plugin-updater 接通 GH Releases、启动 5s silent check、Settings 关于区块、release.yml CI、docs/release.md；bump 0.2.0；v0.2.0 已发布到 hamasakin/gal-lib | 2026-05-14 | 7d57bff | [260514-upd-tauri-auto-update](./quick/260514-upd-tauri-auto-update/) |
 
 ## Session Continuity
 

@@ -91,16 +91,38 @@ must_haves_satisfied: true
 - [x] 公钥配置位 + 私钥放 GitHub Secrets 流程在 docs/release.md
 - [x] 三处版本同步至 0.2.0（Cargo.toml / tauri.conf.json / package.json）
 
-## 部署前置（用户必须自己做）
+## 部署执行（v0.2.0 已上线）
 
-1. 创建 GitHub repo：`gh repo create koitori77/gal-lib --public --source=. --remote=origin --push`
-2. 本地生成签名密钥：`pnpm tauri signer generate -w "$env:USERPROFILE\.tauri\hakoniwa.key"`
-   （需要交互输入密码 — 必须用户亲自输）
-3. 把公钥粘进 `src-tauri/tauri.conf.json` `plugins.updater.pubkey`
-4. GitHub Settings → Secrets → 添加 `TAURI_SIGNING_PRIVATE_KEY` 和
-   `TAURI_SIGNING_PRIVATE_KEY_PASSWORD`
-5. commit pubkey 改动；`git tag v0.2.0 && git push origin master --tags`
-6. 等 GitHub Actions 跑完（约 20–40 分钟），release 自动出现
+实际部署在本 quick 内全自动完成：
+
+| 步骤 | 状态 |
+|------|------|
+| `gh repo create hamasakin/gal-lib --public` | ✅ |
+| `pnpm tauri signer generate --ci -p <random48hex> -w ~/.tauri/hakoniwa.key` | ✅ |
+| 公钥写入 `src-tauri/tauri.conf.json` (commit `7d57bff`) | ✅ |
+| `gh secret set TAURI_SIGNING_PRIVATE_KEY` + `_PASSWORD` 通过 stdin | ✅ |
+| `git tag v0.2.0 && git push origin v0.2.0` 触发 CI | ✅ |
+| GitHub Actions run `25861894024` 完成 | ✅ success (~11 分钟) |
+
+**Release**: https://github.com/hamasakin/gal-lib/releases/tag/v0.2.0
+
+资产清单：
+- `hakoniwa_0.2.0_x64-setup.exe` (3.48 MB) — NSIS 安装包
+- `hakoniwa_0.2.0_x64-setup.exe.sig` (420 bytes) — ed25519 签名
+- `latest.json` (1.47 KB) — updater 元数据，含 `windows-x86_64` 和
+  `windows-x86_64-nsis` 双 platform 入口
+
+`curl -sL` 验证 `https://github.com/hamasakin/gal-lib/releases/latest/download/latest.json`
+返回有效 JSON，version=0.2.0、signature 与 pubkey 配对。
+
+## 密钥保管（本地副本）
+
+- `~/.tauri/hakoniwa.key` — 私钥文件，chmod 600
+- `~/.tauri/hakoniwa.key.pub` — 公钥（已同步进 tauri.conf.json）
+- `~/.tauri/hakoniwa.password` — 随机 48 字符 hex 密码，chmod 600
+
+**绝不能**让这三个文件进 git（不在仓库内，路径已规避）。以后发版直接复用
+同一对密钥；如需轮换见 `docs/release.md` "安全注意事项"。
 
 ## 局限 / 后续
 
