@@ -1,10 +1,13 @@
 import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
+import { toast } from "sonner";
 import { TitlebarSlot } from "@/components/layout/TitlebarSlot";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TweaksPanel } from "@/components/tweaks/TweaksPanel";
 import { useAppStore } from "@/store/app";
 import { getDataDir } from "@/lib/db";
+import { checkForUpdates, relaunchApp } from "@/lib/updater";
+import { usePreferencesStore } from "@/store/preferences";
 
 /**
  * Application root layout.
@@ -27,6 +30,7 @@ import { getDataDir } from "@/lib/db";
  */
 export default function App() {
   const setDataDir = useAppStore((s) => s.setDataDir);
+  const autoCheckUpdate = usePreferencesStore((s) => s.autoCheckUpdate);
 
   useEffect(() => {
     let cancelled = false;
@@ -45,6 +49,36 @@ export default function App() {
       cancelled = true;
     };
   }, [setDataDir]);
+
+  // Quick 260514-upd — startup auto-update check (silent). 5 s delay keeps
+  // first paint snappy and avoids racing with data-dir resolution. Errors
+  // (offline / no release / unsigned bundle) are swallowed by silent mode.
+  useEffect(() => {
+    if (!autoCheckUpdate) return;
+    let cancelled = false;
+    const handle = setTimeout(() => {
+      if (cancelled) return;
+      void checkForUpdates({ silent: true }).then((state) => {
+        if (cancelled) return;
+        if (state.phase === "ready") {
+          toast.success(`更新已就绪 v${state.version}`, {
+            description: "下次启动生效，或立即重启应用",
+            duration: Infinity,
+            action: {
+              label: "立即重启",
+              onClick: () => {
+                void relaunchApp();
+              },
+            },
+          });
+        }
+      });
+    }, 5000);
+    return () => {
+      cancelled = true;
+      clearTimeout(handle);
+    };
+  }, [autoCheckUpdate]);
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">

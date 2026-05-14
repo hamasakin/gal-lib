@@ -104,6 +104,11 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_opener::init())
+        // Quick 260514-upd — auto-update plugins. Frontend calls
+        // `@tauri-apps/plugin-updater` to check/download/install and
+        // `@tauri-apps/plugin-process` to `relaunch()` after install.
+        .plugin(tauri_plugin_updater::Builder::new().build())
+        .plugin(tauri_plugin_process::init())
         .manage(AppPaths {
             data_dir,
             db_url,

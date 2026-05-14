@@ -60,6 +60,7 @@ import { getLePath, setLePath as applyLePath } from "@/lib/launch";
 import { useLibraryStore } from "@/store/library";
 import { TagManager } from "@/components/settings/TagManager";
 import { UIPreferences } from "@/components/settings/UIPreferences";
+import { AboutSection } from "@/components/settings/AboutSection";
 import { cn } from "@/lib/utils";
 
 const SECTIONS = [
@@ -71,6 +72,7 @@ const SECTIONS = [
   { id: "scan-ops", label: "扫描操作" },
   { id: "ui", label: "UI 偏好" },
   { id: "debug", label: "调试" },
+  { id: "about", label: "关于" },
 ] as const;
 
 export function Settings() {
@@ -534,6 +536,15 @@ export function Settings() {
                 </AlertDialogFooter>
               </AlertDialogContent>
             </AlertDialog>
+          </Section>
+
+          <Section
+            id="about"
+            title="关于"
+            lede="版本 · 检查更新 · 致谢"
+            sectionRefs={sectionRefs}
+          >
+            <AboutSection />
           </Section>
         </main>
       </div>

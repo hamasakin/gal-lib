@@ -1,0 +1,70 @@
+name: Release
+
+# Triggered by pushing a tag starting with `v` (e.g. `v0.2.0`).
+# Builds the Windows NSIS installer, signs the updater artifacts, creates a
+# GitHub Release, and uploads both `*.exe` and `latest.json` so the in-app
+# updater plugin can discover and verify the new version.
+#
+# Prerequisites — see docs/release.md:
+#   - GitHub Secrets:
+#       TAURI_SIGNING_PRIVATE_KEY            (full text of the signer .key file)
+#       TAURI_SIGNING_PRIVATE_KEY_PASSWORD   (password set during signer generate)
+#   - tauri.conf.json `plugins.updater.pubkey` populated with the matching pubkey
+on:
+  push:
+    tags:
+      - "v*"
+
+permissions:
+  contents: write
+
+jobs:
+  publish-tauri:
+    runs-on: windows-latest
+    timeout-minutes: 45
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 9
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: pnpm
+
+      - name: Setup Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+
+      - name: Cache cargo registry & target
+        uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+
+      - name: Install JS dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Build & release with tauri-action
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD }}
+        with:
+          tagName: ${{ github.ref_name }}
+          releaseName: "hakoniwa ${{ github.ref_name }}"
+          releaseBody: |
+            ## hakoniwa ${{ github.ref_name }}
+
+            Automatic build from tag `${{ github.ref_name }}`.
+
+            App updates ship via the in-app updater (Settings → 关于 → 立即检查更新).
+            For first install, download and run the `.exe` below.
+          releaseDraft: false
+          prerelease: false
+          includeUpdaterJson: true

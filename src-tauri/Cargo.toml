@@ -1,6 +1,6 @@
 [package]
 name = "gal-lib"
-version = "0.1.0"
+version = "0.2.0"
 description = "gal-lib — galgame collection & launcher manager"
 authors = ["gal-lib contributors"]
 edition = "2021"
@@ -38,6 +38,11 @@ tauri-plugin-http = "2"
 # platform handler (Explorer / xdg-open / open). Replaces the ad-hoc
 # `cmd /C start` and `explorer.exe` Command paths.
 tauri-plugin-opener = "2"
+# Quick 260514-upd — Tauri auto-update via GitHub Releases.
+# Endpoint + signature verification configured in tauri.conf.json under `plugins.updater`.
+# `tauri-plugin-process` is needed for `relaunch()` after installing the update.
+tauri-plugin-updater = "2"
+tauri-plugin-process = "2"
 once_cell = "1"
 futures-util = "0.3"
 # 02d — direct sqlx access from #[tauri::command] handlers (commands.rs).

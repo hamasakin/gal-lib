@@ -19,6 +19,11 @@ export interface Preferences {
   sidebar: SidebarWidth;
   density: Density;
   viewMode: ViewMode;
+  /**
+   * Quick 260514-upd — when true, App boot triggers a silent
+   * `updater.check()` 5 s after launch. Errors swallowed.
+   */
+  autoCheckUpdate: boolean;
 }
 
 export const DEFAULT_PREFS: Preferences = {
@@ -28,6 +33,7 @@ export const DEFAULT_PREFS: Preferences = {
   sidebar: "regular",
   density: "medium",
   viewMode: "grid",
+  autoCheckUpdate: true,
 };
 
 export const THEMES: Theme[] = ["midnight", "papyrus", "ink"];
@@ -56,6 +62,7 @@ const isDensity = (v: unknown): v is Density =>
   typeof v === "string" && (DENSITIES as string[]).includes(v);
 const isViewMode = (v: unknown): v is ViewMode =>
   typeof v === "string" && (VIEW_MODES as string[]).includes(v);
+const isBool = (v: unknown): v is boolean => typeof v === "boolean";
 
 /** Read preferences from localStorage, validating each axis against its enum. */
 export function loadPreferences(): Preferences {
@@ -77,6 +84,9 @@ export function loadPreferences(): Preferences {
       viewMode: isViewMode(parsed.viewMode)
         ? parsed.viewMode
         : DEFAULT_PREFS.viewMode,
+      autoCheckUpdate: isBool(parsed.autoCheckUpdate)
+        ? parsed.autoCheckUpdate
+        : DEFAULT_PREFS.autoCheckUpdate,
     };
   } catch {
     return DEFAULT_PREFS;

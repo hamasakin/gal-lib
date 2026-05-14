@@ -20,6 +20,7 @@ interface PreferencesStore extends Preferences {
   setSidebar: (v: SidebarWidth) => void;
   setDensity: (v: Density) => void;
   setViewMode: (v: ViewMode) => void;
+  setAutoCheckUpdate: (v: boolean) => void;
   reset: () => void;
 }
 
@@ -38,6 +39,7 @@ const update = (
     sidebar: get().sidebar,
     density: get().density,
     viewMode: get().viewMode,
+    autoCheckUpdate: get().autoCheckUpdate,
   };
   applyPreferences(next);
   savePreferences(next);
@@ -51,5 +53,7 @@ export const usePreferencesStore = create<PreferencesStore>((set, get) => ({
   setSidebar: (sidebar) => update({ sidebar }, set, get),
   setDensity: (density) => update({ density }, set, get),
   setViewMode: (viewMode) => update({ viewMode }, set, get),
+  setAutoCheckUpdate: (autoCheckUpdate) =>
+    update({ autoCheckUpdate }, set, get),
   reset: () => update({ ...DEFAULT_PREFS }, set, get),
 }));
