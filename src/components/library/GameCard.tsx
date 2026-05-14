@@ -260,7 +260,12 @@ function GameCardImpl({
               // (covers all 4 backend trigger paths). Sits over the static
               // shadow-card; hover lift via transform stacks cleanly because
               // .pulse-ring only animates opacity, not transform.
-              isFetchingMeta && "pulse-ring",
+              // Quick 260515-pending-pulse — also apply to placeholder rows
+              // waiting in the ingest queue. Without this, a scan with
+              // hundreds of placeholders looks frozen — only the 4 in-flight
+              // task slots had the breathing ring, the rest read as static.
+              (bottomBadge === "fetching" || bottomBadge === "pending") &&
+                "pulse-ring",
               // Quick 20260510b — selection ring around cover when picked.
               selectMode && selected && "ring-2 ring-brand ring-offset-2 ring-offset-bg-0",
             )}

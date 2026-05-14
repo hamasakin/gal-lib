@@ -114,6 +114,16 @@ export function GameList({ games }: GameListProps) {
               const cover = resolveCover(g);
               const title = displayGameName(g);
               const isFetching = fetchingMetaIds[g.id] === true;
+              // Quick 260515-pending-pulse — placeholders queued behind the
+              // ingest concurrency slots are also "loading" from the user's
+              // POV; treat them the same as active fetch so all loading rows
+              // pulse uniformly. `bound` mirrors GameCard.getMetadataState.
+              const bound =
+                g.metadata_source === "bangumi" ||
+                g.metadata_source === "vndb" ||
+                g.metadata_source === "manual";
+              const isPending = !bound && g.last_scanned_at == null;
+              const isLoading = isFetching || isPending;
               return (
                 <tr
                   key={g.id}
@@ -122,11 +132,11 @@ export function GameList({ games }: GameListProps) {
                     "cursor-pointer border-t border-line transition-colors",
                     "hover:bg-bg-1",
                     // Quick 260515-loading — softly tint the row + pulse opacity
-                    // while metadata fetch is in flight; the spinner next to
-                    // the title is the focal cue, the tint is supporting copy.
-                    isFetching && "animate-pulse bg-[var(--accent-soft)]/40",
+                    // while metadata fetch is in flight (or queued). Spinner
+                    // next to the title is the focal cue, tint is supporting.
+                    isLoading && "animate-pulse bg-[var(--accent-soft)]/40",
                   )}
-                  title={isFetching ? "正在抓取元数据…" : undefined}
+                  title={isLoading ? "正在抓取元数据…" : undefined}
                 >
                   <td className="px-3 py-2">
                     <div
@@ -151,7 +161,7 @@ export function GameList({ games }: GameListProps) {
                           <ImageOff size={11} />
                         </div>
                       )}
-                      {isFetching && (
+                      {isLoading && (
                         <div className="absolute inset-0 grid place-items-center bg-black/55 text-[var(--accent)]">
                           <Loader2 size={12} className="animate-spin" />
                         </div>
@@ -175,7 +185,7 @@ export function GameList({ games }: GameListProps) {
                       >
                         {title}
                       </span>
-                      {isFetching && (
+                      {isLoading && (
                         <span
                           className="flex flex-shrink-0 items-center gap-1 font-mono text-[10px] text-[var(--accent)]"
                           aria-label="正在抓取元数据"
