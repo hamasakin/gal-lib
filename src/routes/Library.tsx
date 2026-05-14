@@ -352,18 +352,23 @@ export function Library() {
   // whenever a card transitions in/out of the in-flight set.
   const fetchingMetaIds = useLibraryStore((s) => s.fetchingMetaIds);
 
-  // Quick 260515-loading-persist — reconcile fetchingMetaIds against the
-  // freshly refetched `games` array. Backend emits
-  // `meta-fetch-progress.finished` the moment the SQL UPDATE lands, but
-  // the grid only refetches via the 600 ms-throttled `games-changed`
-  // listener; if we removed the id on `finished` directly (the old
-  // behavior), the card would briefly drop its loading visual while the
-  // row was still a placeholder (cover_path=null, metadata_source=none).
+  // Quick 260515-loading-phase-sort — reconcile fetchingMetaIds against the
+  // freshly refetched `games` array. Only entries with phase
+  // "awaiting_refetch" (backend has emitted `finished`) are eligible for
+  // removal; entries still in "in_flight" stay no matter what the row
+  // looks like.
   //
-  // Now: removal happens here, once we can see the row has actually
-  // transitioned to a terminal state (bound, manual, or a failed match
-  // marked by last_scanned_at). That guarantees the loading state lasts
-  // until cover + metadata are both visible.
+  // Why the phase gate matters: `refresh_metadata_smart` iterates already-
+  // bound rows, so `games[id]` is bound the moment `started` fires. A
+  // bound-only reconcile (the old behavior) would wipe the loading visual
+  // instantly after addFetchingMetaId — symptom: "first batch of loading
+  // cards finishes, then no new loading state appears".
+  //
+  // The loading-persist intent from #260515-loading-persist is preserved:
+  // after `finished` we keep the loading visual until the row has actually
+  // transitioned to a terminal state (bound / manual / failed with
+  // last_scanned_at set). That guarantees the loading state lasts until
+  // cover + metadata are both visible to the user.
   useEffect(() => {
     const ids = Object.keys(fetchingMetaIds);
     if (ids.length === 0) return;
@@ -371,6 +376,7 @@ export function Library() {
     const st = useLibraryStore.getState();
     for (const idStr of ids) {
       const id = Number(idStr);
+      if (fetchingMetaIds[id] !== "awaiting_refetch") continue;
       const g = byId.get(id);
       if (!g) continue;
       const bound =
@@ -386,7 +392,7 @@ export function Library() {
   }, [games, fetchingMetaIds]);
   const visibleGames = useMemo(() => {
     const isLoading = (g: Game): boolean => {
-      if (fetchingMetaIds[g.id] === true) return true;
+      if (fetchingMetaIds[g.id] != null) return true;
       const bound =
         g.metadata_source === "bangumi" ||
         g.metadata_source === "vndb" ||
@@ -398,8 +404,28 @@ export function Library() {
     for (const g of filteredGames) {
       (isLoading(g) ? loading : rest).push(g);
     }
-    return loading.length === 0 ? filteredGames : [...loading, ...rest];
-  }, [filteredGames, fetchingMetaIds]);
+    // Quick 260515-loading-phase-sort — during an active scan/refresh, sort
+    // the "rest" partition by last_scanned_at DESC so the most-recently
+    // refreshed cards float right beneath the still-loading ones. This
+    // gives the user a stack-of-fresh-stuff feel: top = currently fetching,
+    // immediately below = just finished, further down = older / stale.
+    // NULL last_scanned_at sinks to the bottom.
+    const scanRunning =
+      useLibraryStore.getState().scanProgress?.status === "running";
+    if (scanRunning) {
+      rest.sort((a, b) => {
+        const at = a.last_scanned_at ?? "";
+        const bt = b.last_scanned_at ?? "";
+        if (at === bt) return 0;
+        if (at === "") return 1;
+        if (bt === "") return -1;
+        return at > bt ? -1 : 1;
+      });
+    }
+    return loading.length === 0 && !scanRunning
+      ? filteredGames
+      : [...loading, ...rest];
+  }, [filteredGames, fetchingMetaIds, scanProgress?.status]);
 
   const isEmpty = visibleGames.length === 0;
   const hasActiveSearch = searchQuery.trim() !== "";

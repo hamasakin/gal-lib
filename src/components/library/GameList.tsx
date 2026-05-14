@@ -113,7 +113,7 @@ export function GameList({ games }: GameListProps) {
             {games.map((g) => {
               const cover = resolveCover(g);
               const title = displayGameName(g);
-              const isFetching = fetchingMetaIds[g.id] === true;
+              const isFetching = fetchingMetaIds[g.id] != null;
               // Quick 260515-pending-pulse — placeholders queued behind the
               // ingest concurrency slots are also "loading" from the user's
               // POV; treat them the same as active fetch so all loading rows

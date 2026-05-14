@@ -79,10 +79,11 @@ if (!__scanProgressUnsub) {
 
 // 20260509f: Global meta-fetch-progress subscription.
 //
-// Per-game pulse highlight stream. Each `started` adds the game's id to the
-// store's fetchingMetaIds set; each `finished` removes it. Covers all four
-// backend trigger paths (start_scan ingest loop / refresh_all_metadata /
-// refresh_metadata / bind_metadata).
+// Per-game pulse highlight stream. `started` marks the id as "in_flight";
+// `finished` transitions it to "awaiting_refetch" (Library.tsx clears it
+// once the throttled `games-changed` refetch reflects the bound row).
+// Covers all four backend trigger paths (start_scan ingest loop /
+// refresh_all_metadata / refresh_metadata / bind_metadata).
 //
 // Terminal-status fallback for missed finishes lives in the scan-progress
 // listener above (clearFetchingMetaIds on completed/cancelled/failed).
@@ -97,22 +98,18 @@ if (!__metaFetchProgressUnsub) {
       store.addFetchingMetaId(p.game_id);
       return;
     }
-    // Quick 260515-loading-persist — finished does NOT remove the id here.
-    // Removal is driven by Library.tsx watching the `games` array: once the
-    // refetched row reflects metadata_source !== "none" (or last_scanned_at
-    // is set on a failed match), the id is dropped from fetchingMetaIds and
-    // the loading visual ends.
-    //
-    // Why: backend emits `meta-fetch-progress.finished` immediately after
-    // `apply_ingest_result` writes the row, but the frontend grid only
-    // refetches via the 600 ms-throttled `games-changed` listener. Between
-    // those two events the card sits with cover_path=null and would flicker
-    // from "fetching" → "pending" → final state. Anchoring the loading
-    // visual to the row's actual data avoids that window.
+    // Quick 260515-loading-phase-sort — finished transitions phase from
+    // "in_flight" to "awaiting_refetch". The id stays in the map (loading
+    // visual persists); Library.tsx's reconcile effect only checks bound
+    // state for "awaiting_refetch" entries, which preserves the
+    // loading-persist intent (#260515-loading-persist) without wiping the
+    // loading visual the instant `started` fires for an already-bound row
+    // (the `refresh_metadata_smart` case).
     //
     // Bulk safety net for missed/late removals (backend panic mid-task,
     // single-game paths that don't trigger a grid-wide refetch) lives in
     // the `scan-progress` terminal listener (clearFetchingMetaIds).
+    store.markFetchingMetaFinished(p.game_id);
   })
     .then((unsub) => {
       __metaFetchProgressUnsub = unsub;

@@ -130,11 +130,13 @@ function GameCardImpl({
 }: GameCardProps) {
   const navigate = useNavigate();
   const activeSession = useLibraryStore((s) => s.activeSession);
-  // 20260509f — per-card boolean selector. Only this card re-renders when
-  // its own id flips in/out of fetchingMetaIds (zustand referential check
-  // on the boolean). Other cards' transitions don't leak through.
+  // 20260509f / quick 260515-loading-phase-sort — per-card boolean
+  // selector. Only this card re-renders when its own id flips in/out of
+  // fetchingMetaIds. Both "in_flight" and "awaiting_refetch" phases count
+  // as fetching for the visual (cover overlay + bottom badge); the
+  // distinction matters only inside Library's reconcile effect.
   const isFetchingMeta = useLibraryStore(
-    (s) => s.fetchingMetaIds[game.id] === true,
+    (s) => s.fetchingMetaIds[game.id] != null,
   );
 
   const stamp = getStamp(game);
