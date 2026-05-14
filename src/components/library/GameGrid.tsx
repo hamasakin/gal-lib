@@ -98,7 +98,13 @@ export function GameGrid({
   // — this is the auto-fill equivalent for `repeat(auto-fill, minmax(W, 1fr))`.
   const innerRef = useRef<HTMLDivElement>(null);
   const [columnCount, setColumnCount] = useState(1);
-  const [cardWidth, setCardWidth] = useState(172);
+  // Quick 260515-overlap — the target width from --card-w (used to derive
+  // column count) and the actual rendered column width post-`minmax(0, 1fr)`
+  // stretch can differ by tens of pixels. We persist actualCardWidth and
+  // feed it into rowStride; otherwise virtualizer underestimates row height
+  // (most visible at the "大" density: rendered cover ~350px tall, but
+  // rowStride only reserved ~320px → next row overlaps).
+  const [actualCardWidth, setActualCardWidth] = useState(172);
   // Density preference subscription — changing density only mutates the
   // `--card-w` CSS variable, which doesn't trigger ResizeObserver
   // (clientWidth unchanged). Re-running the effect on density flips
@@ -114,7 +120,6 @@ export function GameGrid({
         getComputedStyle(el).getPropertyValue("--card-w").trim(),
       );
       const w = Number.isFinite(cssCardW) && cssCardW > 0 ? cssCardW : 172;
-      setCardWidth(w);
 
       // px-8 → 32px left + 32px right = 64 total.
       const inner = el.clientWidth - 64;
@@ -123,6 +128,17 @@ export function GameGrid({
         Math.floor((inner + COLUMN_GAP) / (w + COLUMN_GAP)),
       );
       setColumnCount(cols);
+
+      // Quick 260515-overlap — actual rendered column width after
+      // `minmax(0, 1fr)` stretch. Floor by 0.5px to stay conservative —
+      // browsers occasionally round up sub-pixel grid cells, and an
+      // under-estimated rowStride is what produces the overlap; an
+      // over-estimate just adds a tiny harmless gap.
+      const actual = Math.max(
+        w,
+        (inner - COLUMN_GAP * (cols - 1)) / cols,
+      );
+      setActualCardWidth(actual);
     };
 
     measure();
@@ -133,8 +149,10 @@ export function GameGrid({
 
   // Estimated row height — cover (3:4) + meta + row gap.
   // Used both for virtualizer estimateSize and for the absolute-positioned
-  // row layout below.
-  const coverHeight = cardWidth * (4 / 3);
+  // row layout below. Use actualCardWidth (post-stretch) so the cover
+  // reservation matches what's actually painted; using the target width
+  // here is what caused the row-overlap bug at high density.
+  const coverHeight = Math.ceil(actualCardWidth * (4 / 3));
   const rowHeight = coverHeight + META_HEIGHT;
   const rowStride = rowHeight + ROW_GAP;
   const rowCount = Math.ceil(games.length / columnCount);
