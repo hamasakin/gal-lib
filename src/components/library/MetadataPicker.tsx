@@ -196,16 +196,21 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
         if (!o) onClose();
       }}
     >
-      <DialogContent className="sm:max-w-2xl">
-        <DialogHeader>
-          <DialogTitle className="pr-8 truncate">
+      <DialogContent
+        className="grid-cols-1 sm:max-w-2xl overflow-hidden"
+      >
+        <DialogHeader className="min-w-0">
+          <DialogTitle
+            className="block min-w-0 max-w-full truncate pr-8"
+            title={game ? displayGameName(game) : undefined}
+          >
             {game
               ? `重新匹配元数据 — ${displayGameName(game)}`
               : "重新匹配元数据"}
           </DialogTitle>
         </DialogHeader>
 
-        <div className="flex flex-col gap-3">
+        <div className="flex min-w-0 flex-col gap-3">
           {/* Source pill row — supplementary §5 design moves the toggle to its
               own row at the top, above the search input. */}
           <ToggleGroup
@@ -259,8 +264,8 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
           </div>
 
           {/* Candidate list */}
-          <ScrollArea className="max-h-[400px]">
-            <ul className="flex flex-col gap-2">
+          <ScrollArea className="max-h-[400px] min-w-0">
+            <ul className="flex min-w-0 flex-col gap-2">
               {searching && (
                 <li className="rounded-md border border-dashed border-border p-4 text-center text-body text-muted-foreground">
                   搜索中…
@@ -285,14 +290,17 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                             sourceId: c.source_id,
                           })
                         }
-                        className={`flex w-full items-start gap-3 border p-3 text-left transition ${
+                        className={`flex w-full max-w-full items-start gap-3 overflow-hidden border p-3 text-left transition ${
                           isSelected
                             ? "border-brand bg-brand-soft border-l-[3px]"
                             : "border-line hover:border-line-strong hover:bg-bg-2"
                         }`}
                         style={{ borderRadius: "var(--r-md)" }}
                       >
-                        <div className="size-[60px_80px] shrink-0 overflow-hidden rounded bg-secondary" style={{ width: 60, height: 80 }}>
+                        <div
+                          className="flex-shrink-0 overflow-hidden rounded bg-secondary"
+                          style={{ width: 60, height: 80 }}
+                        >
                           {c.cover_url ? (
                             // eslint-disable-next-line @next/next/no-img-element
                             <img
@@ -305,19 +313,27 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                             />
                           ) : null}
                         </div>
-                        <div className="flex flex-1 flex-col gap-1 min-w-0">
-                          <div className="flex items-center gap-2 min-w-0">
-                            <span className="truncate text-body font-medium text-foreground">
+                        <div className="flex min-w-0 flex-1 flex-col gap-1">
+                          <div className="flex min-w-0 items-center gap-2">
+                            <span
+                              className="min-w-0 flex-1 truncate text-body font-medium text-foreground"
+                              title={c.title}
+                            >
                               {c.title}
                             </span>
-                            {confidenceBadge(c.confidence)}
+                            <span className="flex-shrink-0">
+                              {confidenceBadge(c.confidence)}
+                            </span>
                           </div>
                           {c.alias.length > 0 && (
-                            <span className="truncate text-label text-muted-foreground">
+                            <span
+                              className="truncate text-label text-muted-foreground"
+                              title={c.alias.join(" · ")}
+                            >
                               {c.alias.join(" · ")}
                             </span>
                           )}
-                          <span className="text-label text-muted-foreground">
+                          <span className="truncate text-label text-muted-foreground">
                             {c.source.toUpperCase()} · {c.source_id}
                             {c.release_date ? ` · ${c.release_date}` : ""}
                           </span>
