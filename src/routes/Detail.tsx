@@ -940,7 +940,20 @@ export default function Detail() {
           <div className="min-w-0 pb-2">
             {(game.brand || game.release_year) && (
               <div className="mb-1.5 font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-2">
-                {[game.brand, game.release_year].filter(Boolean).join(" · ")}
+                {game.brand ? (
+                  <button
+                    type="button"
+                    onClick={onBrandCrumbClick}
+                    className="cursor-pointer transition-colors hover:text-brand"
+                    title={`筛选「${game.brand}」`}
+                  >
+                    {game.brand}
+                  </button>
+                ) : null}
+                {game.brand && game.release_year ? (
+                  <span aria-hidden> · </span>
+                ) : null}
+                {game.release_year ? <span>{game.release_year}</span> : null}
               </div>
             )}
             <h1
@@ -1345,7 +1358,20 @@ export default function Detail() {
               style={{ gridTemplateColumns: "84px 1fr" }}
             >
               <DT>品牌</DT>
-              <DD>{game.brand ?? "—"}</DD>
+              <DD>
+                {game.brand ? (
+                  <button
+                    type="button"
+                    onClick={onBrandCrumbClick}
+                    className="cursor-pointer text-left transition-colors hover:text-brand"
+                    title={`筛选「${game.brand}」`}
+                  >
+                    {game.brand}
+                  </button>
+                ) : (
+                  "—"
+                )}
+              </DD>
               <DT>发行年</DT>
               <DD>{game.release_year ? `${game.release_year}` : "—"}</DD>
               <DT>状态</DT>
