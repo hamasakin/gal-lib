@@ -81,3 +81,70 @@ Library.tsx `visibleGames` memo：
   - 每张卡都能持续显示 loading 视觉
   - loading 卡片与 backend 当前处理对象一致
   - 刚处理完的卡片按 last_scanned_at 顺序在 loading 卡片之下
+
+---
+
+# Round 2 — 用户复盘后追加
+
+## 新反馈
+
+1. 首批 4 个卡片 Loading 完后，后面都是在复用第一个卡片来走 loading 状态
+2. 为什么只有首批是 4 个并发，后面都是等 4 个跑完后一个一个跑的
+3. 给卡片加一个元数据获取时间的字段做排序，全量扫描和刷新元数据时默认按这个时间排，保证 loading 时和 loading 完后的顺序相对一致
+
+## 根因（round-2）
+
+- 症状 1、2 来自 `refresh_metadata_smart` 后端是**串行 for loop**（commands.rs:1271 `for (i, row) in rows.into_iter().enumerate()`），不是 4 并发。
+  用户首批看到 4 个并发其实是 round-1 修完后 phase=in_flight + 600ms throttle 累积出来的视觉错觉：refetch 还没到，前几个串行处理完的卡片都在 awaiting_refetch 状态，看起来像并发。refetch 一到全部清空，后面就剩单卡一个个滚（实际 backend 一直是一个个跑）。
+- 症状 3 是位置一致性问题：用户希望 loading 中的卡片在列表里的位置和它 loading 完之后的位置相对稳定，不要让卡片在 loading 时跳来跳去。
+
+## 修复（round-2）
+
+### A. backend: 加 `metadata_fetched_at` 列（migration 0011）
+
+`last_scanned_at` 现在虽然只被元数据写入路径更新，但语义模糊。新增 `metadata_fetched_at TEXT` 专门给元数据获取时间做排序锚点。
+
+5 个 UPDATE 站点同步写入：
+- `apply_ingest_result` (start_scan / add_game)
+- `bind_metadata`
+- `refresh_metadata` (单条)
+- `refresh_metadata_smart` 已绑定路径
+- `refresh_metadata_smart` 未绑定路径
+
+Game struct 加字段；list_games / search_games / 任何 SELECT 同步加列。
+
+### B. backend: `refresh_metadata_smart` 改并发
+
+复刻 `start_scan` 的 JoinSet + INGEST_CONCURRENCY=4 refill 模式：
+- 4 个并发 task；任一完成立刻 refill 新 task
+- cancel flag 在 spawn 前和 task 内部 top 各检查一次
+- completed 用 `Arc<AtomicUsize>` 原子推进 scan-progress
+- 失败/cancel 时仍 emit finished + scan-progress（保留 in-flight 计数正确性）
+
+### C. frontend: visibleGames sort 重写
+
+scanRunning 时整体按这套规则排：
+
+```
+phase rank (in_flight=2, awaiting_refetch=1, none=0) DESC
+  → metadata_fetched_at DESC NULLS LAST
+    → id ASC（稳定 tie-break）
+```
+
+不再用 round-1 的 "loading 浮顶 + rest 按 last_scanned_at" 双段拼接；改为一次全量 sort，因为 in_flight 卡片 phase rank 最高会自然到顶。
+
+非 scanRunning 时回到 round-1 行为：loading 浮顶（保留单条 refresh / bind 等场景），rest 走用户排序偏好。
+
+## 改动文件（round-2）
+
+- `src-tauri/migrations/0011_add_metadata_fetched_at.sql` — ALTER TABLE
+- `src-tauri/src/commands.rs` — Game struct + row_to_game + 2 处 SELECT + 5 处 UPDATE + refresh_metadata_smart JoinSet 重写
+- `src/lib/games.ts` — Game.metadata_fetched_at
+- `src/routes/Library.tsx` — visibleGames sort 重写
+
+## 验证
+
+- `cargo check` 全绿
+- `pnpm tsc --noEmit` 全绿
+- `pnpm build` 全绿
+- 真机 walkthrough：刷新元数据时 4 个卡片持续并发，刚处理完的卡按时间倒序紧跟在 loading 之下

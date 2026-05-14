@@ -5,6 +5,7 @@ date: 2026-05-15
 status: complete
 commits:
   - d96045b
+  - 444c2ad
 ---
 
 # Quick 260515-loading-phase-sort — SUMMARY
@@ -91,6 +92,102 @@ loading 卡片仍浮顶；下面是按刷新时间倒序的"鲜度墙"。
 - `pnpm build` 全绿（1960 modules transformed）
 - 实机 walkthrough 留 user 验收
 
-## Commit
+## Commits
 
-- `d96045b quick(260515-loading-phase): fetchingMetaIds 加 phase + 刷新期按 last_scanned_at 排序`
+- `d96045b quick(260515-loading-phase): fetchingMetaIds 加 phase + 刷新期按 last_scanned_at 排序`（round-1）
+- `444c2ad quick(260515-loading-phase): refresh 并发化 + metadata_fetched_at 列 + sort phase rank`（round-2）
+
+---
+
+# Round 2 — 复盘后追加
+
+## 用户复盘
+
+1. 首批 4 个卡片 Loading 完后，后面都是在复用第一个卡片来走 loading 状态
+2. 为什么只有首批是 4 个并发，后面都是等 4 个跑完后一个一个跑的
+3. 加一个元数据获取时间的字段做排序，保证 loading 时和 loading 完后的顺序相对一致
+
+## 根因（round-2）
+
+- 用户看到的"首批 4 并发"其实是 round-1 修完后 phase=in_flight + 600ms throttle
+  累积出来的视觉错觉。`refresh_metadata_smart` 后端是**真 serial for-loop**
+  （commands.rs:1275 原版 `for (i, row) in rows.into_iter()`），从来没并发过。
+  refetch 一到，所有 awaiting_refetch 同时清，后面就剩单 in_flight 卡在顶部"复用"。
+- "loading 时和 loading 完后顺序一致"指的是位置稳定：用户希望卡片从 loading
+  到 loading 完成的过程中不要跳来跳去，相邻 rank 平滑过渡即可。
+
+## 修复（round-2）
+
+### A. backend: refresh_metadata_smart 改并发（mirror start_scan）
+
+JoinSet + `INGEST_CONCURRENCY=4` refill 模式：
+- 4 个并发 task；任一完成立刻 refill 下一个；rows 耗尽 → 自然退出
+- cancel flag 检查在 `set.spawn` 前和 task 内部 top 各一次
+- cancel 时 `set.abort_all()` 立即中止 in-flight（mirror 260515-cancel 语义）
+- `completed: Arc<AtomicUsize>` 原子推进 scan-progress
+- 失败 / 数据不一致路径（bound 行 source_id 缺失等）不再 `continue`，而是
+  跳过 UPDATE 后照常 emit finished + scan-progress + 推进 completed
+  → 进度条不会卡在某个数字
+
+### B. backend: 加 `metadata_fetched_at` 列（migration 0011）
+
+```sql
+ALTER TABLE games ADD COLUMN metadata_fetched_at TEXT;
+UPDATE games SET metadata_fetched_at = last_scanned_at
+WHERE last_scanned_at IS NOT NULL;
+CREATE INDEX idx_games_metadata_fetched_at ON games(metadata_fetched_at DESC);
+```
+
+历史数据从 `last_scanned_at` 复制（initial bootstrap），避免老库重启时全 NULL
+全沉底导致首屏视觉很乱。
+
+5 个元数据写入站点同步更新：
+- `apply_ingest_result`（start_scan / add_game enrich 共用 UPDATE）
+- `bind_metadata`（手动绑定）
+- `refresh_metadata`（单条刷新）
+- `refresh_metadata_smart` unbound 路径
+- `refresh_metadata_smart` bound 路径
+
+`Game` struct + `row_to_game` + `list_games` / `search_games` / 人物聚合页
+SELECT 全部加 `metadata_fetched_at` 列。
+
+### C. frontend: visibleGames sort 重写
+
+`scanRunning` 时整体按这套规则排：
+
+```
+phase rank: in_flight=2 > awaiting_refetch=1 > 普通=0   (DESC)
+  → metadata_fetched_at DESC NULLS LAST
+    → id ASC（稳定 tie-break）
+```
+
+- 顶部：当前并发的 4 张 in_flight 卡
+- 紧接着：刚收到 finished、等 refetch 反映的 awaiting_refetch 卡
+- 中段：本轮已经处理完、有 fresh metadata_fetched_at 的卡（DESC 排）
+- 底部：本轮还没处理、metadata_fetched_at 较旧或 NULL 的卡
+
+关键：单张卡的 lifecycle 是 `in_flight → awaiting_refetch → 处理完`，这三种
+phase rank 相邻（2 → 1 → 0+ 但因为 metadata_fetched_at 是最新，仍排在 rank 0
+最前段），位置是平滑下沉而不是跳跃 → 满足"loading 时和 loading 完后顺序相对
+一致"。
+
+非 scanRunning 时回到 round-1 行为：loading 浮顶（单条 refresh / bind 等
+场景），rest 走用户排序偏好（last_played 等）。
+
+## Round-2 改动文件
+
+| 文件 | 变更 |
+|------|------|
+| `src-tauri/migrations/0011_add_metadata_fetched_at.sql` | 新建 — ADD COLUMN + 回填 + index |
+| `src-tauri/src/db.rs` | 注册 V11_SQL migration |
+| `src-tauri/src/commands.rs` | Game struct + row_to_game + 3 处 SELECT + 5 处 UPDATE + refresh_metadata_smart JoinSet 重写 |
+| `src/lib/games.ts` | `Game.metadata_fetched_at: string \| null` |
+| `src/routes/Library.tsx` | visibleGames sort 重写：scanRunning 时按 phase rank + metadata_fetched_at DESC |
+
+## Round-2 验证
+
+- `cargo check` 全绿（5 条预存在 warning，无 new error）
+- `cargo test --lib` 80 passed
+- `pnpm tsc --noEmit` 全绿
+- `pnpm build` 全绿（1960 modules transformed）
+- 实机 walkthrough 留 user 验收
