@@ -182,7 +182,8 @@ async fn apply_ingest_result(
                           match_confidence = ?, summary = ?, \
                           brand = COALESCE(?, brand), \
                           release_year = COALESCE(?, release_year), \
-                          last_scanned_at = datetime('now') \
+                          last_scanned_at = datetime('now'), \
+                          metadata_fetched_at = datetime('now') \
          WHERE id = ?",
     )
     .bind(&result.name)
@@ -1048,7 +1049,8 @@ pub async fn bind_metadata(
                               metadata_source = ?, match_confidence = 100, \
                               summary = ?, brand = COALESCE(?, brand), \
                               release_year = COALESCE(?, release_year), \
-                              last_scanned_at = datetime('now') \
+                              last_scanned_at = datetime('now'), \
+                              metadata_fetched_at = datetime('now') \
              WHERE id = ?",
         )
         .bind(&detail.title)
@@ -1149,7 +1151,8 @@ pub async fn refresh_metadata(
                               metadata_source = ?, match_confidence = ?, \
                               summary = ?, brand = COALESCE(?, brand), \
                               release_year = COALESCE(?, release_year), \
-                              last_scanned_at = datetime('now') \
+                              last_scanned_at = datetime('now'), \
+                              metadata_fetched_at = datetime('now') \
              WHERE id = ?",
         )
         .bind(&result.name)
@@ -1268,272 +1271,123 @@ pub async fn refresh_metadata_smart(
         return Ok(());
     }
 
+    // Quick 260515-loading-phase-sort — 并发化（mirror start_scan 的 JoinSet
+    // refill 模式）。INGEST_CONCURRENCY task 同时跑；任一完成立刻补上下一个，
+    // 直到 rows 耗尽。原 serial for-loop 在 backend 看来一次只跑一个，用户
+    // 在前端看到的"首批 4 并发"其实只是 600ms throttle 累积出来的视觉错觉。
     tokio::spawn(async move {
-        for (i, row) in rows.into_iter().enumerate() {
-            // cancel check at top of each iteration: if the user clicked the
-            // cancel button while we were mid-refresh, stop here (in-flight
-            // Bangumi/VNDB request finishes naturally) and emit a terminal
-            // Cancelled event so the progress bar UI can clear.
-            if ctx_for_task.cancel.load(std::sync::atomic::Ordering::Relaxed) {
-                let _ = app_for_emit.emit(
-                    "scan-progress",
-                    scan::ScanProgress {
-                        current_dir: String::new(),
-                        completed: i,
-                        total,
-                        status: scan::ScanStatus::Cancelled,
-                        phase: scan::ScanPhase::Enriching,
-                    },
-                );
-                return;
+        let completed = Arc::new(AtomicUsize::new(0));
+        let mut set: JoinSet<()> = JoinSet::new();
+        let mut iter = rows.into_iter();
+
+        loop {
+            // Cancel: 立即 abort 所有 in-flight task，让进度条尽快收到 Cancelled。
+            // start_scan 同款语义；in-flight HTTP 请求由 tokio future-drop 释放。
+            if ctx_for_task.cancel.load(Ordering::Relaxed) && !set.is_empty() {
+                set.abort_all();
             }
 
-            let id: i64 = match row.try_get("id") {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let path: String = match row.try_get("path") {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let name: String = match row.try_get("name") {
-                Ok(v) => v,
-                Err(_) => continue,
-            };
-            let exec: Option<String> = row.try_get("executable_path").ok();
-            let bangumi_id: Option<String> = row.try_get("bangumi_id").ok();
-            let vndb_id: Option<String> = row.try_get("vndb_id").ok();
-            let metadata_source: Option<String> = row.try_get("metadata_source").ok();
-
-            // pulse this card while we hit Bangumi/VNDB.
-            let _ = app_for_emit.emit(
-                "meta-fetch-progress",
-                serde_json::json!({ "game_id": id, "phase": "started" }),
-            );
-
-            let bound = bangumi_id.is_some() || vndb_id.is_some();
-
-            if !bound {
-                // ── 未绑定行 — 走完整模糊匹配 + 旧 refresh_all_metadata UPDATE shape。
-                let result = ingest::refresh_for_query(
-                    id,
-                    &data_dir,
-                    &path,
-                    &name,
-                    exec.as_deref(),
-                )
-                .await;
-
-                let release_year_i64: Option<i64> = result.release_year.map(|y| y as i64);
-                let _ = sqlx::query(
-                    "UPDATE games SET name = ?, name_cn = ?, \
-                                      cover_path = COALESCE(?, cover_path), \
-                                      cover_url = COALESCE(?, cover_url), \
-                                      bangumi_id = COALESCE(?, bangumi_id), \
-                                      vndb_id = COALESCE(?, vndb_id), \
-                                      metadata_source = ?, match_confidence = ?, \
-                                      summary = ?, brand = COALESCE(?, brand), \
-                                      release_year = COALESCE(?, release_year), \
-                                      last_scanned_at = datetime('now') \
-                     WHERE id = ?",
-                )
-                .bind(&result.name)
-                .bind(&result.name_cn)
-                .bind(&result.cover_path)
-                .bind(&result.cover_url)
-                .bind(&result.bangumi_id)
-                .bind(&result.vndb_id)
-                .bind(&result.metadata_source)
-                .bind(result.match_confidence.map(|x| x as i64))
-                .bind(&result.summary)
-                .bind(&result.brand)
-                .bind(release_year_i64)
-                .bind(id)
-                .execute(&*pool_for_task)
-                .await;
-
-                if let Err(e) = write_staff_and_tags(
-                    &*pool_for_task,
-                    id,
-                    &result.metadata_source,
-                    &result,
-                )
-                .await
-                {
-                    eprintln!(
-                        "[refresh_metadata_smart] staff/tags write failed for game {}: {}",
-                        id, e
-                    );
+            // Refill: 补齐到 INGEST_CONCURRENCY 个 in-flight task。
+            while set.len() < INGEST_CONCURRENCY {
+                if ctx_for_task.cancel.load(Ordering::Relaxed) {
+                    break;
                 }
-            } else {
-                // ── 已绑定行 — 按 source_id 直拉 detail；不重做匹配。
-                // 与 backfill_release_year 完全相同的 source 选择逻辑：
-                //   metadata_source = "bangumi" → bangumi_id；"vndb" → vndb_id；
-                //   其它（含 manual / None）→ bangumi_id 优先，否则 vndb_id。
-                let (source_enum, source_id) = match metadata_source.as_deref() {
-                    Some("bangumi") => match bangumi_id.as_ref() {
-                        Some(sid) => (MetadataSource::Bangumi, sid.clone()),
-                        None => {
-                            // 数据不一致：跳过，仍发 finished + scan-progress。
-                            let _ = app_for_emit.emit(
-                                "meta-fetch-progress",
-                                serde_json::json!({ "game_id": id, "phase": "finished" }),
-                            );
-                            let _ = app_for_emit.emit(
-                                "scan-progress",
-                                scan::ScanProgress {
-                                    current_dir: path,
-                                    completed: i + 1,
-                                    total,
-                                    status: scan::ScanStatus::Running,
-                                    phase: scan::ScanPhase::Enriching,
-                                },
-                            );
-                            continue;
-                        }
-                    },
-                    Some("vndb") => match vndb_id.as_ref() {
-                        Some(sid) => (MetadataSource::Vndb, sid.clone()),
-                        None => {
-                            let _ = app_for_emit.emit(
-                                "meta-fetch-progress",
-                                serde_json::json!({ "game_id": id, "phase": "finished" }),
-                            );
-                            let _ = app_for_emit.emit(
-                                "scan-progress",
-                                scan::ScanProgress {
-                                    current_dir: path,
-                                    completed: i + 1,
-                                    total,
-                                    status: scan::ScanStatus::Running,
-                                    phase: scan::ScanPhase::Enriching,
-                                },
-                            );
-                            continue;
-                        }
-                    },
-                    _ => {
-                        if let Some(sid) = bangumi_id.as_ref() {
-                            (MetadataSource::Bangumi, sid.clone())
-                        } else if let Some(sid) = vndb_id.as_ref() {
-                            (MetadataSource::Vndb, sid.clone())
-                        } else {
-                            // bound 已保证至少一个 source_id 存在；这里不会触发，
-                            // 但 defensive 保留。
-                            let _ = app_for_emit.emit(
-                                "meta-fetch-progress",
-                                serde_json::json!({ "game_id": id, "phase": "finished" }),
-                            );
-                            let _ = app_for_emit.emit(
-                                "scan-progress",
-                                scan::ScanProgress {
-                                    current_dir: path,
-                                    completed: i + 1,
-                                    total,
-                                    status: scan::ScanStatus::Running,
-                                    phase: scan::ScanPhase::Enriching,
-                                },
-                            );
-                            continue;
-                        }
+                let Some(row) = iter.next() else { break };
+
+                // 解析 row；任一字段缺失 → 直接计入 completed 跳过（与原 serial 路径
+                // `continue` 等价，但要手动推进计数器以保证 scan-progress 不卡）。
+                let id: i64 = match row.try_get("id") {
+                    Ok(v) => v,
+                    Err(_) => {
+                        completed.fetch_add(1, Ordering::Relaxed);
+                        continue;
                     }
                 };
-
-                let detail_res = match source_enum {
-                    MetadataSource::Bangumi => metadata::bangumi::fetch_detail(&source_id).await,
-                    MetadataSource::Vndb => metadata::vndb::fetch_detail(&source_id).await,
-                    _ => unreachable!("source_enum constrained to Bangumi/Vndb above"),
+                let path: String = match row.try_get("path") {
+                    Ok(v) => v,
+                    Err(_) => {
+                        completed.fetch_add(1, Ordering::Relaxed);
+                        continue;
+                    }
                 };
+                let name: String = match row.try_get("name") {
+                    Ok(v) => v,
+                    Err(_) => {
+                        completed.fetch_add(1, Ordering::Relaxed);
+                        continue;
+                    }
+                };
+                let exec: Option<String> = row.try_get("executable_path").ok();
+                let bangumi_id: Option<String> = row.try_get("bangumi_id").ok();
+                let vndb_id: Option<String> = row.try_get("vndb_id").ok();
+                let metadata_source: Option<String> = row.try_get("metadata_source").ok();
 
-                match detail_res {
-                    Ok(detail) => {
-                        // best-effort fetch persons + characters; failures
-                        // degrade to empty staff (UPDATE 仍写元数据列)。
-                        let persons = match source_enum {
-                            MetadataSource::Bangumi => {
-                                metadata::bangumi::fetch_persons(&source_id)
-                                    .await
-                                    .unwrap_or_default()
-                            }
-                            MetadataSource::Vndb => metadata::vndb::fetch_persons(&source_id)
-                                .await
-                                .unwrap_or_default(),
-                            _ => Vec::new(),
-                        };
-                        let characters = match source_enum {
-                            MetadataSource::Bangumi => {
-                                metadata::bangumi::fetch_characters(&source_id)
-                                    .await
-                                    .unwrap_or_default()
-                            }
-                            MetadataSource::Vndb => metadata::vndb::fetch_characters(&source_id)
-                                .await
-                                .unwrap_or_default(),
-                            _ => Vec::new(),
-                        };
-                        let mut staff = persons;
-                        staff.extend(characters);
+                let app_t = app_for_emit.clone();
+                let pool_t = pool_for_task.clone();
+                let data_dir_t = data_dir.clone();
+                let ctx_t = ctx_for_task.clone();
+                let completed_t = completed.clone();
+                let total_t = total;
 
-                        let release_year_i64: Option<i64> =
-                            ingest::parse_release_year(detail.release_date.as_deref())
-                                .map(|y| y as i64);
+                set.spawn(async move {
+                    // Per-task cancel check — racy but cheap; avoids 1 网络往返。
+                    if ctx_t.cancel.load(Ordering::Relaxed) {
+                        return;
+                    }
 
-                        let source_str: &str = match source_enum {
-                            MetadataSource::Bangumi => "bangumi",
-                            MetadataSource::Vndb => "vndb",
-                            _ => unreachable!(),
-                        };
+                    let _ = app_t.emit(
+                        "meta-fetch-progress",
+                        serde_json::json!({ "game_id": id, "phase": "started" }),
+                    );
 
-                        // 已绑定行 UPDATE — 仅写元数据列：
-                        //   summary / release_year 直接覆盖（用户主动点刷新）
-                        //   cover_url / brand COALESCE 保留 manual
-                        //   不动 cover_path / bangumi_id / vndb_id / metadata_source /
-                        //        match_confidence / name / name_cn
-                        let _ = sqlx::query(
-                            "UPDATE games SET \
-                                cover_url       = COALESCE(?, cover_url), \
-                                summary         = ?, \
-                                brand           = COALESCE(?, brand), \
-                                release_year    = ?, \
-                                last_scanned_at = datetime('now') \
-                             WHERE id = ?",
+                    let bound = bangumi_id.is_some() || vndb_id.is_some();
+
+                    if !bound {
+                        // ── 未绑定行 — 完整模糊匹配 + 旧 refresh_all_metadata UPDATE shape。
+                        let result = ingest::refresh_for_query(
+                            id,
+                            &data_dir_t,
+                            &path,
+                            &name,
+                            exec.as_deref(),
                         )
-                        .bind(&detail.cover_url)
-                        .bind(&detail.summary)
-                        .bind(&detail.brand)
-                        .bind(release_year_i64)
-                        .bind(id)
-                        .execute(&*pool_for_task)
                         .await;
 
-                        // 构造 IngestResult 壳 — write_staff_and_tags 只读
-                        // .staff / .tags / 透过 source_str 传入的 source；
-                        // 其它字段填占位即可，不会被持久化。
-                        let result_shell = ingest::IngestResult {
-                            games_path: path.clone(),
-                            name: name.clone(),
-                            name_cn: None,
-                            executable_path: exec.clone(),
-                            cover_path: None,
-                            cover_url: detail.cover_url.clone(),
-                            bangumi_id: bangumi_id.clone(),
-                            vndb_id: vndb_id.clone(),
-                            metadata_source: source_str.to_string(),
-                            match_confidence: None,
-                            summary: detail.summary.clone(),
-                            brand: detail.brand.clone(),
-                            staff,
-                            tags: detail.tags.clone(),
-                            release_year: ingest::parse_release_year(
-                                detail.release_date.as_deref(),
-                            ),
-                        };
+                        let release_year_i64: Option<i64> =
+                            result.release_year.map(|y| y as i64);
+                        let _ = sqlx::query(
+                            "UPDATE games SET name = ?, name_cn = ?, \
+                                              cover_path = COALESCE(?, cover_path), \
+                                              cover_url = COALESCE(?, cover_url), \
+                                              bangumi_id = COALESCE(?, bangumi_id), \
+                                              vndb_id = COALESCE(?, vndb_id), \
+                                              metadata_source = ?, match_confidence = ?, \
+                                              summary = ?, brand = COALESCE(?, brand), \
+                                              release_year = COALESCE(?, release_year), \
+                                              last_scanned_at = datetime('now'), \
+                                              metadata_fetched_at = datetime('now') \
+                             WHERE id = ?",
+                        )
+                        .bind(&result.name)
+                        .bind(&result.name_cn)
+                        .bind(&result.cover_path)
+                        .bind(&result.cover_url)
+                        .bind(&result.bangumi_id)
+                        .bind(&result.vndb_id)
+                        .bind(&result.metadata_source)
+                        .bind(result.match_confidence.map(|x| x as i64))
+                        .bind(&result.summary)
+                        .bind(&result.brand)
+                        .bind(release_year_i64)
+                        .bind(id)
+                        .execute(&*pool_t)
+                        .await;
 
                         if let Err(e) = write_staff_and_tags(
-                            &*pool_for_task,
+                            &*pool_t,
                             id,
-                            source_str,
-                            &result_shell,
+                            &result.metadata_source,
+                            &result,
                         )
                         .await
                         {
@@ -1542,46 +1396,201 @@ pub async fn refresh_metadata_smart(
                                 id, e
                             );
                         }
+                    } else {
+                        // ── 已绑定行 — 按 source_id 直拉 detail。
+                        // source 选择：bangumi/vndb 显式 → 对应 id；其它（manual/None）
+                        // → bangumi 优先，回落 vndb。
+                        let pick: Option<(MetadataSource, String)> =
+                            match metadata_source.as_deref() {
+                                Some("bangumi") => bangumi_id
+                                    .as_ref()
+                                    .map(|sid| (MetadataSource::Bangumi, sid.clone())),
+                                Some("vndb") => vndb_id
+                                    .as_ref()
+                                    .map(|sid| (MetadataSource::Vndb, sid.clone())),
+                                _ => bangumi_id
+                                    .as_ref()
+                                    .map(|sid| (MetadataSource::Bangumi, sid.clone()))
+                                    .or_else(|| {
+                                        vndb_id
+                                            .as_ref()
+                                            .map(|sid| (MetadataSource::Vndb, sid.clone()))
+                                    }),
+                            };
+
+                        if let Some((source_enum, source_id)) = pick {
+                            let detail_res = match source_enum {
+                                MetadataSource::Bangumi => {
+                                    metadata::bangumi::fetch_detail(&source_id).await
+                                }
+                                MetadataSource::Vndb => {
+                                    metadata::vndb::fetch_detail(&source_id).await
+                                }
+                                _ => unreachable!(
+                                    "source_enum constrained to Bangumi/Vndb above"
+                                ),
+                            };
+
+                            match detail_res {
+                                Ok(detail) => {
+                                    let persons = match source_enum {
+                                        MetadataSource::Bangumi => {
+                                            metadata::bangumi::fetch_persons(&source_id)
+                                                .await
+                                                .unwrap_or_default()
+                                        }
+                                        MetadataSource::Vndb => {
+                                            metadata::vndb::fetch_persons(&source_id)
+                                                .await
+                                                .unwrap_or_default()
+                                        }
+                                        _ => Vec::new(),
+                                    };
+                                    let characters = match source_enum {
+                                        MetadataSource::Bangumi => {
+                                            metadata::bangumi::fetch_characters(&source_id)
+                                                .await
+                                                .unwrap_or_default()
+                                        }
+                                        MetadataSource::Vndb => {
+                                            metadata::vndb::fetch_characters(&source_id)
+                                                .await
+                                                .unwrap_or_default()
+                                        }
+                                        _ => Vec::new(),
+                                    };
+                                    let mut staff = persons;
+                                    staff.extend(characters);
+
+                                    let release_year_i64: Option<i64> =
+                                        ingest::parse_release_year(
+                                            detail.release_date.as_deref(),
+                                        )
+                                        .map(|y| y as i64);
+
+                                    let source_str: &str = match source_enum {
+                                        MetadataSource::Bangumi => "bangumi",
+                                        MetadataSource::Vndb => "vndb",
+                                        _ => unreachable!(),
+                                    };
+
+                                    let _ = sqlx::query(
+                                        "UPDATE games SET \
+                                            cover_url           = COALESCE(?, cover_url), \
+                                            summary             = ?, \
+                                            brand               = COALESCE(?, brand), \
+                                            release_year        = ?, \
+                                            last_scanned_at     = datetime('now'), \
+                                            metadata_fetched_at = datetime('now') \
+                                         WHERE id = ?",
+                                    )
+                                    .bind(&detail.cover_url)
+                                    .bind(&detail.summary)
+                                    .bind(&detail.brand)
+                                    .bind(release_year_i64)
+                                    .bind(id)
+                                    .execute(&*pool_t)
+                                    .await;
+
+                                    let result_shell = ingest::IngestResult {
+                                        games_path: path.clone(),
+                                        name: name.clone(),
+                                        name_cn: None,
+                                        executable_path: exec.clone(),
+                                        cover_path: None,
+                                        cover_url: detail.cover_url.clone(),
+                                        bangumi_id: bangumi_id.clone(),
+                                        vndb_id: vndb_id.clone(),
+                                        metadata_source: source_str.to_string(),
+                                        match_confidence: None,
+                                        summary: detail.summary.clone(),
+                                        brand: detail.brand.clone(),
+                                        staff,
+                                        tags: detail.tags.clone(),
+                                        release_year: ingest::parse_release_year(
+                                            detail.release_date.as_deref(),
+                                        ),
+                                    };
+
+                                    if let Err(e) = write_staff_and_tags(
+                                        &*pool_t,
+                                        id,
+                                        source_str,
+                                        &result_shell,
+                                    )
+                                    .await
+                                    {
+                                        eprintln!(
+                                            "[refresh_metadata_smart] staff/tags write failed for game {}: {}",
+                                            id, e
+                                        );
+                                    }
+                                }
+                                Err(e) => {
+                                    eprintln!(
+                                        "[refresh_metadata_smart] fetch_detail failed for game {} ({:?}/{}): {}",
+                                        id, source_enum, source_id, e
+                                    );
+                                }
+                            }
+                        }
+                        // pick == None → 数据不一致；跳过 UPDATE，仍发 finished + scan-progress 下面统一处理。
                     }
-                    Err(e) => {
-                        eprintln!(
-                            "[refresh_metadata_smart] fetch_detail failed for game {} ({:?}/{}): {}",
-                            id, source_enum, source_id, e
-                        );
-                        // 跳过 UPDATE，仍发 finished + scan-progress（下面统一处理）。
-                    }
-                }
+
+                    let _ = app_t.emit(
+                        "meta-fetch-progress",
+                        serde_json::json!({ "game_id": id, "phase": "finished" }),
+                    );
+                    // Quick 260515-prog — row updated; trigger throttled Library refetch.
+                    let _ = app_t.emit("games-changed", ());
+
+                    let n = completed_t.fetch_add(1, Ordering::Relaxed) + 1;
+                    let _ = app_t.emit(
+                        "scan-progress",
+                        scan::ScanProgress {
+                            current_dir: path,
+                            completed: n,
+                            total: total_t,
+                            status: scan::ScanStatus::Running,
+                            phase: scan::ScanPhase::Enriching,
+                        },
+                    );
+                });
             }
 
-            let _ = app_for_emit.emit(
-                "meta-fetch-progress",
-                serde_json::json!({ "game_id": id, "phase": "finished" }),
-            );
-            // Quick 260515-prog — row updated; trigger throttled Library refetch.
-            let _ = app_for_emit.emit("games-changed", ());
+            // Wait for any task to finish. Empty set + iter exhausted (or cancelled
+            // mid-loop) → loop exits.
+            if set.join_next().await.is_none() {
+                break;
+            }
+        }
 
+        // Terminal Cancelled vs Completed — counter reflects however many
+        // tasks actually emitted their per-row scan-progress before cancel
+        // propagated.
+        if ctx_for_task.cancel.load(Ordering::Relaxed) {
             let _ = app_for_emit.emit(
                 "scan-progress",
                 scan::ScanProgress {
-                    current_dir: path,
-                    completed: i + 1,
+                    current_dir: String::new(),
+                    completed: completed.load(Ordering::Relaxed),
                     total,
-                    status: scan::ScanStatus::Running,
+                    status: scan::ScanStatus::Cancelled,
+                    phase: scan::ScanPhase::Enriching,
+                },
+            );
+        } else {
+            let _ = app_for_emit.emit(
+                "scan-progress",
+                scan::ScanProgress {
+                    current_dir: String::new(),
+                    completed: total,
+                    total,
+                    status: scan::ScanStatus::Completed,
                     phase: scan::ScanPhase::Enriching,
                 },
             );
         }
-
-        let _ = app_for_emit.emit(
-            "scan-progress",
-            scan::ScanProgress {
-                current_dir: String::new(),
-                completed: total,
-                total,
-                status: scan::ScanStatus::Completed,
-                phase: scan::ScanPhase::Enriching,
-            },
-        );
     });
 
     Ok(())
@@ -1613,6 +1622,10 @@ pub struct Game {
     pub metadata_source: Option<String>,
     pub match_confidence: Option<i64>,
     pub last_scanned_at: Option<String>,
+    /// Quick 260515-loading-phase-sort — 元数据最近一次获取的时间锚点。
+    /// 与 `last_scanned_at` 当前值一致，但语义上专门给排序用：未来若引入
+    /// 只更新 `last_scanned_at` 的非元数据扫描，这个字段不被污染。
+    pub metadata_fetched_at: Option<String>,
     // ── Phase 4 / schema v4 fields ──
     pub brand: Option<String>,
     pub release_year: Option<i64>,
@@ -1641,6 +1654,7 @@ pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String>
         "SELECT id, path, name, name_cn, executable_path, cover_path, cover_url, \
                 bangumi_id, vndb_id, total_playtime_sec, last_played_at, status, \
                 rating, notes, metadata_source, match_confidence, last_scanned_at, \
+                metadata_fetched_at, \
                 brand, release_year, is_favorite, summary, \
                 created_at, updated_at \
          FROM games ORDER BY created_at DESC",
@@ -1679,6 +1693,7 @@ fn row_to_game(row: &sqlx::sqlite::SqliteRow) -> Result<Game, String> {
         metadata_source: row.try_get("metadata_source").ok(),
         match_confidence: row.try_get("match_confidence").ok(),
         last_scanned_at: row.try_get("last_scanned_at").ok(),
+        metadata_fetched_at: row.try_get("metadata_fetched_at").ok(),
         brand: row.try_get("brand").ok(),
         release_year: row.try_get("release_year").ok(),
         is_favorite: row.try_get::<i64, _>("is_favorite").unwrap_or(0) != 0,
@@ -2225,6 +2240,7 @@ pub async fn search_games(
         "SELECT g.id, g.path, g.name, g.name_cn, g.executable_path, g.cover_path, g.cover_url, \
                 g.bangumi_id, g.vndb_id, g.total_playtime_sec, g.last_played_at, g.status, \
                 g.rating, g.notes, g.metadata_source, g.match_confidence, g.last_scanned_at, \
+                g.metadata_fetched_at, \
                 g.brand, g.release_year, g.is_favorite, g.summary, \
                 g.created_at, g.updated_at \
          FROM games g {} ORDER BY {}",
@@ -3426,7 +3442,8 @@ pub async fn list_games_for_person(
                 g.cover_path, g.cover_url, g.bangumi_id, g.vndb_id, \
                 g.total_playtime_sec, g.last_played_at, g.status, \
                 g.rating, g.notes, g.metadata_source, g.match_confidence, \
-                g.last_scanned_at, g.brand, g.release_year, g.is_favorite, \
+                g.last_scanned_at, g.metadata_fetched_at, \
+                g.brand, g.release_year, g.is_favorite, \
                 g.summary, g.created_at, g.updated_at \
          FROM games g \
          JOIN game_staff gs ON gs.game_id = g.id \

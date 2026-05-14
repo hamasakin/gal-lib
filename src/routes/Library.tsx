@@ -391,6 +391,46 @@ export function Library() {
     }
   }, [games, fetchingMetaIds]);
   const visibleGames = useMemo(() => {
+    const scanRunning = scanProgress?.status === "running";
+    // Quick 260515-loading-phase-sort (round-2) —
+    // scanRunning 时整体按 phase + metadata_fetched_at DESC 排序：
+    //   1. phase rank: in_flight=2（backend 当前正在抓） > awaiting_refetch=1
+    //      （刚收到 finished, 等 refetch 反映出来）> 普通=0
+    //   2. 同 rank 内按 metadata_fetched_at DESC NULLS LAST（最近获取过的在前）
+    //   3. tie-break 按 id ASC 保持稳定
+    //
+    // 这样：
+    //   - 顶部：当前正在并发拉取的 4 张卡
+    //   - 紧接着：刚刚拉完、UI 还没刷出来的卡
+    //   - 中段：本轮已经处理完的卡（按完成时间倒序）
+    //   - 底部：还没处理的卡（旧 metadata_fetched_at 或 NULL）
+    //
+    // 关键点：当某卡从 in_flight → awaiting_refetch → 完成 时，它在列表里
+    // 是平滑下沉（同一区域内的相邻 rank），不会出现"卡片瞬间跳到列表中间
+    // 某个位置"的视觉切换 → 满足"loading 时和 loading 完后顺序相对一致"。
+    if (scanRunning) {
+      const phaseRank = (id: number): number => {
+        const p = fetchingMetaIds[id];
+        if (p === "in_flight") return 2;
+        if (p === "awaiting_refetch") return 1;
+        return 0;
+      };
+      const sorted = [...filteredGames].sort((a, b) => {
+        const pa = phaseRank(a.id);
+        const pb = phaseRank(b.id);
+        if (pa !== pb) return pb - pa;
+        const at = a.metadata_fetched_at ?? "";
+        const bt = b.metadata_fetched_at ?? "";
+        if (at !== bt) {
+          if (at === "") return 1;
+          if (bt === "") return -1;
+          return at > bt ? -1 : 1;
+        }
+        return a.id - b.id;
+      });
+      return sorted;
+    }
+    // 非 scan 状态：保留 loading-first 浮顶（单条 refresh / bind 等场景）。
     const isLoading = (g: Game): boolean => {
       if (fetchingMetaIds[g.id] != null) return true;
       const bound =
@@ -404,27 +444,7 @@ export function Library() {
     for (const g of filteredGames) {
       (isLoading(g) ? loading : rest).push(g);
     }
-    // Quick 260515-loading-phase-sort — during an active scan/refresh, sort
-    // the "rest" partition by last_scanned_at DESC so the most-recently
-    // refreshed cards float right beneath the still-loading ones. This
-    // gives the user a stack-of-fresh-stuff feel: top = currently fetching,
-    // immediately below = just finished, further down = older / stale.
-    // NULL last_scanned_at sinks to the bottom.
-    const scanRunning =
-      useLibraryStore.getState().scanProgress?.status === "running";
-    if (scanRunning) {
-      rest.sort((a, b) => {
-        const at = a.last_scanned_at ?? "";
-        const bt = b.last_scanned_at ?? "";
-        if (at === bt) return 0;
-        if (at === "") return 1;
-        if (bt === "") return -1;
-        return at > bt ? -1 : 1;
-      });
-    }
-    return loading.length === 0 && !scanRunning
-      ? filteredGames
-      : [...loading, ...rest];
+    return loading.length === 0 ? filteredGames : [...loading, ...rest];
   }, [filteredGames, fetchingMetaIds, scanProgress?.status]);
 
   const isEmpty = visibleGames.length === 0;

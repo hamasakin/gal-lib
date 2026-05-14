@@ -50,6 +50,13 @@ export interface Game {
   /** 0..=100; `null` until ingest runs. ≥80 = auto-bind, <80 = needs review. */
   match_confidence: number | null;
   last_scanned_at: string | null;
+  /**
+   * Quick 260515-loading-phase-sort — 元数据最近一次获取的时间锚点。
+   * 当前与 `last_scanned_at` 同值，但语义上专门用于排序：scan/refresh 中
+   * Library 按这个字段 DESC 排，让"最近刚获取过元数据"的卡浮在前列。未来
+   * 若引入只更新 last_scanned_at 的非元数据扫描，这个字段不被污染。
+   */
+  metadata_fetched_at: string | null;
   // ── Phase 4 / schema v4 fields ──
   /**
    * Brand / publisher / circle name from the metadata source. Filled by the

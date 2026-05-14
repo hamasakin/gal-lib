@@ -36,6 +36,7 @@ const V7_SQL: &str = include_str!("../migrations/0007_add_metadata_enrichment.sq
 const V8_SQL: &str = include_str!("../migrations/0008_add_age_rating_and_custom_views.sql");
 const V9_SQL: &str = include_str!("../migrations/0009_add_scan_review_queue.sql");
 const V10_SQL: &str = include_str!("../migrations/0010_drop_age_rating.sql");
+const V11_SQL: &str = include_str!("../migrations/0011_add_metadata_fetched_at.sql");
 
 /// All migrations to register with tauri-plugin-sql, in version order.
 /// Add future migrations as additional entries with monotonically increasing
@@ -100,6 +101,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 10,
             description: "drop_age_rating",
             sql: V10_SQL,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 11,
+            description: "add_metadata_fetched_at",
+            sql: V11_SQL,
             kind: MigrationKind::Up,
         },
     ]
