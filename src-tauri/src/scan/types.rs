@@ -13,12 +13,17 @@ use std::path::PathBuf;
 /// `current_dir` is the absolute path of the directory currently being
 /// processed (or empty string for the terminal `Completed` event).
 /// `completed`/`total` count game directories (not arbitrary FS entries).
+/// `phase` distinguishes the two pipeline stages so the frontend can show
+/// distinct copy ("扫描目录中…" vs "获取元数据 — …"):
+///   - `Discovering` during `run_scan` (filesystem walk + exe picking)
+///   - `Enriching` during the placeholder INSERT + per-game metadata fetch
 #[derive(Debug, Clone, Serialize)]
 pub struct ScanProgress {
     pub current_dir: String,
     pub completed: usize,
     pub total: usize,
     pub status: ScanStatus,
+    pub phase: ScanPhase,
 }
 
 /// Lifecycle status of a scan run, serialized as lowercase strings to
@@ -30,6 +35,18 @@ pub enum ScanStatus {
     Completed,
     Cancelled,
     Failed,
+}
+
+/// Sub-phase of a scan run. Orthogonal to `ScanStatus`: a `Running` event
+/// may be in either phase; terminal events carry the last active phase
+/// (frontend only differentiates copy on `Running`).
+#[derive(Debug, Clone, Copy, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+pub enum ScanPhase {
+    /// Pass 1 — directory walk + exe selection (`run_scan`).
+    Discovering,
+    /// Pass 2 — placeholder INSERT + per-game metadata pipeline.
+    Enriching,
 }
 
 /// One game directory discovered during a scan, ready for metadata pipeline.

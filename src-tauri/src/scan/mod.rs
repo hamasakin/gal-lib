@@ -21,7 +21,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-pub use types::{DiscoveredGame, ScanError, ScanProgress, ScanStatus};
+pub use types::{DiscoveredGame, ScanError, ScanPhase, ScanProgress, ScanStatus};
 
 /// Shared cancellation + skip handle for one scan run.
 ///
@@ -98,6 +98,7 @@ where
                 completed: i,
                 total,
                 status: ScanStatus::Cancelled,
+                phase: ScanPhase::Discovering,
             });
             return Err(ScanError::Cancelled);
         }
@@ -114,6 +115,7 @@ where
                 completed: i + 1,
                 total,
                 status: ScanStatus::Running,
+                phase: ScanPhase::Discovering,
             });
             continue;
         }
@@ -125,6 +127,7 @@ where
                 completed: i + 1,
                 total,
                 status: ScanStatus::Running,
+                phase: ScanPhase::Discovering,
             });
             continue;
         }
@@ -149,6 +152,7 @@ where
             completed: i + 1,
             total,
             status: ScanStatus::Running,
+            phase: ScanPhase::Discovering,
         });
     }
 

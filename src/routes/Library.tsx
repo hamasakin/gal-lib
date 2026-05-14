@@ -29,7 +29,7 @@ import {
   type SearchFilter,
 } from "@/lib/search";
 import type { Game } from "@/lib/games";
-import { startScan, listScanRoots } from "@/lib/scan";
+import { onGamesChanged, startScan, listScanRoots } from "@/lib/scan";
 import { GameGrid } from "@/components/library/GameGrid";
 import { GameList } from "@/components/library/GameList";
 import { ViewToggle } from "@/components/library/ViewToggle";
@@ -255,6 +255,51 @@ export function Library() {
   useEffect(() => {
     void refreshFilterOptions();
   }, [refreshFilterOptions]);
+
+  // Quick 260515-prog — progressive refresh during an active scan.
+  //
+  // Backend emits a `games-changed` pulse per placeholder INSERT and per
+  // enrich completion. We throttle to one refetch per 600ms so a 500-game
+  // rescan triggers ≤ a few network round-trips per second instead of one
+  // per row. Trailing call ensures the final `games-changed` (right before
+  // `scan-progress.completed`) still lands even if it falls inside the
+  // throttle window.
+  useEffect(() => {
+    let unlisten: (() => void) | null = null;
+    let lastRun = 0;
+    let trailing: ReturnType<typeof setTimeout> | null = null;
+    const THROTTLE_MS = 600;
+
+    const fire = () => {
+      lastRun = Date.now();
+      trailing = null;
+      void refetchGrid();
+      void refreshSidebar();
+    };
+
+    const onPulse = () => {
+      const since = Date.now() - lastRun;
+      if (since >= THROTTLE_MS) {
+        fire();
+      } else if (trailing == null) {
+        trailing = setTimeout(fire, THROTTLE_MS - since);
+      }
+    };
+
+    void onGamesChanged(onPulse)
+      .then((fn) => {
+        unlisten = fn;
+      })
+      .catch((e: unknown) => {
+        // eslint-disable-next-line no-console
+        console.error("[Library] failed to subscribe to games-changed:", e);
+      });
+
+    return () => {
+      if (trailing != null) clearTimeout(trailing);
+      unlisten?.();
+    };
+  }, [refetchGrid, refreshSidebar]);
 
   // Detect the running → completed edge once and fire the rich scan-finished
   // toast post-refresh. The ref guard prevents double-fires when refetchGrid

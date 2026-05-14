@@ -47,13 +47,21 @@ export function ScanProgressBar() {
 
   if (!scanProgress || hidden) return null;
 
-  const { current_dir, completed, total, status } = scanProgress;
+  const { current_dir, completed, total, status, phase } = scanProgress;
   const pct = total > 0 ? Math.min(100, Math.round((completed / total) * 100)) : 0;
 
+  // Quick 260515-prog — copy now distinguishes the two pipeline phases:
+  // Pass 1 (discovering) shows "扫描目录中"; Pass 2 (enriching) shows
+  // "获取元数据"; terminal events fold into a single "扫描完成" copy so the
+  // user doesn't see a two-step "目录扫描完成" → "元数据获取完成" flicker.
   let summary: string;
   switch (status) {
     case "running":
-      summary = `扫描中 — ${current_dir || "…"}`;
+      if (phase === "discovering") {
+        summary = `扫描目录中 — ${current_dir || "…"}`;
+      } else {
+        summary = `获取元数据 — ${current_dir || "…"}`;
+      }
       break;
     case "completed":
       summary = `扫描完成 — 共 ${total} 款游戏`;

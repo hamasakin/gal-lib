@@ -539,6 +539,7 @@ pub async fn start_scan(
                 completed: 0,
                 total: 0,
                 status: scan::ScanStatus::Completed,
+                phase: scan::ScanPhase::Discovering,
             },
         );
         return Ok(());
@@ -603,6 +604,7 @@ pub async fn start_scan(
                             scan::ScanError::Cancelled => scan::ScanStatus::Cancelled,
                             _ => scan::ScanStatus::Failed,
                         },
+                        phase: scan::ScanPhase::Discovering,
                     },
                 );
                 return;
@@ -622,6 +624,7 @@ pub async fn start_scan(
                     completed: 0,
                     total: 0,
                     status: scan::ScanStatus::Completed,
+                    phase: scan::ScanPhase::Discovering,
                 },
             );
             return;
@@ -641,6 +644,25 @@ pub async fn start_scan(
         // if the user clicked "取消扫描" while we're seeding placeholders,
         // bail immediately with a Cancelled event instead of continuing to
         // INSERT every remaining discovery before the ingest loop's check.
+        // Transition event — reset the progress bar to phase 2 (ingest).
+        // Emit BEFORE the placeholder loop so the UI flips copy from
+        // "扫描目录中…" to "获取元数据 — …" immediately, then per-row
+        // progress events update the directory shown in the bar.
+        let _ = app_for_emit.emit(
+            "scan-progress",
+            scan::ScanProgress {
+                current_dir: String::new(),
+                completed: 0,
+                total,
+                status: scan::ScanStatus::Running,
+                phase: scan::ScanPhase::Enriching,
+            },
+        );
+
+        // Quick 260515-prog — Phase 2 placeholders: each successful INSERT
+        // emits a `games-changed` event so the Library grid throttle-refetches
+        // and the new row appears with the "获取中" badge before its metadata
+        // fetch even starts.
         for dg in &discovered {
             if ctx.cancel.load(std::sync::atomic::Ordering::Relaxed) {
                 let _ = app_for_emit.emit(
@@ -650,27 +672,15 @@ pub async fn start_scan(
                         completed: 0,
                         total,
                         status: scan::ScanStatus::Cancelled,
+                        phase: scan::ScanPhase::Enriching,
                     },
                 );
                 return;
             }
-            let _ = insert_placeholder_dir(&*pool_for_task, dg).await;
+            if insert_placeholder_dir(&*pool_for_task, dg).await.is_ok() {
+                let _ = app_for_emit.emit("games-changed", ());
+            }
         }
-
-        // Transition event — reset the progress bar to phase 2 (ingest).
-        // Frontend's existing scan-progress completed→refetch flow picks up
-        // the placeholder rows on terminal status; we deliberately don't
-        // emit a separate `games-changed` event here to keep the event
-        // surface minimal (CONTEXT decision logged in PLAN Task 2).
-        let _ = app_for_emit.emit(
-            "scan-progress",
-            scan::ScanProgress {
-                current_dir: String::new(),
-                completed: 0,
-                total,
-                status: scan::ScanStatus::Running,
-            },
-        );
 
         // 20260509g — cross-game ingest concurrency. Up to INGEST_CONCURRENCY
         // tasks run in parallel; each one re-resolves its placeholder id
@@ -733,6 +743,7 @@ pub async fn start_scan(
                                     completed: n,
                                     total: total_t,
                                     status: scan::ScanStatus::Running,
+                                    phase: scan::ScanPhase::Enriching,
                                 },
                             );
                             return;
@@ -756,6 +767,10 @@ pub async fn start_scan(
                     // helper so SQL stays in one place.
                     let res = ingest::process_game_cached(game_id, &data_dir_t, &dg, &cache_t).await;
                     let _ = apply_ingest_result(&*pool_t, game_id, &res).await;
+                    // Quick 260515-prog — UPDATE happened (success OR fallback
+                    // to placeholder-with-empty-metadata); either way the row
+                    // mutated, so prompt the Library to throttle-refetch.
+                    let _ = app_t.emit("games-changed", ());
 
                     let _ = app_t.emit(
                         "meta-fetch-progress",
@@ -770,6 +785,7 @@ pub async fn start_scan(
                             completed: n,
                             total: total_t,
                             status: scan::ScanStatus::Running,
+                            phase: scan::ScanPhase::Enriching,
                         },
                     );
                 });
@@ -794,6 +810,7 @@ pub async fn start_scan(
                     completed: completed.load(Ordering::Relaxed),
                     total,
                     status: scan::ScanStatus::Cancelled,
+                    phase: scan::ScanPhase::Enriching,
                 },
             );
         } else {
@@ -807,6 +824,7 @@ pub async fn start_scan(
                     completed: total,
                     total,
                     status: scan::ScanStatus::Completed,
+                    phase: scan::ScanPhase::Enriching,
                 },
             );
         }
@@ -1212,6 +1230,7 @@ pub async fn refresh_metadata_smart(
     let ctx_for_task = ctx.clone();
 
     // Initial Running event so the progress bar opens at 0 / total.
+    // refresh_metadata_smart only touches metadata — always Enriching phase.
     let _ = app.emit(
         "scan-progress",
         scan::ScanProgress {
@@ -1219,6 +1238,7 @@ pub async fn refresh_metadata_smart(
             completed: 0,
             total,
             status: scan::ScanStatus::Running,
+            phase: scan::ScanPhase::Enriching,
         },
     );
 
@@ -1230,6 +1250,7 @@ pub async fn refresh_metadata_smart(
                 completed: 0,
                 total: 0,
                 status: scan::ScanStatus::Completed,
+                phase: scan::ScanPhase::Enriching,
             },
         );
         return Ok(());
@@ -1249,6 +1270,7 @@ pub async fn refresh_metadata_smart(
                         completed: i,
                         total,
                         status: scan::ScanStatus::Cancelled,
+                        phase: scan::ScanPhase::Enriching,
                     },
                 );
                 return;
@@ -1352,6 +1374,7 @@ pub async fn refresh_metadata_smart(
                                     completed: i + 1,
                                     total,
                                     status: scan::ScanStatus::Running,
+                                    phase: scan::ScanPhase::Enriching,
                                 },
                             );
                             continue;
@@ -1371,6 +1394,7 @@ pub async fn refresh_metadata_smart(
                                     completed: i + 1,
                                     total,
                                     status: scan::ScanStatus::Running,
+                                    phase: scan::ScanPhase::Enriching,
                                 },
                             );
                             continue;
@@ -1395,6 +1419,7 @@ pub async fn refresh_metadata_smart(
                                     completed: i + 1,
                                     total,
                                     status: scan::ScanStatus::Running,
+                                    phase: scan::ScanPhase::Enriching,
                                 },
                             );
                             continue;
@@ -1520,6 +1545,8 @@ pub async fn refresh_metadata_smart(
                 "meta-fetch-progress",
                 serde_json::json!({ "game_id": id, "phase": "finished" }),
             );
+            // Quick 260515-prog — row updated; trigger throttled Library refetch.
+            let _ = app_for_emit.emit("games-changed", ());
 
             let _ = app_for_emit.emit(
                 "scan-progress",
@@ -1528,6 +1555,7 @@ pub async fn refresh_metadata_smart(
                     completed: i + 1,
                     total,
                     status: scan::ScanStatus::Running,
+                    phase: scan::ScanPhase::Enriching,
                 },
             );
         }
@@ -1539,6 +1567,7 @@ pub async fn refresh_metadata_smart(
                 completed: total,
                 total,
                 status: scan::ScanStatus::Completed,
+                phase: scan::ScanPhase::Enriching,
             },
         );
     });

@@ -25,12 +25,20 @@ export interface ScanRoot {
   created_at: string;
 }
 
+/**
+ * Sub-phase of an active scan. `discovering` = filesystem walk; `enriching` =
+ * placeholder INSERT + per-game metadata pipeline. Terminal events carry the
+ * last active phase (frontend only switches copy on `running`).
+ */
+export type ScanPhase = "discovering" | "enriching";
+
 /** Live progress payload emitted by Rust during an active scan. */
 export interface ScanProgress {
   current_dir: string;
   completed: number;
   total: number;
   status: "running" | "completed" | "cancelled" | "failed";
+  phase: ScanPhase;
 }
 
 /**
@@ -161,4 +169,18 @@ export async function onMetaFetchProgress(
   cb: (p: MetaFetchProgress) => void,
 ): Promise<UnlistenFn> {
   return listen<MetaFetchProgress>("meta-fetch-progress", (e) => cb(e.payload));
+}
+
+/**
+ * Quick 260515-prog — subscribe to `games-changed`, a fire-and-forget pulse
+ * emitted by `start_scan` (per placeholder INSERT, per enrich completion) and
+ * `refresh_metadata_smart` (per UPDATE). Payload is empty `()` — consumers
+ * should throttle and call `searchGames` themselves to re-read the grid.
+ *
+ * Returns an `UnlistenFn` — caller MUST invoke on cleanup.
+ */
+export async function onGamesChanged(
+  cb: () => void,
+): Promise<UnlistenFn> {
+  return listen<unknown>("games-changed", () => cb());
 }

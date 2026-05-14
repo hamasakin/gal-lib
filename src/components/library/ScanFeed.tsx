@@ -40,6 +40,9 @@ export function ScanFeed() {
   const [lines, setLines] = useState<FeedLine[]>([]);
   const seqRef = useRef(0);
   const games = useLibraryStore((s) => s.games);
+  // Quick 260515-prog — track last seen phase so we can write a single
+  // divider line when the pipeline transitions discovering → enriching.
+  const lastPhaseRef = useRef<string | null>(null);
 
   // game_id → display name (best-effort; meta-fetch-progress only carries id).
   // Looking this up at render time would re-render the whole feed on every
@@ -66,12 +69,39 @@ export function ScanFeed() {
     };
 
     listen<ScanProgress>("scan-progress", (e) => {
-      const { current_dir, completed, total, status } = e.payload;
+      const { current_dir, completed, total, status, phase } = e.payload;
+      // Phase-transition divider — emit once when we cross from
+      // discovering → enriching (or the other direction, e.g. a fresh scan
+      // after an enrich-only refresh just ran).
+      if (status === "running") {
+        const prev = lastPhaseRef.current;
+        if (prev !== phase) {
+          lastPhaseRef.current = phase;
+          if (prev !== null) {
+            push({
+              body:
+                phase === "enriching"
+                  ? `── 目录扫描完成 · 开始抓取元数据（共 ${total} 款）`
+                  : `── 开始扫描目录`,
+              variant: "terminal",
+            });
+          }
+        }
+      } else {
+        // Reset phase tracker after a terminal event so the NEXT scan's
+        // first running event doesn't suppress its own divider.
+        lastPhaseRef.current = null;
+      }
+
       switch (status) {
         case "running":
-          if (current_dir) {
+          // In `enriching` phase the `meta-fetch-progress` listener already
+          // logs per-game start/finish with friendly names — avoid double
+          // logging (would push two lines per game and flood the 200-line
+          // buffer in a large rescan).
+          if (current_dir && phase === "discovering") {
             push({
-              body: `扫描中 · ${completed}/${total} · ${current_dir}`,
+              body: `扫描目录 · ${completed}/${total} · ${current_dir}`,
               variant: "scan",
             });
           }
