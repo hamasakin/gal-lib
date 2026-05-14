@@ -24,26 +24,26 @@ export function WindowControls() {
       <button
         type="button"
         onClick={() => void win.minimize()}
-        className="window-ctrl-btn hover:bg-accent"
+        className="window-ctrl-btn"
         aria-label="最小化"
       >
-        <Minus size={14} strokeWidth={2} />
+        <Minus size={15} strokeWidth={2} />
       </button>
       <button
         type="button"
         onClick={() => void win.toggleMaximize()}
-        className="window-ctrl-btn hover:bg-accent"
+        className="window-ctrl-btn"
         aria-label="最大化"
       >
-        <Square size={12} strokeWidth={2} />
+        <Square size={13} strokeWidth={2} />
       </button>
       <button
         type="button"
         onClick={() => void win.close()}
-        className="window-ctrl-btn hover:bg-destructive hover:text-white"
+        className="window-ctrl-btn close"
         aria-label="关闭"
       >
-        <X size={14} strokeWidth={2} />
+        <X size={15} strokeWidth={2} />
       </button>
     </div>
   );

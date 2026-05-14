@@ -10,14 +10,14 @@ import { WindowControls } from './WindowControls';
  */
 export function Titlebar() {
   return (
-    <header className="titlebar-root flex h-8 items-center border-b border-line bg-bg-1 text-ink-2">
+    <header className="titlebar-root flex h-10 items-stretch border-b border-line bg-bg-1 text-ink-2">
       <div
         data-tauri-drag-region
-        className="flex flex-1 items-center gap-2.5 px-3.5"
+        className="flex flex-1 items-center gap-3 px-4"
       >
         <span
           aria-hidden
-          className="grid h-4 w-4 place-items-center rounded-sm font-serif text-[11px] font-bold text-white"
+          className="grid h-[18px] w-[18px] place-items-center rounded-sm font-serif text-[12px] font-bold text-white"
           style={{
             background: "var(--ink-stamp)",
             boxShadow: "inset 0 0 0 1px rgba(255,255,255,.05)",
@@ -25,10 +25,10 @@ export function Titlebar() {
         >
           箱
         </span>
-        <span className="font-serif text-[12px] tracking-[0.04em] text-ink-1">
+        <span className="font-serif text-[13.5px] tracking-[0.04em] text-ink-1">
           箱庭
         </span>
-        <span className="font-mono text-[10.5px] uppercase tracking-[0.18em] text-ink-3">
+        <span className="font-mono text-[11px] uppercase tracking-[0.18em] text-ink-3">
           Hakoniwa · portable
         </span>
       </div>
