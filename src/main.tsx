@@ -95,9 +95,24 @@ if (!__metaFetchProgressUnsub) {
     const store = useLibraryStore.getState();
     if (p.phase === "started") {
       store.addFetchingMetaId(p.game_id);
-    } else {
-      store.removeFetchingMetaId(p.game_id);
+      return;
     }
+    // Quick 260515-loading-persist — finished does NOT remove the id here.
+    // Removal is driven by Library.tsx watching the `games` array: once the
+    // refetched row reflects metadata_source !== "none" (or last_scanned_at
+    // is set on a failed match), the id is dropped from fetchingMetaIds and
+    // the loading visual ends.
+    //
+    // Why: backend emits `meta-fetch-progress.finished` immediately after
+    // `apply_ingest_result` writes the row, but the frontend grid only
+    // refetches via the 600 ms-throttled `games-changed` listener. Between
+    // those two events the card sits with cover_path=null and would flicker
+    // from "fetching" → "pending" → final state. Anchoring the loading
+    // visual to the row's actual data avoids that window.
+    //
+    // Bulk safety net for missed/late removals (backend panic mid-task,
+    // single-game paths that don't trigger a grid-wide refetch) lives in
+    // the `scan-progress` terminal listener (clearFetchingMetaIds).
   })
     .then((unsub) => {
       __metaFetchProgressUnsub = unsub;

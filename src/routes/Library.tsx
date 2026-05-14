@@ -351,6 +351,39 @@ export function Library() {
   // We subscribe to fetchingMetaIds via the hook above so this re-runs
   // whenever a card transitions in/out of the in-flight set.
   const fetchingMetaIds = useLibraryStore((s) => s.fetchingMetaIds);
+
+  // Quick 260515-loading-persist — reconcile fetchingMetaIds against the
+  // freshly refetched `games` array. Backend emits
+  // `meta-fetch-progress.finished` the moment the SQL UPDATE lands, but
+  // the grid only refetches via the 600 ms-throttled `games-changed`
+  // listener; if we removed the id on `finished` directly (the old
+  // behavior), the card would briefly drop its loading visual while the
+  // row was still a placeholder (cover_path=null, metadata_source=none).
+  //
+  // Now: removal happens here, once we can see the row has actually
+  // transitioned to a terminal state (bound, manual, or a failed match
+  // marked by last_scanned_at). That guarantees the loading state lasts
+  // until cover + metadata are both visible.
+  useEffect(() => {
+    const ids = Object.keys(fetchingMetaIds);
+    if (ids.length === 0) return;
+    const byId = new Map(games.map((g) => [g.id, g]));
+    const st = useLibraryStore.getState();
+    for (const idStr of ids) {
+      const id = Number(idStr);
+      const g = byId.get(id);
+      if (!g) continue;
+      const bound =
+        g.metadata_source === "bangumi" ||
+        g.metadata_source === "vndb" ||
+        g.metadata_source === "manual";
+      const failedTerminal =
+        g.metadata_source === "none" && g.last_scanned_at != null;
+      if (bound || failedTerminal) {
+        st.removeFetchingMetaId(id);
+      }
+    }
+  }, [games, fetchingMetaIds]);
   const visibleGames = useMemo(() => {
     const isLoading = (g: Game): boolean => {
       if (fetchingMetaIds[g.id] === true) return true;
