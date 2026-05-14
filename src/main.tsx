@@ -48,6 +48,17 @@ if (!__scanProgressUnsub) {
     // any missed `meta-fetch-progress { phase: "finished" }` (e.g. a backend
     // panic between started/finished, or a process kill mid-iteration).
     const store = useLibraryStore.getState();
+    // Quick 260515-cancel — once we've recorded a `cancelled` terminal event,
+    // ignore any further events for this run. The backend's ingest task may
+    // still flush a trailing scan-progress payload after `abort_all` (rare
+    // race), and we don't want it to reset the progress-bar hide timer that
+    // ScanProgressBar starts on cancel.
+    const prev = store.scanProgress;
+    if (prev?.status === "cancelled" && p.status !== "running") {
+      // The next "running" event (a brand-new scan starting) is allowed
+      // through; only suppress repeated/late terminal echoes.
+      return;
+    }
     store.setScanProgress(p);
     if (
       p.status === "completed" ||

@@ -703,6 +703,18 @@ pub async fn start_scan(
         let mut iter = discovered.into_iter();
 
         loop {
+            // Quick 260515-cancel — if cancel just fired, drop everything in
+            // flight immediately. `abort_all` cancels the JoinSet's tasks,
+            // which makes their pending `process_game_cached` awaits return
+            // (the underlying reqwest connections are torn down by tokio's
+            // future-drop semantics). Without this, the terminal Cancelled
+            // event waited for up to INGEST_CONCURRENCY full HTTP round-trips
+            // (≈5–20 s) before the progress bar could even start its
+            // auto-hide timer.
+            if ctx.cancel.load(Ordering::Relaxed) && !set.is_empty() {
+                set.abort_all();
+            }
+
             // 1) Refill: spawn until we hit INGEST_CONCURRENCY in-flight tasks
             //    or run out of input. After cancel, stop spawning so the loop
             //    can drain + return.

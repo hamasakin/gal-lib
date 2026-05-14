@@ -103,6 +103,14 @@ export default function Scan() {
   const onCancel = useCallback(async () => {
     try {
       await cancelScan();
+      // Quick 260515-cancel — optimistic flip to cancelled so the sticky
+      // progress bar starts its short auto-hide right away (instead of
+      // waiting for the backend's terminal emit).
+      const st = useLibraryStore.getState();
+      if (st.scanProgress && st.scanProgress.status === "running") {
+        st.setScanProgress({ ...st.scanProgress, status: "cancelled" });
+        st.clearFetchingMetaIds();
+      }
       toast.info("已发送取消请求");
     } catch (e: unknown) {
       toast.error(`取消失败 — ${String(e)}`);

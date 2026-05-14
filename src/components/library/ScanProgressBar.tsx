@@ -23,6 +23,10 @@ import { cancelScan } from "@/lib/scan";
 import { useLibraryStore } from "@/store/library";
 
 const AUTO_HIDE_MS = 5_000;
+// Quick 260515-cancel — cancelled is a user-driven terminal state; user just
+// asked for the scan to stop, so we shouldn't make them stare at a stale bar
+// for 5 s. 1.2 s is enough to read the "已取消" copy and confirm it took.
+const AUTO_HIDE_CANCELLED_MS = 1_200;
 
 export function ScanProgressBar() {
   const scanProgress = useLibraryStore((s) => s.scanProgress);
@@ -41,7 +45,11 @@ export function ScanProgressBar() {
       setHidden(false);
       return;
     }
-    const timer = setTimeout(() => setHidden(true), AUTO_HIDE_MS);
+    const delay =
+      scanProgress.status === "cancelled"
+        ? AUTO_HIDE_CANCELLED_MS
+        : AUTO_HIDE_MS;
+    const timer = setTimeout(() => setHidden(true), delay);
     return () => clearTimeout(timer);
   }, [scanProgress]);
 
@@ -77,6 +85,15 @@ export function ScanProgressBar() {
   async function onConfirmCancel() {
     try {
       await cancelScan();
+      // Quick 260515-cancel — flip the store optimistically so the bar
+      // shows "已取消" + starts its 1.2 s auto-hide immediately, rather
+      // than waiting for the backend's terminal Cancelled emit (which can
+      // take a brief moment while the JoinSet drains its abort).
+      const st = useLibraryStore.getState();
+      if (st.scanProgress && st.scanProgress.status === "running") {
+        st.setScanProgress({ ...st.scanProgress, status: "cancelled" });
+        st.clearFetchingMetaIds();
+      }
       toast.info("扫描已取消");
     } catch (e: unknown) {
       toast.error(`取消失败 — ${String(e)}`);
