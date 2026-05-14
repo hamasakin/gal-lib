@@ -18,7 +18,7 @@
  * Routing-export note: router.tsx uses `import { Library }` — keep NAMED export.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { toastScanFinished } from "@/lib/toast";
@@ -341,7 +341,33 @@ export function Library() {
   // sort + searchQuery). The advanced FilterPanel runs as a client-side
   // post-filter on top of this — keeps all complex multi-axis logic out
   // of the SQL builder.
-  const visibleGames = applyAdvancedFilter(games, advFilter);
+  const filteredGames = applyAdvancedFilter(games, advFilter);
+
+  // Quick 260515-loading-first — stable partition: cards currently
+  // "loading" (active enrich, or just-INSERT-ed placeholder still waiting
+  // for the ingest task to pick them up) float to the front so the user
+  // can watch progress without scrolling. Within each partition the
+  // backend's sort order (last_played / created_at / etc.) is preserved.
+  // We subscribe to fetchingMetaIds via the hook above so this re-runs
+  // whenever a card transitions in/out of the in-flight set.
+  const fetchingMetaIds = useLibraryStore((s) => s.fetchingMetaIds);
+  const visibleGames = useMemo(() => {
+    const isLoading = (g: Game): boolean => {
+      if (fetchingMetaIds[g.id] === true) return true;
+      const bound =
+        g.metadata_source === "bangumi" ||
+        g.metadata_source === "vndb" ||
+        g.metadata_source === "manual";
+      return !bound && g.last_scanned_at == null;
+    };
+    const loading: Game[] = [];
+    const rest: Game[] = [];
+    for (const g of filteredGames) {
+      (isLoading(g) ? loading : rest).push(g);
+    }
+    return loading.length === 0 ? filteredGames : [...loading, ...rest];
+  }, [filteredGames, fetchingMetaIds]);
+
   const isEmpty = visibleGames.length === 0;
   const hasActiveSearch = searchQuery.trim() !== "";
   const hasActiveFilter = !isFilterEmpty(filter) || isAdvFilterActive(advFilter);
