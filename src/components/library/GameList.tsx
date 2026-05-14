@@ -16,10 +16,11 @@
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { ImageOff, Heart } from "lucide-react";
+import { ImageOff, Heart, Loader2 } from "lucide-react";
 import type { Game } from "@/lib/games";
 import { displayGameName } from "@/lib/display";
 import { cn } from "@/lib/utils";
+import { useLibraryStore } from "@/store/library";
 
 interface GameListProps {
   games: Game[];
@@ -63,6 +64,11 @@ function fmtLastPlayed(iso: string | null): string {
 
 export function GameList({ games }: GameListProps) {
   const navigate = useNavigate();
+  // Quick 260515-loading — row-level fetching indicator. Subscribing to the
+  // whole map (rather than per-row booleans like GameCard) is fine here:
+  // the list view doesn't memo rows, so a single re-render of the table is
+  // cheaper than wiring 200+ selectors.
+  const fetchingMetaIds = useLibraryStore((s) => s.fetchingMetaIds);
 
   const [dataDir, setDataDir] = useState<string | null>(null);
   useEffect(() => {
@@ -107,6 +113,7 @@ export function GameList({ games }: GameListProps) {
             {games.map((g) => {
               const cover = resolveCover(g);
               const title = displayGameName(g);
+              const isFetching = fetchingMetaIds[g.id] === true;
               return (
                 <tr
                   key={g.id}
@@ -114,7 +121,12 @@ export function GameList({ games }: GameListProps) {
                   className={cn(
                     "cursor-pointer border-t border-line transition-colors",
                     "hover:bg-bg-1",
+                    // Quick 260515-loading — softly tint the row + pulse opacity
+                    // while metadata fetch is in flight; the spinner next to
+                    // the title is the focal cue, the tint is supporting copy.
+                    isFetching && "animate-pulse bg-[var(--accent-soft)]/40",
                   )}
+                  title={isFetching ? "正在抓取元数据…" : undefined}
                 >
                   <td className="px-3 py-2">
                     <div
@@ -139,6 +151,11 @@ export function GameList({ games }: GameListProps) {
                           <ImageOff size={11} />
                         </div>
                       )}
+                      {isFetching && (
+                        <div className="absolute inset-0 grid place-items-center bg-black/55 text-[var(--accent)]">
+                          <Loader2 size={12} className="animate-spin" />
+                        </div>
+                      )}
                     </div>
                   </td>
                   <td className="px-3 py-2">
@@ -158,6 +175,15 @@ export function GameList({ games }: GameListProps) {
                       >
                         {title}
                       </span>
+                      {isFetching && (
+                        <span
+                          className="flex flex-shrink-0 items-center gap-1 font-mono text-[10px] text-[var(--accent)]"
+                          aria-label="正在抓取元数据"
+                        >
+                          <Loader2 size={10} className="animate-spin" />
+                          获取中
+                        </span>
+                      )}
                     </div>
                   </td>
                   <td className="hidden md:table-cell px-3 py-2 text-ink-1">

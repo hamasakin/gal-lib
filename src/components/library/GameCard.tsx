@@ -347,6 +347,21 @@ function GameCardImpl({
               )}
             </div>
 
+            {/* Quick 260515-loading — cover-center overlay while metadata
+                fetch is in flight. Sits below the bottom-left badge (z-[2])
+                so the corner spinner badge still reads cleanly, but the
+                large central spinner makes it obvious from a distance which
+                cards in the grid are currently working. pulse-ring stays on
+                the cover container for the breathing border. */}
+            {bottomBadge === "fetching" && (
+              <div
+                aria-hidden
+                className="pointer-events-none absolute inset-0 z-[2] grid place-items-center bg-black/40 text-[var(--accent)] backdrop-blur-[1px]"
+              >
+                <Loader2 size={26} strokeWidth={1.6} className="animate-spin" />
+              </div>
+            )}
+
             {/* Bottom-left badge — at most one renders; precedence in
                 bottomBadge is fetching > pending > review > no-exe. */}
             {/* 20260509f — active-fetch badge: same "获取中" copy as the

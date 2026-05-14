@@ -590,6 +590,16 @@ export default function Detail() {
     navigate("/");
   }
 
+  // Quick 260515-year — 年份跳筛选用「年代锚定」(year_decade)：
+  // release_year=2008 → year_decade=2000 → 命中 2000-2009 全部作品。
+  // 与 sidebar 的「按十年」分类同语义，跳过去后那一栏立刻是高亮的。
+  function onYearCrumbClick() {
+    if (!game?.release_year) return;
+    const decade = Math.floor(game.release_year / 10) * 10;
+    setFilter({ year_decade: decade });
+    navigate("/");
+  }
+
   const isActive = activeSession?.game_id === gameId;
   const otherActive = activeSession != null && !isActive;
   const noExe = game.executable_path == null;
@@ -953,7 +963,16 @@ export default function Detail() {
                 {game.brand && game.release_year ? (
                   <span aria-hidden> · </span>
                 ) : null}
-                {game.release_year ? <span>{game.release_year}</span> : null}
+                {game.release_year ? (
+                  <button
+                    type="button"
+                    onClick={onYearCrumbClick}
+                    className="cursor-pointer transition-colors hover:text-brand"
+                    title={`筛选 ${Math.floor(game.release_year / 10) * 10}s`}
+                  >
+                    {game.release_year}
+                  </button>
+                ) : null}
               </div>
             )}
             <h1
@@ -1373,7 +1392,20 @@ export default function Detail() {
                 )}
               </DD>
               <DT>发行年</DT>
-              <DD>{game.release_year ? `${game.release_year}` : "—"}</DD>
+              <DD>
+                {game.release_year ? (
+                  <button
+                    type="button"
+                    onClick={onYearCrumbClick}
+                    className="cursor-pointer text-left transition-colors hover:text-brand"
+                    title={`筛选 ${Math.floor(game.release_year / 10) * 10}s`}
+                  >
+                    {game.release_year}
+                  </button>
+                ) : (
+                  "—"
+                )}
+              </DD>
               <DT>状态</DT>
               <DD>{STATUS_LABELS[game.status]}</DD>
               <DT>评分</DT>
