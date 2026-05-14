@@ -28,7 +28,7 @@ pnpm tauri signer generate -w "$env:USERPROFILE\.tauri\hakoniwa.key"
 "plugins": {
   "updater": {
     "endpoints": [
-      "https://github.com/koitori77/gal-lib/releases/latest/download/latest.json"
+      "https://github.com/hamasakin/gal-lib/releases/latest/download/latest.json"
     ],
     "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1Ymxp...粘这里...",
     "windows": { "installMode": "passive" }

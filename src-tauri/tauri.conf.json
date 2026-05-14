@@ -47,7 +47,7 @@
   "plugins": {
     "updater": {
       "endpoints": [
-        "https://github.com/koitori77/gal-lib/releases/latest/download/latest.json"
+        "https://github.com/hamasakin/gal-lib/releases/latest/download/latest.json"
       ],
       "pubkey": "",
       "windows": {
