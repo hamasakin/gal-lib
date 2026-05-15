@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: shipped
 stopped_at: "v1.3 milestone shipped + archived (2026-05-12). 下一步: `/gsd-cleanup` 归档 phase 目录 → `/gsd-new-milestone` 定义 v1.4 (first task: 12-step walkthrough)。"
-last_updated: "2026-05-15T01:00:00.000Z"
-last_activity: "2026-05-15 — Quick 260515-loading-phase round-2: refresh_metadata_smart 并发化 (JoinSet 4-concurrent mirror start_scan) + migration 0011 加 metadata_fetched_at 列 + visibleGames sort 改 phase rank + metadata_fetched_at DESC（loading 时与 loading 完后位置平滑过渡）。"
+last_updated: "2026-05-15T02:00:00.000Z"
+last_activity: "2026-05-15 — Quick 260515-loading-phase round-3: 全库刷新时排队卡片也显示 loading 态 — store 加 metaTouchedIds + metaRefreshActive，GameCard/GameList 渲染 isPendingRefresh（已绑定但本轮没轮到刷新的卡 pulse），解决「只有前 4 个有 loading」。"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -90,7 +90,7 @@ None.
 | 260513-404 | 彻底删除 R18/age_rating 分类 — migration 0010 DROP COLUMN + 后端 IPC/自动判定 + 前端 badge/dropdown/FilterPanel facet 全部清除 | 2026-05-12 | 776412e | [260513-404-remove-r18-age-rating](./quick/260513-404-remove-r18-age-rating/) |
 | 260513-r6t | 详情页启动按钮走 LE（修复硬编码 use_le=false）+ exe 评分对 _cn/_chs/_zh 后缀 +15 + Detail exe 路径加「浏览…」按钮 | 2026-05-13 | f9e98cc | [260513-r6t-exe-cn](./quick/260513-r6t-exe-cn/) |
 | 260514-upd | Tauri 自动更新 — plugin-updater 接通 GH Releases、启动 5s silent check、Settings 关于区块、release.yml CI、docs/release.md；bump 0.2.0；v0.2.0 已发布到 hamasakin/gal-lib | 2026-05-14 | 7d57bff | [260514-upd-tauri-auto-update](./quick/260514-upd-tauri-auto-update/) |
-| 260515-loading-phase | 修刷新元数据三个 loading 视觉 bug + round-2 复盘：fetchingMetaIds 加 phase / refresh 改并发 (JoinSet, INGEST_CONCURRENCY=4) / migration 0011 加 metadata_fetched_at + sort 按 phase rank + 该时间 DESC | 2026-05-15 | d96045b · 444c2ad | [260515-loading-phase-sort](./quick/260515-loading-phase-sort/) |
+| 260515-loading-phase | 刷新元数据 loading 视觉三轮迭代：r1 fetchingMetaIds 加 phase / r2 refresh 改并发 (JoinSet=4) + migration 0011 metadata_fetched_at + phase-rank sort / r3 metaTouchedIds + metaRefreshActive 让排队卡片也显示 loading | 2026-05-15 | d96045b · 444c2ad · 27f74fc | [260515-loading-phase-sort](./quick/260515-loading-phase-sort/) |
 
 ## Session Continuity
 

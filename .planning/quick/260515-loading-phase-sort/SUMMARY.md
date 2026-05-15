@@ -6,6 +6,7 @@ status: complete
 commits:
   - d96045b
   - 444c2ad
+  - 27f74fc
 ---
 
 # Quick 260515-loading-phase-sort — SUMMARY
@@ -96,6 +97,7 @@ loading 卡片仍浮顶；下面是按刷新时间倒序的"鲜度墙"。
 
 - `d96045b quick(260515-loading-phase): fetchingMetaIds 加 phase + 刷新期按 last_scanned_at 排序`（round-1）
 - `444c2ad quick(260515-loading-phase): refresh 并发化 + metadata_fetched_at 列 + sort phase rank`（round-2）
+- `27f74fc quick(260515-loading-phase): 全库刷新时排队卡片也显示 loading 态`（round-3）
 
 ---
 
@@ -191,3 +193,82 @@ phase rank 相邻（2 → 1 → 0+ 但因为 metadata_fetched_at 是最新，仍
 - `pnpm tsc --noEmit` 全绿
 - `pnpm build` 全绿（1960 modules transformed）
 - 实机 walkthrough 留 user 验收
+
+---
+
+# Round 3 — 复盘后追加
+
+## 用户反馈
+
+"为什么还是只有前四个有 LOADING"
+
+## 根因（round-3）
+
+并发=4 本身是对的——任一时刻确实只有 4 张在真正抓元数据。问题是
+**已绑定、本轮还没轮到刷新的卡片完全没有视觉反馈**：
+
+- `start_scan` 时 placeholder（metadata_source=NULL）会被 `getMetadataState`
+  判为 "pending" → 一直 pulse，所以扫描时整个库都在动
+- `refresh_metadata_smart` 处理的全是已绑定行（metadata_source 已是
+  bangumi/vndb/manual）→ `getMetadataState` 返回 "ok" → bottomBadge=null
+  → 除了当前并发的 4 张，其余 96 张完全静止
+
+用户看到的"只有前四个有 loading"就是这个：4 张在抓 + 96 张静止。
+
+## 修复（round-3）
+
+### A. store: metaTouchedIds — 本轮处理过的 id 集合
+
+- `addFetchingMetaId`（收到 `started` 时调）同步写 `metaTouchedIds[id]=true`
+- `clearFetchingMetaIds`（终态 scan-progress）清空
+- `removeFetchingMetaId` **不**动它——处理完的卡保持 touched（= 已刷新，
+  不是排队中）
+
+### B. store: metaRefreshActive — 全库刷新进行中标志
+
+不能用 `scanProgress.status === "running"` 判断"排队中"：增量 `start_scan`
+不会 re-enrich 已绑定游戏，那些卡永远收不到 `started` → 会无限 pulse。
+
+- `Settings.onRefreshMetadata` 调 IPC 前 `setMetaRefreshActive(true)`；
+  IPC 抛错（任务没 spawn 起来）catch 里复位
+- `clearFetchingMetaIds`（终态）一并复位 false
+
+### C. GameCard / GameList: isPendingRefresh 视觉
+
+```
+isPendingRefresh = metaRefreshActive && !isFetching && !metaTouched
+```
+
+- GameCard：映射到既有 "pending" bottomBadge → pulse-ring + 静态「获取中」
+  角标（无中央大 spinner，避免 grid 一片黑）
+- GameList：并入既有 `isLoading` → 行 tint + 缩略图 spinner + 标题旁 label
+
+## 效果
+
+点「刷新元数据」后：整个库立刻进入 loading 态 —— 4 张并发抓取（中央
+spinner）+ 其余全部排队（pulse-ring）。处理过的卡逐步恢复正常，配合
+round-2 的 phase-rank sort，顶部是当前并发、中段是刚处理完、底部是排队中。
+全库可见刷新进度。
+
+## Round-3 改动文件
+
+| 文件 | 变更 |
+|------|------|
+| `src/store/library.ts` | 加 `metaTouchedIds` + `metaRefreshActive` + `setMetaRefreshActive`；`addFetchingMetaId` / `clearFetchingMetaIds` 联动 |
+| `src/routes/Settings.tsx` | `onRefreshMetadata` 设/复位 `metaRefreshActive` |
+| `src/components/library/GameCard.tsx` | `isPendingRefresh` → "pending" badge |
+| `src/components/library/GameList.tsx` | `isPendingRefresh` 并入 `isLoading` |
+
+## Round-3 验证
+
+- `pnpm tsc --noEmit` 全绿
+- `pnpm build` 全绿（1960 modules transformed）
+- frontend-only，无 Rust 改动
+- 实机 walkthrough 留 user 验收
+
+## ⚠️ 给 user 的提醒
+
+round-2 改了 Rust（`refresh_metadata_smart` 并发化 + migration 0011）。
+若你只看到 webview 热更新、没重新编译 Rust，跑的还是旧的 **串行** 后端。
+请完整重启 `pnpm tauri dev`（或重新 `cargo build`）让后端改动生效，
+否则"4 并发"和"排队 pulse"都不会按预期表现。
