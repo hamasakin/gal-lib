@@ -258,11 +258,19 @@ export function Settings() {
   }
 
   async function onRefreshMetadata() {
+    // Quick 260515-loading-phase-sort (round-3) — flag a full-library refresh
+    // so every not-yet-processed card renders the queued ("pending") visual.
+    // Cleared on terminal scan-progress (see main.tsx clearFetchingMetaIds).
+    const store = useLibraryStore.getState();
+    store.setMetaRefreshActive(true);
     try {
       await refreshMetadataSmart();
       toast.info("刷新元数据已启动");
       navigate("/");
     } catch (e: unknown) {
+      // IPC failed to even spawn the task — no terminal event will arrive,
+      // so reset the flag here to avoid a stuck library-wide pulse.
+      store.setMetaRefreshActive(false);
       toast.error(`启动失败 — ${String(e)}`);
     }
   }

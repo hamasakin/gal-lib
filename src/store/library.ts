@@ -98,6 +98,40 @@ interface LibraryState {
   fetchingMetaIds: Record<number, "in_flight" | "awaiting_refetch">;
 
   /**
+   * Quick 260515-loading-phase-sort (round-3) — `game.id`s that have received
+   * a `started` event since the current scan/refresh run began.
+   *
+   * Purpose: distinguish "queued — not yet processed this run" from "already
+   * processed". During `refresh_metadata_smart` every row is already bound,
+   * so without this set only the ~4 in-flight cards have any loading visual
+   * and the rest of the library looks frozen. A card NOT in this set while a
+   * scan is running is rendered with the "pending" pulse (mirrors the
+   * placeholder pulse during a fresh start_scan).
+   *
+   * Lifecycle: added by `addFetchingMetaId` (alongside fetchingMetaIds);
+   * bulk-cleared by `clearFetchingMetaIds` on terminal scan-progress so the
+   * next run starts empty. `removeFetchingMetaId` does NOT clear it — a card
+   * that finished stays "touched" (= done, not queued).
+   */
+  metaTouchedIds: Record<number, true>;
+
+  /**
+   * Quick 260515-loading-phase-sort (round-3) — true while a full-library
+   * `refresh_metadata_smart` run is in progress.
+   *
+   * Needed because `scanProgress.status === "running"` alone cannot tell a
+   * full refresh apart from an incremental `start_scan`: an incremental scan
+   * never re-enriches already-bound games, so those rows would never receive
+   * a `started` event and would pulse as "queued" forever. The queued-card
+   * (isPendingRefresh) visual is gated on THIS flag, not on scanRunning, so
+   * it only lights up when every visible row really is in scope.
+   *
+   * Set true by Settings' onRefreshMetadata before invoking the IPC;
+   * cleared on terminal scan-progress (completed / cancelled / failed).
+   */
+  metaRefreshActive: boolean;
+
+  /**
    * Currently-running game session, or null. Driven by the
    * `active-session-changed` event subscription in `main.tsx`. Used by:
    *   - `<ActiveSessionBar />` (sticky-top bar; null hides it)
@@ -197,6 +231,7 @@ interface LibraryState {
   markFetchingMetaFinished: (id: number) => void;
   removeFetchingMetaId: (id: number) => void;
   clearFetchingMetaIds: () => void;
+  setMetaRefreshActive: (v: boolean) => void;
   setActiveSession: (s: ActiveSession | null) => void;
   setSessionsForGame: (gameId: number, sessions: SessionRow[]) => void;
   setSearchQuery: (q: string) => void;
@@ -215,6 +250,8 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   scanProgress: null,
   games: [],
   fetchingMetaIds: {},
+  metaTouchedIds: {},
+  metaRefreshActive: false,
   activeSession: null,
   sessionsByGame: {},
   searchQuery: "",
@@ -231,10 +268,20 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   setGames: (gs) => set({ games: gs }),
   addFetchingMetaId: (id) =>
     set((st) => {
-      // No-op when already in_flight to avoid invalidating every subscriber.
-      if (st.fetchingMetaIds[id] === "in_flight") return st;
+      // `started` does two things: marks the id in_flight (loading visual)
+      // AND records it as "touched this run" (so it's no longer rendered as
+      // a queued/pending card). Skip the spread for whichever map is already
+      // in the target state to avoid invalidating unrelated subscribers.
+      const alreadyInFlight = st.fetchingMetaIds[id] === "in_flight";
+      const alreadyTouched = st.metaTouchedIds[id] === true;
+      if (alreadyInFlight && alreadyTouched) return st;
       return {
-        fetchingMetaIds: { ...st.fetchingMetaIds, [id]: "in_flight" },
+        fetchingMetaIds: alreadyInFlight
+          ? st.fetchingMetaIds
+          : { ...st.fetchingMetaIds, [id]: "in_flight" },
+        metaTouchedIds: alreadyTouched
+          ? st.metaTouchedIds
+          : { ...st.metaTouchedIds, [id]: true },
       };
     }),
   markFetchingMetaFinished: (id) =>
@@ -265,12 +312,19 @@ export const useLibraryStore = create<LibraryState>((set) => ({
     }),
   clearFetchingMetaIds: () =>
     set((st) =>
-      // Object.keys length check — clearing an already-empty record would
-      // still produce a new {} reference and invalidate subscribers.
-      Object.keys(st.fetchingMetaIds).length === 0
+      // Object.keys length check — clearing already-empty records would
+      // still produce new {} references and invalidate subscribers.
+      // Clears fetchingMetaIds + metaTouchedIds + metaRefreshActive so the
+      // next scan/refresh run starts with a clean "queued" baseline. Called
+      // on terminal scan-progress (completed / cancelled / failed).
+      Object.keys(st.fetchingMetaIds).length === 0 &&
+      Object.keys(st.metaTouchedIds).length === 0 &&
+      !st.metaRefreshActive
         ? st
-        : { fetchingMetaIds: {} },
+        : { fetchingMetaIds: {}, metaTouchedIds: {}, metaRefreshActive: false },
     ),
+  setMetaRefreshActive: (v) =>
+    set((st) => (st.metaRefreshActive === v ? st : { metaRefreshActive: v })),
   setActiveSession: (s) => set({ activeSession: s }),
   setSessionsForGame: (gameId, sessions) =>
     set((st) => ({

@@ -69,6 +69,13 @@ export function GameList({ games }: GameListProps) {
   // the list view doesn't memo rows, so a single re-render of the table is
   // cheaper than wiring 200+ selectors.
   const fetchingMetaIds = useLibraryStore((s) => s.fetchingMetaIds);
+  // Quick 260515-loading-phase-sort (round-3) — queued-this-run rows. During
+  // a full-library refresh, rows not yet touched are rendered as loading
+  // too, so the whole library reflects the in-progress refresh (not just the
+  // ~4 in-flight rows). Gated on metaRefreshActive (not scan status) so an
+  // incremental start_scan doesn't pulse already-bound rows forever.
+  const metaTouchedIds = useLibraryStore((s) => s.metaTouchedIds);
+  const metaRefreshActive = useLibraryStore((s) => s.metaRefreshActive);
 
   const [dataDir, setDataDir] = useState<string | null>(null);
   useEffect(() => {
@@ -123,7 +130,13 @@ export function GameList({ games }: GameListProps) {
                 g.metadata_source === "vndb" ||
                 g.metadata_source === "manual";
               const isPending = !bound && g.last_scanned_at == null;
-              const isLoading = isFetching || isPending;
+              // Quick 260515-loading-phase-sort (round-3) — an already-bound
+              // row that hasn't been reached yet by the running refresh.
+              const isPendingRefresh =
+                metaRefreshActive &&
+                !isFetching &&
+                metaTouchedIds[g.id] !== true;
+              const isLoading = isFetching || isPending || isPendingRefresh;
               return (
                 <tr
                   key={g.id}

@@ -138,6 +138,22 @@ function GameCardImpl({
   const isFetchingMeta = useLibraryStore(
     (s) => s.fetchingMetaIds[game.id] != null,
   );
+  // Quick 260515-loading-phase-sort (round-3) — "queued this run" visual.
+  // During a full-library refresh, a card that has NOT yet received a
+  // `started` event is waiting its turn. refresh_metadata_smart iterates
+  // already-bound rows, so without this the queued cards show no loading
+  // cue at all — only the ~4 in-flight ones did. metaTouchedIds flips this
+  // card's selector exactly once (when its `started` arrives).
+  //
+  // Gated on metaRefreshActive (NOT scanProgress.status) because an
+  // incremental start_scan never re-enriches already-bound games — they'd
+  // pulse forever. metaRefreshActive is true only for refresh_metadata_smart.
+  const metaRefreshActive = useLibraryStore((s) => s.metaRefreshActive);
+  const metaTouched = useLibraryStore(
+    (s) => s.metaTouchedIds[game.id] === true,
+  );
+  const isPendingRefresh =
+    metaRefreshActive && !isFetchingMeta && !metaTouched;
 
   const stamp = getStamp(game);
   const metaState = getMetadataState(game);
@@ -149,7 +165,7 @@ function GameCardImpl({
 
   // Bottom-left badge precedence: at most one renders, in this order.
   //   fetching → 获取中 + spinner   (active fetch — pulse-ring on cover)
-  //   pending  → 获取中             (placeholder — scan queued, not yet enriching)
+  //   pending  → 获取中             (placeholder OR queued-this-run — pulse only)
   //   failed   → 待复核              (actionable — user needs to pick metadata)
   //   no-exe   → 无 EXE              (informational — can't launch)
   // Right-top corner is now exclusively the favorite heart.
@@ -158,16 +174,21 @@ function GameCardImpl({
   // variant; the static "获取中" remains for the brief window between
   // placeholder INSERT and the started emit (and for cards still queued
   // behind the in-flight ingest).
+  // Quick 260515-loading-phase-sort (round-3): isPendingRefresh also maps to
+  // the static "pending" badge — an already-bound card waiting its turn in
+  // an active refresh reads the same as a fresh-scan placeholder.
   const bottomBadge: "fetching" | "pending" | "review" | "no-exe" | null =
     isFetchingMeta
       ? "fetching"
-      : metaState === "pending"
+      : isPendingRefresh
         ? "pending"
-        : metaState === "failed"
-          ? "review"
-          : noExe
-            ? "no-exe"
-            : null;
+        : metaState === "pending"
+          ? "pending"
+          : metaState === "failed"
+            ? "review"
+            : noExe
+              ? "no-exe"
+              : null;
 
   function onCardClick() {
     // Quick 20260510b — in selection mode the card click toggles membership;
