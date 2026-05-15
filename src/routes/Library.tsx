@@ -18,7 +18,7 @@
  * Routing-export note: router.tsx uses `import { Library }` — keep NAMED export.
  */
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { toastScanFinished } from "@/lib/toast";
@@ -343,13 +343,8 @@ export function Library() {
   // of the SQL builder.
   const filteredGames = applyAdvancedFilter(games, advFilter);
 
-  // Quick 260515-loading-first — stable partition: cards currently
-  // "loading" (active enrich, or just-INSERT-ed placeholder still waiting
-  // for the ingest task to pick them up) float to the front so the user
-  // can watch progress without scrolling. Within each partition the
-  // backend's sort order (last_played / created_at / etc.) is preserved.
-  // We subscribe to fetchingMetaIds via the hook above so this re-runs
-  // whenever a card transitions in/out of the in-flight set.
+  // Subscribed so the reconcile effect below re-runs whenever a card
+  // transitions in/out of the in-flight set.
   const fetchingMetaIds = useLibraryStore((s) => s.fetchingMetaIds);
 
   // Quick 260515-loading-phase-sort — reconcile fetchingMetaIds against the
@@ -390,62 +385,22 @@ export function Library() {
       }
     }
   }, [games, fetchingMetaIds]);
-  const visibleGames = useMemo(() => {
-    const scanRunning = scanProgress?.status === "running";
-    // Quick 260515-loading-phase-sort (round-2) —
-    // scanRunning 时整体按 phase + metadata_fetched_at DESC 排序：
-    //   1. phase rank: in_flight=2（backend 当前正在抓） > awaiting_refetch=1
-    //      （刚收到 finished, 等 refetch 反映出来）> 普通=0
-    //   2. 同 rank 内按 metadata_fetched_at DESC NULLS LAST（最近获取过的在前）
-    //   3. tie-break 按 id ASC 保持稳定
-    //
-    // 这样：
-    //   - 顶部：当前正在并发拉取的 4 张卡
-    //   - 紧接着：刚刚拉完、UI 还没刷出来的卡
-    //   - 中段：本轮已经处理完的卡（按完成时间倒序）
-    //   - 底部：还没处理的卡（旧 metadata_fetched_at 或 NULL）
-    //
-    // 关键点：当某卡从 in_flight → awaiting_refetch → 完成 时，它在列表里
-    // 是平滑下沉（同一区域内的相邻 rank），不会出现"卡片瞬间跳到列表中间
-    // 某个位置"的视觉切换 → 满足"loading 时和 loading 完后顺序相对一致"。
-    if (scanRunning) {
-      const phaseRank = (id: number): number => {
-        const p = fetchingMetaIds[id];
-        if (p === "in_flight") return 2;
-        if (p === "awaiting_refetch") return 1;
-        return 0;
-      };
-      const sorted = [...filteredGames].sort((a, b) => {
-        const pa = phaseRank(a.id);
-        const pb = phaseRank(b.id);
-        if (pa !== pb) return pb - pa;
-        const at = a.metadata_fetched_at ?? "";
-        const bt = b.metadata_fetched_at ?? "";
-        if (at !== bt) {
-          if (at === "") return 1;
-          if (bt === "") return -1;
-          return at > bt ? -1 : 1;
-        }
-        return a.id - b.id;
-      });
-      return sorted;
-    }
-    // 非 scan 状态：保留 loading-first 浮顶（单条 refresh / bind 等场景）。
-    const isLoading = (g: Game): boolean => {
-      if (fetchingMetaIds[g.id] != null) return true;
-      const bound =
-        g.metadata_source === "bangumi" ||
-        g.metadata_source === "vndb" ||
-        g.metadata_source === "manual";
-      return !bound && g.last_scanned_at == null;
-    };
-    const loading: Game[] = [];
-    const rest: Game[] = [];
-    for (const g of filteredGames) {
-      (isLoading(g) ? loading : rest).push(g);
-    }
-    return loading.length === 0 ? filteredGames : [...loading, ...rest];
-  }, [filteredGames, fetchingMetaIds, scanProgress?.status]);
+  // Quick 260515-loading-phase-sort (round-4) — NO reordering during
+  // scan/refresh. Per user decision: cards must stay in their grid position
+  // so the loading state (pending pulse → fetching spinner → done) is
+  // visible IN-PLACE on every card the backend touches.
+  //
+  // Earlier rounds floated in-flight cards to the top (phase-rank sort /
+  // loading-first partition). That pinned all loading visuals to the first
+  // ~4 grid slots: whichever cards the backend processed were yanked to the
+  // top, so every card the user was actually looking at appeared to never
+  // load. Removing the reorder entirely fixes that and makes loading-time
+  // order identical to post-loading order (the user's standing requirement).
+  //
+  // Grid order is now purely server sort + advanced filter; loading is
+  // communicated solely by per-card visuals (GameCard / GameList read
+  // fetchingMetaIds + metaTouchedIds + metaRefreshActive directly).
+  const visibleGames = filteredGames;
 
   const isEmpty = visibleGames.length === 0;
   const hasActiveSearch = searchQuery.trim() !== "";
