@@ -7,6 +7,7 @@ commits:
   - d96045b
   - 444c2ad
   - 27f74fc
+  - c24c79b
 ---
 
 # Quick 260515-loading-phase-sort — SUMMARY
@@ -98,6 +99,7 @@ loading 卡片仍浮顶；下面是按刷新时间倒序的"鲜度墙"。
 - `d96045b quick(260515-loading-phase): fetchingMetaIds 加 phase + 刷新期按 last_scanned_at 排序`（round-1）
 - `444c2ad quick(260515-loading-phase): refresh 并发化 + metadata_fetched_at 列 + sort phase rank`（round-2）
 - `27f74fc quick(260515-loading-phase): 全库刷新时排队卡片也显示 loading 态`（round-3）
+- `c24c79b quick(260515-loading-phase): 刷新时不重排卡片，loading 原地显示`（round-4）
 
 ---
 
@@ -272,3 +274,61 @@ round-2 改了 Rust（`refresh_metadata_smart` 并发化 + migration 0011）。
 若你只看到 webview 热更新、没重新编译 Rust，跑的还是旧的 **串行** 后端。
 请完整重启 `pnpm tauri dev`（或重新 `cargo build`）让后端改动生效，
 否则"4 并发"和"排队 pulse"都不会按预期表现。
+
+---
+
+# Round 4 — 最终修复（不重排）
+
+## 用户反馈
+
+"为什么后续抓取的就没有loading状态了"
+
+## 根因（round-4）— 前几轮方向错了
+
+前 3 轮一直在做"loading 浮顶 / phase-rank 排序"，**这正是病根**：
+
+- round-2 的 phase-rank sort 把 in_flight 卡片排到列表最前
+- 后果：后端处理到的卡片**全部被拽到顶部**前 ~4 个槽位
+- 用户盯着网格里某张卡，它被处理的瞬间已经被挪走了 → 原位永远不显示 loading
+- 用户视角："只有前 4 个有 loading""后续抓取的没有 loading"
+
+跨 4 轮反复出现同一症状，就是因为浮顶把 loading 锁死在顶部 4 槽。
+
+## 决策（AskUserQuestion）
+
+向用户确认了三个选项：A 不重排原地显示 / B loading 浮顶 / C 按获取时间排。
+**用户选 A —— 卡片永不移动位置，loading 原地点亮。**
+
+## 修复（round-4）
+
+`Library.tsx` 的 `visibleGames` 删掉所有重排逻辑（phase-rank sort +
+loading-first 分区），直接 `= filteredGames`（server sort + advanced
+filter）。loading 完全靠 per-card 视觉表达：
+
+- 排队中（metaRefreshActive && !fetching && !touched）→ pulse-ring + 角标
+- 抓取中（fetchingMetaIds[id] != null）→ spinner + pulse-ring + 中央 spinner
+- 已完成 → 恢复正常
+
+三种状态都在卡片**自己的网格位置**上切换，卡片永不移动。
+
+移除 `useMemo` import（visibleGames 不再 memo）。`metadata_fetched_at` 列
+保留（后端已写入，留作未来手动排序选项），但前端不再用它排序。
+
+## 效果
+
+点「刷新元数据」→ 整个网格立即进入排队 pulse → 4 张并发的 spinner 散布在
+各自真实位置 → 处理完逐一恢复正常。loading 像扫描线原地扫过整个库，卡片
+永不移动，loading 时与 loading 完后顺序完全一致。
+
+## Round-4 改动文件
+
+| 文件 | 变更 |
+|------|------|
+| `src/routes/Library.tsx` | `visibleGames` 删除所有重排 → `= filteredGames`；移除 `useMemo` import |
+
+## Round-4 验证
+
+- `pnpm tsc --noEmit` 全绿
+- `pnpm build` 全绿（1960 modules transformed）
+- frontend-only，无 Rust 改动
+- 实机 walkthrough 留 user 验收（仍需确认 round-2 的 Rust 后端已重新编译）
