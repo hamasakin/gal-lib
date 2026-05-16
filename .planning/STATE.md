@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: shipped
 stopped_at: "v1.3 milestone shipped + archived (2026-05-12). 下一步: `/gsd-cleanup` 归档 phase 目录 → `/gsd-new-milestone` 定义 v1.4 (first task: 12-step walkthrough)。"
-last_updated: "2026-05-16T11:00:00.000Z"
-last_activity: "2026-05-16 — Quick 260516-q3y：新增「整理子目录」能力。把被扫描误识别成单款游戏的品牌名父目录，拆分成多个独立游戏条目。后端新增 list_subdirs / split_game_into_subdirs 命令 + migration 0012 scan_skip_dirs 持久化跳过表（拆分后父目录永久跳过，避免全量扫描重扫成重复条目）；前端新增 SubdirSplitDialog（列子目录 / 有 exe 默认勾选 / 下钻返回 / 手动浏览 / 动态按钮文案），GameCard 右键与 Detail「更多」两处入口接入，带用户数据的条目拆分前弹确认。"
+last_updated: "2026-05-16T13:35:48.355Z"
+last_activity: "2026-05-16 — Quick 260516-tzu：useSmoothWheel hook 从「速度+摩擦衰减」惯性模型改写为 lerp-to-target（缓动到目标）平滑滚动模型。网格视图（Library）滚轮滚动改为维护 targetScrollTop、每帧指数趋近（ease-in 起步 + ease-out 收尾），更接近键盘 scroll-behavior:smooth 的丝滑手感；仍写 native scrollTop，与 @tanstack/react-virtual 行虚拟化零冲突。改动局限在 src/hooks/useSmoothWheel.ts，Library.tsx 无参调用保持兼容。"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -92,6 +92,7 @@ None.
 | 260514-upd | Tauri 自动更新 — plugin-updater 接通 GH Releases、启动 5s silent check、Settings 关于区块、release.yml CI、docs/release.md；bump 0.2.0；v0.2.0 已发布到 hamasakin/gal-lib | 2026-05-14 | 7d57bff | [260514-upd-tauri-auto-update](./quick/260514-upd-tauri-auto-update/) |
 | 260515-loading-phase | 刷新元数据 loading 视觉四轮迭代：r1 phase / r2 refresh 并发化 (JoinSet=4) + migration 0011 / r3 metaTouchedIds+metaRefreshActive 排队卡 pulse / r4 删除全部浮顶重排，loading 原地显示（卡片永不移动） | 2026-05-15 | d96045b · 444c2ad · 27f74fc · c24c79b | [260515-loading-phase-sort](./quick/260515-loading-phase-sort/) |
 | 260516-q3y | 新增「整理子目录」能力 — 把误扫成游戏的品牌父目录拆分为多个独立游戏条目（后端 list_subdirs / split_game_into_subdirs 命令 + migration 0012 scan_skip_dirs 持久化跳过表；前端 SubdirSplitDialog 对话框 + GameCard 右键 / Detail「更多」两处入口；带用户数据的条目拆分前弹确认） | 2026-05-16 | 92d0a09 · 3ada5eb · 5006de9 | [260516-q3y-subdir-split](./quick/260516-q3y-subdir-split/) |
+| 260516-tzu | useSmoothWheel hook 改 lerp-to-target（缓动到目标）平滑滚动 — 网格视图滚轮从「速度+摩擦衰减」惯性改为维护 targetScrollTop、每帧指数趋近（ease-in 起步 + ease-out 收尾），更接近键盘 scroll-behavior:smooth 的丝滑手感；仍写 native scrollTop，与 @tanstack/react-virtual 行虚拟化兼容；改动局限在 src/hooks/useSmoothWheel.ts | 2026-05-16 | 5e1305a | [260516-tzu-usesmoothwheel-lerp-to-target](./quick/260516-tzu-usesmoothwheel-lerp-to-target/) |
 
 ## Session Continuity
 
