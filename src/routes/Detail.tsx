@@ -165,6 +165,21 @@ const LE_PROFILES = [
 ] as const;
 type LeProfile = (typeof LE_PROFILES)[number];
 
+/**
+ * 判断一个可执行文件路径是否为中文补丁版 EXE。
+ * 后缀集合与后端 src-tauri/src/scan/exe_score.rs 的 `cn_suffixes`
+ * 保持一致（六个后缀，全部对应简体中文）。两处因跨语言无法共享，
+ * 修改任一处务必同步另一处。
+ */
+function isCnVersionExe(path: string | null | undefined): boolean {
+  if (!path) return false;
+  // 取文件名 stem：去掉路径分隔符（兼容 \ 与 /）与扩展名
+  const base = path.split(/[\\/]/).pop() ?? "";
+  const stem = base.replace(/\.[^.]*$/, "").toLowerCase();
+  const cnSuffixes = ["_cn", "_chs", "_zh", "-cn", "-chs", "-zh"];
+  return cnSuffixes.some((suf) => stem.endsWith(suf));
+}
+
 const STATUS_OPTIONS: Array<{ value: Game["status"]; label: string }> = [
   { value: "unplayed", label: "未游玩" },
   { value: "playing", label: "游玩中" },
@@ -470,9 +485,12 @@ export default function Detail() {
     setGame(g);
     if (g) {
       const x = g as Game & LaunchExtras;
-      const p = (LE_PROFILES as readonly string[]).includes(x.le_profile ?? "")
-        ? (x.le_profile as LeProfile)
-        : "Japanese";
+      const saved = x.le_profile ?? "";
+      const p: LeProfile = (LE_PROFILES as readonly string[]).includes(saved)
+        ? (saved as LeProfile)
+        : isCnVersionExe(g.executable_path)
+          ? "Simplified Chinese"
+          : "Japanese";
       setProfile(p);
       setArgs(x.launch_args ?? "");
       setCwd(x.cwd ?? "");
