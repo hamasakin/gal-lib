@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ✅ (verification-only)
 Plan: 全部完成；下一步 /gsd-audit-milestone v1.3
 Status: 4/4 phases shipped；自动化全绿；real-app walkthrough 清单交付待 audit
-Last activity: 2026-05-12 — Phase 15 close：cargo build + test (68/68) + tsc + pnpm build 全绿，15-SUMMARY 含 12 条 walkthrough (V-01..V-12)
+Last activity: 2026-05-16 — Completed quick task 260516-uh6: 中文版 EXE 详情页默认用中文配置的 LE 启动
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -93,6 +93,7 @@ None.
 | 260515-loading-phase | 刷新元数据 loading 视觉四轮迭代：r1 phase / r2 refresh 并发化 (JoinSet=4) + migration 0011 / r3 metaTouchedIds+metaRefreshActive 排队卡 pulse / r4 删除全部浮顶重排，loading 原地显示（卡片永不移动） | 2026-05-15 | d96045b · 444c2ad · 27f74fc · c24c79b | [260515-loading-phase-sort](./quick/260515-loading-phase-sort/) |
 | 260516-q3y | 新增「整理子目录」能力 — 把误扫成游戏的品牌父目录拆分为多个独立游戏条目（后端 list_subdirs / split_game_into_subdirs 命令 + migration 0012 scan_skip_dirs 持久化跳过表；前端 SubdirSplitDialog 对话框 + GameCard 右键 / Detail「更多」两处入口；带用户数据的条目拆分前弹确认） | 2026-05-16 | 92d0a09 · 3ada5eb · 5006de9 | [260516-q3y-subdir-split](./quick/260516-q3y-subdir-split/) |
 | 260516-tzu | useSmoothWheel hook 改 lerp-to-target（缓动到目标）平滑滚动 — 网格视图滚轮从「速度+摩擦衰减」惯性改为维护 targetScrollTop、每帧指数趋近（ease-in 起步 + ease-out 收尾），更接近键盘 scroll-behavior:smooth 的丝滑手感；仍写 native scrollTop，与 @tanstack/react-virtual 行虚拟化兼容；改动局限在 src/hooks/useSmoothWheel.ts | 2026-05-16 | 5e1305a | [260516-tzu-usesmoothwheel-lerp-to-target](./quick/260516-tzu-usesmoothwheel-lerp-to-target/) |
+| 260516-uh6 | 中文版 EXE 详情页 LE 默认简体中文 — Detail.tsx 新增 isCnVersionExe 纯函数（复用 exe_score.rs 的 _cn/_chs/_zh/-cn/-chs/-zh 六后缀约定），refreshGame 未保存 le_profile 时按 exe 文件名后缀默认「简体中文」、否则「Japanese」；已显式保存 le_profile 的游戏行为不变 | 2026-05-16 | 593bf09 | [260516-uh6-cn-exe-exe-le](./quick/260516-uh6-cn-exe-exe-le/) |
 
 ## Session Continuity
 
