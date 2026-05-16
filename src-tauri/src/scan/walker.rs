@@ -19,6 +19,7 @@
 
 use crate::scan::exe_score::score_exe;
 use crate::scan::types::ScanError;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -65,13 +66,20 @@ pub fn collect_game_dirs(
     Ok(out)
 }
 
-/// Find the best-scoring `.exe` inside one game directory.
+/// Find the best `.exe` inside one game directory via layered matching.
 ///
-/// Recursively walks the directory (no depth limit), scores every `.exe`
-/// via `score_exe`, returns the highest scorer. On ties, prefers the
-/// most-recently-modified file. Returns `None` if no `.exe` scored > 0.
+/// Walks the whole directory tree, then evaluates candidates **layer by
+/// layer, shallowest first**: every positively-scoring `.exe` is bucketed
+/// by its depth below `game_dir` (root files = depth 1). The first non-empty
+/// layer wins — a shallow positive exe always beats a deeper higher-scoring
+/// one (the shallow main is almost always the real game; deeper subdirs are
+/// usually redist/tools/汉化补丁). When the shallow layer has no positive
+/// candidate, matching descends to the next layer, repeating until a layer
+/// hits or the tree is exhausted. Within a layer, `score_exe` ranks and
+/// mtime tiebreaks. Returns `None` if no `.exe` scored > 0.
 pub fn pick_best_exe(game_dir: &Path) -> Option<PathBuf> {
-    let mut best: Option<(i32, SystemTime, PathBuf)> = None;
+    // depth → best (score, mtime, path) seen at that depth so far.
+    let mut by_depth: BTreeMap<usize, (i32, SystemTime, PathBuf)> = BTreeMap::new();
 
     for entry in WalkDir::new(game_dir)
         .follow_links(false)
@@ -90,6 +98,8 @@ pub fn pick_best_exe(game_dir: &Path) -> Option<PathBuf> {
         if !is_exe {
             continue;
         }
+        // parent_dir stays the game-dir root: prefix-match / bad-dir penalty
+        // semantics in score_exe are defined against the per-game scan root.
         let score = score_exe(path, game_dir);
         if score <= 0 {
             // Locked rule: only positively-scoring candidates are eligible.
@@ -101,16 +111,19 @@ pub fn pick_best_exe(game_dir: &Path) -> Option<PathBuf> {
             .and_then(|m| m.modified().ok())
             .unwrap_or(SystemTime::UNIX_EPOCH);
 
-        let take = match &best {
+        // Layer key: depth relative to game_dir (root files are depth 1).
+        let depth = entry.depth();
+        let take = match by_depth.get(&depth) {
             None => true,
             Some((bs, bt, _)) => score > *bs || (score == *bs && mtime > *bt),
         };
         if take {
-            best = Some((score, mtime, path.to_path_buf()));
+            by_depth.insert(depth, (score, mtime, path.to_path_buf()));
         }
     }
 
-    best.map(|(_, _, p)| p)
+    // BTreeMap iterates depth ascending → first non-empty layer is shallowest.
+    by_depth.into_values().next().map(|(_, _, p)| p)
 }
 
 #[cfg(test)]
