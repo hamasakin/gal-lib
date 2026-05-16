@@ -7,11 +7,16 @@
 //!    locked SCAN-04 game-boundary rule ("第 N 层子目录 = 1 款游戏").
 //!    Cancellation is checked at every iteration.
 //!
-//! 2. `pick_best_exe(game_dir)` — full-recursive walk inside one game dir,
-//!    score every `.exe`, return the highest-scoring one (mtime as tiebreak).
-//!    Returns `None` if no `.exe` scored above zero (locked SCAN-05 rule:
-//!    全部为负分时记录"无可识别 exe"; here zero or negative both count as
-//!    "no clear winner" → caller surfaces "no exe" UI state).
+//! 2. `pick_best_exe(game_dir)` — walk one game dir, then match `.exe`
+//!    candidates **layer by layer, shallowest first**: the first directory
+//!    depth that holds a positively-scoring `.exe` wins (mtime as in-layer
+//!    tiebreak), so a shallow game-root exe always beats a deeper
+//!    higher-scoring one; matching descends only when a layer has no
+//!    positive candidate. Returns `None` if no `.exe` scored above zero
+//!    (locked SCAN-05 rule: 全部为负分时记录"无可识别 exe"; here zero or
+//!    negative both count as "no clear winner" → caller surfaces "no exe"
+//!    UI state). This is a layered refinement of SCAN-05 — 浅层优先、深层
+//!    兜底; the scoring heuristic itself (`score_exe`) is unchanged.
 //!
 //! Walkdir errors on individual entries (permission denied / broken symlink
 //! / vanished file) are ignored at the iterator level via `filter_map(Result::ok)`,
@@ -19,6 +24,7 @@
 
 use crate::scan::exe_score::score_exe;
 use crate::scan::types::ScanError;
+use std::collections::BTreeMap;
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
@@ -65,13 +71,20 @@ pub fn collect_game_dirs(
     Ok(out)
 }
 
-/// Find the best-scoring `.exe` inside one game directory.
+/// Find the best `.exe` inside one game directory via layered matching.
 ///
-/// Recursively walks the directory (no depth limit), scores every `.exe`
-/// via `score_exe`, returns the highest scorer. On ties, prefers the
-/// most-recently-modified file. Returns `None` if no `.exe` scored > 0.
+/// Walks the whole directory tree, then evaluates candidates **layer by
+/// layer, shallowest first**: every positively-scoring `.exe` is bucketed
+/// by its depth below `game_dir` (root files = depth 1). The first non-empty
+/// layer wins — a shallow positive exe always beats a deeper higher-scoring
+/// one (the shallow main is almost always the real game; deeper subdirs are
+/// usually redist/tools/汉化补丁). When the shallow layer has no positive
+/// candidate, matching descends to the next layer, repeating until a layer
+/// hits or the tree is exhausted. Within a layer, `score_exe` ranks and
+/// mtime tiebreaks. Returns `None` if no `.exe` scored > 0.
 pub fn pick_best_exe(game_dir: &Path) -> Option<PathBuf> {
-    let mut best: Option<(i32, SystemTime, PathBuf)> = None;
+    // depth → best (score, mtime, path) seen at that depth so far.
+    let mut by_depth: BTreeMap<usize, (i32, SystemTime, PathBuf)> = BTreeMap::new();
 
     for entry in WalkDir::new(game_dir)
         .follow_links(false)
@@ -90,6 +103,8 @@ pub fn pick_best_exe(game_dir: &Path) -> Option<PathBuf> {
         if !is_exe {
             continue;
         }
+        // parent_dir stays the game-dir root: prefix-match / bad-dir penalty
+        // semantics in score_exe are defined against the per-game scan root.
         let score = score_exe(path, game_dir);
         if score <= 0 {
             // Locked rule: only positively-scoring candidates are eligible.
@@ -101,16 +116,19 @@ pub fn pick_best_exe(game_dir: &Path) -> Option<PathBuf> {
             .and_then(|m| m.modified().ok())
             .unwrap_or(SystemTime::UNIX_EPOCH);
 
-        let take = match &best {
+        // Layer key: depth relative to game_dir (root files are depth 1).
+        let depth = entry.depth();
+        let take = match by_depth.get(&depth) {
             None => true,
             Some((bs, bt, _)) => score > *bs || (score == *bs && mtime > *bt),
         };
         if take {
-            best = Some((score, mtime, path.to_path_buf()));
+            by_depth.insert(depth, (score, mtime, path.to_path_buf()));
         }
     }
 
-    best.map(|(_, _, p)| p)
+    // BTreeMap iterates depth ascending → first non-empty layer is shallowest.
+    by_depth.into_values().next().map(|(_, _, p)| p)
 }
 
 #[cfg(test)]
@@ -234,5 +252,54 @@ mod tests {
         write_sized(&game.join("uninstall.exe"), 500_000);
         let pick = pick_best_exe(&game);
         assert!(pick.is_none(), "expected no winner, got {:?}", pick);
+    }
+
+    #[test]
+    fn pick_best_exe_prefers_shallow_over_deeper_higher_score() {
+        // Game root has a positive-but-not-highest exe; a deeper neutral-named
+        // subdir holds an exe that scores HIGHER. Layered matching must still
+        // return the shallow (game-root) exe — the shallow main always wins
+        // over a deeper higher-scoring candidate.
+        let game = temp_dir("pick-shallow").join("Fate");
+        fs::create_dir_all(&game).unwrap();
+        // Root: Fate.exe → prefix(+5) + namelen(+1) + size(+2) = +8.
+        write_sized(&game.join("Fate.exe"), 2_000_000);
+        // Deep neutral subdir (no bad-dir penalty word): data/bin/.
+        let deep = game.join("data").join("bin");
+        fs::create_dir_all(&deep).unwrap();
+        // Fate_cn.exe → prefix(+5) + namelen(+1) + size(+2) + _cn(+15) = +23.
+        write_sized(&deep.join("Fate_cn.exe"), 2_000_000);
+
+        let pick = pick_best_exe(&game).expect("should find an exe");
+        assert_eq!(
+            pick.file_name().unwrap().to_string_lossy(),
+            "Fate.exe",
+            "shallow game-root exe must beat the deeper higher-scoring exe; pick={}",
+            pick.display()
+        );
+    }
+
+    #[test]
+    fn pick_best_exe_falls_through_to_deeper_when_shallow_has_no_positive() {
+        // Game root holds only a negative-scoring exe (setup.exe). A deeper
+        // neutral-named subdir holds a positive exe. With no positive
+        // candidate at the shallow layer, layered matching descends and
+        // returns the deeper positive exe.
+        let game = temp_dir("pick-fallthrough").join("Fate");
+        fs::create_dir_all(&game).unwrap();
+        // Root: setup.exe → -10 name penalty dominates → net-negative.
+        write_sized(&game.join("setup.exe"), 2_000_000);
+        // Deep neutral subdir game/ — Fate.exe scores positive.
+        let deep = game.join("game");
+        fs::create_dir_all(&deep).unwrap();
+        write_sized(&deep.join("Fate.exe"), 2_000_000);
+
+        let pick = pick_best_exe(&game).expect("should fall through to deeper exe");
+        assert_eq!(
+            pick.file_name().unwrap().to_string_lossy(),
+            "Fate.exe",
+            "shallow layer has no positive candidate → must descend to deeper exe; pick={}",
+            pick.display()
+        );
     }
 }
