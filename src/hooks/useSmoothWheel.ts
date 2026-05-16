@@ -1,18 +1,21 @@
 /**
- * useSmoothWheel — 滚轮平滑 + 惯性 hook（macOS-like）。
+ * useSmoothWheel — 滚轮平滑滚动 hook（lerp-to-target / 缓动到目标）。
  *
  * Windows 鼠标滚轮是离散的（每个 tick 跳 ~100px），原生滚动视觉上像"硬切"。
- * 此 hook 改用 **速度+衰减** 模型（而非 lerp-to-target），模拟 macOS 那种
- * "推一下持续滑、自然减速到停" 的手感：
+ * 此 hook 改用 **lerp-to-target（缓动到目标）** 模型：维护一个目标滚动位置
+ * `target`，每帧让真实 `scrollTop` 按指数比例趋近它。起步、收尾都顺，手感
+ * 接近键盘配 CSS `scroll-behavior: smooth`：
  *
  *   on wheel(deltaY):
- *     velocity += deltaY * impulse        // 累加冲量
- *     velocity = clamp(±maxVelocity)
+ *     target += deltaY * step
+ *     target = clamp(target, 0, scrollHeight - clientHeight)
  *
  *   每帧 RAF tick:
- *     scrollTop += velocity
- *     velocity *= friction                 // 指数衰减
- *     |velocity| < 0.1 时 stop
+ *     scrollTop += (target - scrollTop) * lerpFactor   // 指数趋近，ease-out
+ *     |target - scrollTop| < 0.5 时 snap 到 target 并 stop
+ *
+ * 指数趋近天然带 ease-in（起步时 diff 大但每帧只走一个比例，不会瞬间窜出）
+ * 与 ease-out（接近目标时 diff 变小，逐帧减速到停）。
  *
  * 与 react-virtual 兼容：仍然写 native scrollTop，浏览器派发 scroll 事件，
  * react-virtual 监听 scroll 更新 virtualItems — 行虚拟化逻辑无需改动。
@@ -26,66 +29,55 @@ import { useEffect, type RefObject } from "react";
 
 interface Options {
   /**
-   * 每帧速度衰减系数（0..1）。越接近 1 = 越长的惯性尾巴。
-   *   0.85 → ~250ms tail（响应直接，几乎无惯性）
-   *   0.92 → ~500ms tail（默认，类 macOS 鼠标滚轮）
-   *   0.95 → ~1000ms tail（明显滑行感）
+   * 每帧向 target 趋近的 ease 系数（0..1）。越大收尾越快越"硬"，
+   * 越小越"软"越拖。
+   *   0.12 → 偏软（缓动尾巴长，慢悠悠贴到目标）
+   *   0.18 → 默认（顺滑，ease-out 收尾自然）
+   *   0.25 → 偏直接（响应快，接近原生但仍带平滑）
    */
-  friction?: number;
+  lerpFactor?: number;
 
   /**
-   * 单次 wheel 事件的冲量倍数。100px wheel tick × impulse = 注入到 velocity 的初值。
-   *   0.4 → 一次滚轮约滑 1.5 行卡片（默认）
-   *   0.6 → 一次滚轮约滑 2.5 行
-   *   1.0 → 等同原生滚动量但带尾巴
+   * 每次 wheel tick 的 deltaY 位移倍数。100px wheel tick × step =
+   * 累加进 target 的滚动量。
+   *   0.8 → 一次滚轮约滑几行卡片
+   *   1.0 → 约等同原生滚动位移量（默认）
+   *   1.5 → 一次滚轮滚更多行
    */
-  impulse?: number;
-
-  /** Velocity 上限（px/frame），防止快速连滚导致失控。 */
-  maxVelocity?: number;
+  step?: number;
 }
 
 export function useSmoothWheel(
   ref: RefObject<HTMLElement | null>,
   options: Options = {},
 ): void {
-  const friction = options.friction ?? 0.92;
-  const impulse = options.impulse ?? 0.4;
-  const maxVelocity = options.maxVelocity ?? 60;
+  const lerpFactor = options.lerpFactor ?? 0.18;
+  const step = options.step ?? 1.0;
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
 
-    let velocity = 0;
+    // target — 目标滚动位置，初始化为当前 scrollTop。
+    let target = el.scrollTop;
     let raf: number | null = null;
 
     const tick = () => {
+      // 每帧重夹 target：scrollHeight 在虚拟列表下会变化，每帧 clamp 更稳。
       const max = el.scrollHeight - el.clientHeight;
-      const next = el.scrollTop + velocity;
+      target = Math.max(0, Math.min(max, target));
 
-      // Clamp at boundaries — zero velocity so we don't keep RAF alive
-      // pushing against the wall.
-      if (next <= 0) {
-        el.scrollTop = 0;
-        velocity = 0;
-        raf = null;
-        return;
-      }
-      if (next >= max) {
-        el.scrollTop = max;
-        velocity = 0;
+      const diff = target - el.scrollTop;
+
+      // 接近目标 — snap 到 target 并停止 RAF（边界已在 clamp 时处理，
+      // target 不会超界，diff 自然收敛到 0，不空转顶墙）。
+      if (Math.abs(diff) < 0.5) {
+        el.scrollTop = target;
         raf = null;
         return;
       }
 
-      el.scrollTop = next;
-      velocity *= friction;
-
-      if (Math.abs(velocity) < 0.1) {
-        raf = null;
-        return;
-      }
+      el.scrollTop = el.scrollTop + diff * lerpFactor;
       raf = requestAnimationFrame(tick);
     };
 
@@ -97,8 +89,13 @@ export function useSmoothWheel(
 
       e.preventDefault();
 
-      velocity += e.deltaY * impulse;
-      velocity = Math.max(-maxVelocity, Math.min(maxVelocity, velocity));
+      // RAF 已停时把 target 重新对齐到真实 scrollTop —— 避免空闲期间
+      // 用户用滚动条/键盘改了位置导致 target 失同步。RAF 未停时不重对齐，
+      // 连续快速滚动 target 持续叠加 deltaY，多 tick 自然累加。
+      if (raf == null) target = el.scrollTop;
+      target += e.deltaY * step;
+      const max = el.scrollHeight - el.clientHeight;
+      target = Math.max(0, Math.min(max, target));
 
       if (raf == null) {
         raf = requestAnimationFrame(tick);
@@ -110,5 +107,5 @@ export function useSmoothWheel(
       el.removeEventListener("wheel", onWheel);
       if (raf != null) cancelAnimationFrame(raf);
     };
-  }, [ref, friction, impulse, maxVelocity]);
+  }, [ref, lerpFactor, step]);
 }
