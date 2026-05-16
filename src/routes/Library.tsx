@@ -121,6 +121,10 @@ export function Library() {
   const filter = useLibraryStore((s) => s.filter);
   const setFilter = useLibraryStore((s) => s.setFilter);
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
+  // Quick 260516-vs4 — scroll-position restore. Only the setter is taken
+  // reactively; the saved value is read imperatively via getState() inside
+  // the restore effect so a position change never triggers a re-render.
+  const setLibraryScrollTop = useLibraryStore((s) => s.setLibraryScrollTop);
 
   const [pickerGame, setPickerGame] = useState<Game | null>(null);
   // Quick 260516-q3y —「整理子目录」拆分对话框 + 用户数据删除确认。
@@ -211,6 +215,60 @@ export function Library() {
   // target scrollTop frame-by-frame for smooth motion. react-virtual stays
   // compatible because we still write to native scrollTop.
   useSmoothWheel(scrollContainerRef);
+
+  // Quick 260516-vs4 — snapshot the scroll position on unmount.
+  //
+  // Library and Detail are sibling HashRouter routes, so navigating into a
+  // game's detail page fully unmounts this component. The cleanup runs at
+  // exactly that moment: it reads the live `scrollTop` once and writes it to
+  // the global store, which survives the unmount. A cleanup is used instead
+  // of a `scroll` event listener on purpose — listening would write to the
+  // store on every frame of a high-frequency scroll; we only need the single
+  // value captured the instant the user leaves the page.
+  useEffect(() => {
+    return () => {
+      const top = scrollContainerRef.current?.scrollTop;
+      if (top != null) setLibraryScrollTop(top);
+    };
+  }, [setLibraryScrollTop]);
+
+  // Quick 260516-vs4 — restore the scroll position on mount.
+  //
+  // Read the saved value imperatively (getState) so we don't subscribe to
+  // it. `saved <= 0` means "first visit / never scrolled" — leave the page
+  // at the top.
+  //
+  // The write is deferred behind two nested requestAnimationFrame calls:
+  // the grid view is virtualized (@tanstack/react-virtual row mode), and on
+  // the first render the container's `scrollHeight` is still small because
+  // GameGrid's ResizeObserver hasn't measured columnCount/cardWidth and the
+  // virtualizer hasn't computed totalHeight yet. Writing `scrollTop` too
+  // early would be clamped by the browser to the (insufficient) scrollHeight.
+  // Frame 1 lets layout + measurement settle; frame 2 writes the position
+  // once the content has grown tall enough.
+  //
+  // This does not fight useSmoothWheel: that hook lazily initializes its
+  // `target` from `el.scrollTop` inside its effect and only re-aligns to the
+  // live `scrollTop` on the first wheel event (when `raf == null`). As long
+  // as the restore happens before the user's first wheel tick — which it
+  // does, both run on mount — the smooth-scroll target picks up the restored
+  // position cleanly.
+  useEffect(() => {
+    const saved = useLibraryStore.getState().libraryScrollTop;
+    if (saved <= 0) return;
+    let raf1 = 0;
+    let raf2 = 0;
+    raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => {
+        const el = scrollContainerRef.current;
+        if (el) el.scrollTop = saved;
+      });
+    });
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+    };
+  }, []);
 
   const refetchGrid = useCallback(async () => {
     const trimmedQuery = searchQuery.trim();
