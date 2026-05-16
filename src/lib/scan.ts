@@ -115,6 +115,45 @@ export async function clearAllData(): Promise<void> {
   await invoke("clear_all_data");
 }
 
+// ── Quick 260516-q3y — subdir split ─────────────────────────────────────────
+
+/**
+ * One direct child directory of a path being inspected for subdir-split.
+ * Mirrors `src-tauri/src/commands.rs::SubdirEntry` (serde snake_case).
+ */
+export interface SubdirEntry {
+  /** Directory basename. */
+  name: string;
+  /** Absolute path to the child directory. */
+  path: string;
+  /** `clean_title(name)` — search-friendly title preview. */
+  clean_title: string;
+  /** Best executable found under the child directory, or null. */
+  exe: string | null;
+}
+
+/**
+ * List the direct child directories of `path` for the「整理子目录」dialog.
+ * Each entry carries a cleaned-title preview + detected best executable.
+ */
+export async function listSubdirs(path: string): Promise<SubdirEntry[]> {
+  return invoke<SubdirEntry[]>("list_subdirs", { path });
+}
+
+/**
+ * Split a mis-scanned brand parent directory (`gameId`) into N independent
+ * game entries — one per path in `paths`. Each new entry auto-runs metadata
+ * matching; the original parent entry is deleted and its path persisted to
+ * `scan_skip_dirs` so a full scan never re-discovers it. Returns the ids of
+ * the newly created entries.
+ */
+export async function splitGameIntoSubdirs(
+  gameId: number,
+  paths: string[],
+): Promise<number[]> {
+  return invoke<number[]>("split_game_into_subdirs", { gameId, paths });
+}
+
 /**
  * Subscribe to the `scan-progress` event stream.
  *
