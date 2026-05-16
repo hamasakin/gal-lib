@@ -377,7 +377,7 @@ function GameCardImpl({
               {game.is_favorite && (
                 <div
                   className={cn(
-                    "text-brand transition-opacity duration-200",
+                    "text-rose-400 transition-opacity duration-200",
                     !selectMode && "group-hover:opacity-0",
                   )}
                   style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,.5))" }}
@@ -405,7 +405,7 @@ function GameCardImpl({
                   "opacity-0 shadow-lift transition-all duration-200",
                   "group-hover:opacity-100 group-focus-visible:opacity-100 hover:scale-110",
                   game.is_favorite
-                    ? "bg-brand text-[var(--accent-on)]"
+                    ? "bg-rose-500 text-white"
                     : "border border-line-strong bg-black/55 text-ink-1 backdrop-blur",
                 )}
               >
