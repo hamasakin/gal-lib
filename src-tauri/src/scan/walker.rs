@@ -235,4 +235,53 @@ mod tests {
         let pick = pick_best_exe(&game);
         assert!(pick.is_none(), "expected no winner, got {:?}", pick);
     }
+
+    #[test]
+    fn pick_best_exe_prefers_shallow_over_deeper_higher_score() {
+        // Game root has a positive-but-not-highest exe; a deeper neutral-named
+        // subdir holds an exe that scores HIGHER. Layered matching must still
+        // return the shallow (game-root) exe — the shallow main always wins
+        // over a deeper higher-scoring candidate.
+        let game = temp_dir("pick-shallow").join("Fate");
+        fs::create_dir_all(&game).unwrap();
+        // Root: Fate.exe → prefix(+5) + namelen(+1) + size(+2) = +8.
+        write_sized(&game.join("Fate.exe"), 2_000_000);
+        // Deep neutral subdir (no bad-dir penalty word): data/bin/.
+        let deep = game.join("data").join("bin");
+        fs::create_dir_all(&deep).unwrap();
+        // Fate_cn.exe → prefix(+5) + namelen(+1) + size(+2) + _cn(+15) = +23.
+        write_sized(&deep.join("Fate_cn.exe"), 2_000_000);
+
+        let pick = pick_best_exe(&game).expect("should find an exe");
+        assert_eq!(
+            pick.file_name().unwrap().to_string_lossy(),
+            "Fate.exe",
+            "shallow game-root exe must beat the deeper higher-scoring exe; pick={}",
+            pick.display()
+        );
+    }
+
+    #[test]
+    fn pick_best_exe_falls_through_to_deeper_when_shallow_has_no_positive() {
+        // Game root holds only a negative-scoring exe (setup.exe). A deeper
+        // neutral-named subdir holds a positive exe. With no positive
+        // candidate at the shallow layer, layered matching descends and
+        // returns the deeper positive exe.
+        let game = temp_dir("pick-fallthrough").join("Fate");
+        fs::create_dir_all(&game).unwrap();
+        // Root: setup.exe → -10 name penalty dominates → net-negative.
+        write_sized(&game.join("setup.exe"), 2_000_000);
+        // Deep neutral subdir game/ — Fate.exe scores positive.
+        let deep = game.join("game");
+        fs::create_dir_all(&deep).unwrap();
+        write_sized(&deep.join("Fate.exe"), 2_000_000);
+
+        let pick = pick_best_exe(&game).expect("should fall through to deeper exe");
+        assert_eq!(
+            pick.file_name().unwrap().to_string_lossy(),
+            "Fate.exe",
+            "shallow layer has no positive candidate → must descend to deeper exe; pick={}",
+            pick.display()
+        );
+    }
 }
