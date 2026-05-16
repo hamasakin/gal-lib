@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ✅ (verification-only)
 Plan: 全部完成；下一步 /gsd-audit-milestone v1.3
 Status: 4/4 phases shipped；自动化全绿；real-app walkthrough 清单交付待 audit
-Last activity: 2026-05-16 — Completed quick task 260516-ulm: 修复 pick_best_exe EXE 分层匹配逻辑（浅层优先）
+Last activity: 2026-05-16 — Completed quick task 260516-v47: 发布 v0.2.1 小版本（四处版本号 0.2.0 → 0.2.1，tag v0.2.1 推送触发 release.yml）
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -95,6 +95,7 @@ None.
 | 260516-tzu | useSmoothWheel hook 改 lerp-to-target（缓动到目标）平滑滚动 — 网格视图滚轮从「速度+摩擦衰减」惯性改为维护 targetScrollTop、每帧指数趋近（ease-in 起步 + ease-out 收尾），更接近键盘 scroll-behavior:smooth 的丝滑手感；仍写 native scrollTop，与 @tanstack/react-virtual 行虚拟化兼容；改动局限在 src/hooks/useSmoothWheel.ts | 2026-05-16 | 5e1305a | [260516-tzu-usesmoothwheel-lerp-to-target](./quick/260516-tzu-usesmoothwheel-lerp-to-target/) |
 | 260516-uh6 | 中文版 EXE 详情页 LE 默认简体中文 — Detail.tsx 新增 isCnVersionExe 纯函数（复用 exe_score.rs 的 _cn/_chs/_zh/-cn/-chs/-zh 六后缀约定），refreshGame 未保存 le_profile 时按 exe 文件名后缀默认「简体中文」、否则「Japanese」；已显式保存 le_profile 的游戏行为不变 | 2026-05-16 | 593bf09 | [260516-uh6-cn-exe-exe-le](./quick/260516-uh6-cn-exe-exe-le/) |
 | 260516-ulm | 修复 pick_best_exe EXE 匹配逻辑 — 从「全树递归平铺、纯按分数取最高」改为「按目录深度分层、浅层优先」：所有正分 exe 按 WalkDir entry.depth() 分桶进 BTreeMap，升序取首个非空层的最佳；游戏根目录有正分 exe 时深层子目录（redist/tools/汉化补丁等）的更高分 exe 不再压过正主，浅层无正分候选才下探兜底；SCAN-05 评分契约（score>0 门槛 / parent_dir=game_dir 根 / 全负返回 None / 同层并列 mtime 较新者胜）逐字不变；新增浅层优先 + 深层兜底 2 个单元测试 | 2026-05-16 | a779cbb · cc6a8cc · 2d426b1 | [260516-ulm-pick-best-exe-exe-exe](./quick/260516-ulm-pick-best-exe-exe-exe/) |
+| 260516-v47 | 发布 v0.2.1 小版本 — package.json / tauri.conf.json / Cargo.toml / Cargo.lock(gal-lib 自身条目) 四处版本号 0.2.0 → 0.2.1 单原子提交；打 tag v0.2.1 并推送触发 release.yml 出包 | 2026-05-16 | 8edf43e | [260516-v47-release-v0-2-1](./quick/260516-v47-release-v0-2-1/) |
 
 ## Session Continuity
 
