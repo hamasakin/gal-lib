@@ -224,6 +224,23 @@ interface LibraryState {
    */
   saveBackupsByGame: Record<number, SaveBackup[]>;
 
+  /**
+   * Quick 260516-vs4 — persisted `scrollTop` of the Library route's scroll
+   * container. Defaults to 0.
+   *
+   * Why this lives in the global store and not in component state: Library
+   * and Detail are sibling HashRouter routes, so navigating into a game's
+   * detail page fully unmounts `<Library/>` — any in-component `useState`/
+   * `useRef` (including the scroll position) is destroyed. Snapshotting the
+   * value here lets it survive the unmount so the route can restore the
+   * grid/list scroll position when the user navigates back.
+   *
+   * Session-scoped on purpose: NOT persisted to disk (no `persist`
+   * middleware) — a fresh app launch resets the library to the top, which
+   * is the expected "start at the top of my shelf" behavior.
+   */
+  libraryScrollTop: number;
+
   setScanRoots: (rs: ScanRoot[]) => void;
   setScanProgress: (p: ScanProgress | null) => void;
   setGames: (gs: Game[]) => void;
@@ -243,6 +260,7 @@ interface LibraryState {
   setTopGames: (gs: TopGame[]) => void;
   setScreenshotsForGame: (gameId: number, screenshots: Screenshot[]) => void;
   setSaveBackupsForGame: (gameId: number, backups: SaveBackup[]) => void;
+  setLibraryScrollTop: (top: number) => void;
 }
 
 export const useLibraryStore = create<LibraryState>((set) => ({
@@ -263,6 +281,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   topGames: [],
   screenshotsByGame: {},
   saveBackupsByGame: {},
+  libraryScrollTop: 0,
   setScanRoots: (rs) => set({ scanRoots: rs }),
   setScanProgress: (p) => set({ scanProgress: p }),
   setGames: (gs) => set({ games: gs }),
@@ -345,4 +364,5 @@ export const useLibraryStore = create<LibraryState>((set) => ({
     set((st) => ({
       saveBackupsByGame: { ...st.saveBackupsByGame, [gameId]: backups },
     })),
+  setLibraryScrollTop: (top) => set({ libraryScrollTop: top }),
 }));
