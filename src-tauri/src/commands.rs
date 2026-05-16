@@ -568,7 +568,7 @@ pub async fn start_scan(
     // 20260516 — applied unconditionally (both scan modes). A matched game
     // missing only its cover stays skipped here; covers are refreshed per
     // game via GameCard's 「重新抓取封面」, not by a full re-ingest.
-    let existing_paths: HashSet<PathBuf> = {
+    let mut existing_paths: HashSet<PathBuf> = {
         let rows = sqlx::query(
             "SELECT path FROM games \
              WHERE metadata_source IN ('bangumi', 'vndb', 'manual')",
@@ -580,6 +580,22 @@ pub async fn start_scan(
             .filter_map(|r| r.try_get::<String, _>("path").ok().map(PathBuf::from))
             .collect()
     };
+
+    // Quick 260516-q3y — UNION in the persistent skip-list. `scan_skip_dirs`
+    // holds brand parent directories that were split into per-game subdir
+    // entries (see `split_game_into_subdirs`); folding them into the same skip
+    // set means a full scan never re-discovers the parent as a duplicate game.
+    {
+        let rows = sqlx::query("SELECT path FROM scan_skip_dirs")
+            .fetch_all(&*pool)
+            .await
+            .map_err(err_str)?;
+        for r in rows {
+            if let Ok(p) = r.try_get::<String, _>("path") {
+                existing_paths.insert(PathBuf::from(p));
+            }
+        }
+    }
 
     // Spawn the scan + ingest pipeline; command returns immediately.
     let app_for_emit = app.clone();
@@ -912,6 +928,140 @@ pub async fn add_game(
     };
 
     ingest_one_dir(&*pool, &data_dir, &dg).await
+}
+
+// ── Quick 260516-q3y — subdir split ─────────────────────────────────────────
+
+/// One direct child directory of a path being inspected for subdir-split.
+/// serde keeps field names snake_case (the frontend reads them verbatim).
+#[derive(Debug, Serialize)]
+pub struct SubdirEntry {
+    /// Directory basename.
+    pub name: String,
+    /// Absolute path to the child directory.
+    pub path: String,
+    /// `clean_title(name)` — the search-friendly title preview.
+    pub clean_title: String,
+    /// Best executable found under the child directory, if any (absolute path).
+    pub exe: Option<String>,
+}
+
+/// List the *direct* child directories of `path` (files filtered out), each
+/// annotated with a cleaned-title preview and a detected best executable.
+/// Used by the「整理子目录」dialog to let the user pick which subdirs become
+/// independent game entries.
+#[tauri::command]
+pub async fn list_subdirs(path: String) -> Result<Vec<SubdirEntry>, String> {
+    let dir = PathBuf::from(&path);
+    if !dir.is_dir() {
+        return Err(format!("path is not a directory: {}", path));
+    }
+
+    let read = std::fs::read_dir(&dir).map_err(err_str)?;
+    let mut out: Vec<SubdirEntry> = read
+        // Ignore per-entry read errors (sealed/locked dirs) — same tolerant
+        // style as scan::walker.
+        .filter_map(Result::ok)
+        .filter(|e| e.path().is_dir())
+        .map(|e| {
+            let child = e.path();
+            let name = child
+                .file_name()
+                .and_then(|s| s.to_str())
+                .unwrap_or("")
+                .to_string();
+            let clean_title = crate::title_clean::clean_title(&name);
+            let exe = crate::scan::walker::pick_best_exe(&child)
+                .map(|p| p.to_string_lossy().into_owned());
+            SubdirEntry {
+                name,
+                path: child.to_string_lossy().into_owned(),
+                clean_title,
+                exe,
+            }
+        })
+        .collect();
+
+    out.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(out)
+}
+
+/// Split a mis-scanned brand parent directory into N independent game entries.
+///
+/// For each path in `paths` a fresh `DiscoveredGame` is built and fed to
+/// `ingest_one_dir` (= placeholder INSERT + metadata pipeline), so every new
+/// entry auto-runs metadata matching. After all subdirs ingest successfully
+/// the original parent `games` row is deleted (scan_review_queue rows cascade
+/// via the v9 FK ON DELETE CASCADE) and the parent path is recorded in
+/// `scan_skip_dirs` so a later full scan never re-discovers it as a game.
+///
+/// Returns the ids of the newly created entries.
+#[tauri::command]
+pub async fn split_game_into_subdirs(
+    game_id: i64,
+    paths: Vec<String>,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<i64>, String> {
+    if paths.is_empty() {
+        return Err("未选择任何子目录".to_string());
+    }
+
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+
+    // Resolve the original parent directory path.
+    let parent_path: String = sqlx::query("SELECT path FROM games WHERE id = ?")
+        .bind(game_id)
+        .fetch_optional(&*pool)
+        .await
+        .map_err(err_str)?
+        .ok_or_else(|| "游戏不存在".to_string())?
+        .try_get("path")
+        .map_err(err_str)?;
+    let parent_pathbuf = PathBuf::from(&parent_path);
+
+    let mut new_ids: Vec<i64> = Vec::with_capacity(paths.len());
+    for p in &paths {
+        let dir = PathBuf::from(p);
+        // Guard against self-inclusion: never re-ingest the parent itself.
+        if dir == parent_pathbuf {
+            continue;
+        }
+        let raw_name = dir
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let clean_name = crate::title_clean::clean_title(&raw_name);
+        let executable = scan::walker::pick_best_exe(&dir);
+
+        let dg = scan::DiscoveredGame {
+            path: dir,
+            raw_name,
+            clean_name,
+            executable,
+        };
+        let id = ingest_one_dir(&*pool, &data_dir, &dg).await?;
+        new_ids.push(id);
+    }
+
+    // All subdirs ingested — drop the original parent entry. scan_review_queue
+    // rows cascade away via the v9 FK ON DELETE CASCADE.
+    sqlx::query("DELETE FROM games WHERE id = ?")
+        .bind(game_id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+
+    // Persist the parent path in the skip-list so a full scan never
+    // re-discovers it as a game (INSERT OR IGNORE keeps it idempotent).
+    sqlx::query("INSERT OR IGNORE INTO scan_skip_dirs (path) VALUES (?)")
+        .bind(&parent_path)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+
+    Ok(new_ids)
 }
 
 /// Wipe all game-related data — for debugging only. Clears the games table

@@ -276,6 +276,9 @@ pub fn run() {
             commands::accept_review_candidate,
             commands::fetch_review_candidates,
             commands::reseed_review_queue,
+            // Quick 260516-q3y — subdir split
+            commands::list_subdirs,
+            commands::split_game_into_subdirs,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

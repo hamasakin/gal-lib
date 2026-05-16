@@ -23,6 +23,11 @@
 //! persistent low-confidence ingest matches awaiting manual review.
 //! Schema v10 (Quick 260513-404) drops `games.age_rating` column
 //! (R18 分类整体删除；custom_views / custom_view_games 表保留)。
+//! Schema v11 (Quick 260515-loading-phase-sort) adds `games.metadata_fetched_at`
+//! column + index — dedicated sort anchor for "metadata last fetched" time.
+//! Schema v12 (Quick 260516-q3y) adds 1 new table (`scan_skip_dirs`) — a
+//! persistent skip-list of brand parent directories split into per-game
+//! subdir entries, so a full scan never re-discovers them as games.
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -37,6 +42,7 @@ const V8_SQL: &str = include_str!("../migrations/0008_add_age_rating_and_custom_
 const V9_SQL: &str = include_str!("../migrations/0009_add_scan_review_queue.sql");
 const V10_SQL: &str = include_str!("../migrations/0010_drop_age_rating.sql");
 const V11_SQL: &str = include_str!("../migrations/0011_add_metadata_fetched_at.sql");
+const V12_SQL: &str = include_str!("../migrations/0012_add_scan_skip_dirs.sql");
 
 /// All migrations to register with tauri-plugin-sql, in version order.
 /// Add future migrations as additional entries with monotonically increasing
@@ -107,6 +113,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 11,
             description: "add_metadata_fetched_at",
             sql: V11_SQL,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 12,
+            description: "add_scan_skip_dirs",
+            sql: V12_SQL,
             kind: MigrationKind::Up,
         },
     ]
