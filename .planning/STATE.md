@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: shipped
 stopped_at: "v1.3 milestone shipped + archived (2026-05-12). 下一步: `/gsd-cleanup` 归档 phase 目录 → `/gsd-new-milestone` 定义 v1.4 (first task: 12-step walkthrough)。"
-last_updated: "2026-05-15T03:00:00.000Z"
-last_activity: "2026-05-15 — Quick 260515-loading-phase round-4（最终）：刷新时不再重排卡片 — visibleGames 删除 phase-rank/loading-first 浮顶排序，直接 = filteredGames。前几轮的浮顶正是病根（把后端处理中的卡全拽到顶部，原位永不显示 loading）。loading 改为完全 per-card 原地表达。"
+last_updated: "2026-05-16T11:00:00.000Z"
+last_activity: "2026-05-16 — Quick 260516-q3y：新增「整理子目录」能力。把被扫描误识别成单款游戏的品牌名父目录，拆分成多个独立游戏条目。后端新增 list_subdirs / split_game_into_subdirs 命令 + migration 0012 scan_skip_dirs 持久化跳过表（拆分后父目录永久跳过，避免全量扫描重扫成重复条目）；前端新增 SubdirSplitDialog（列子目录 / 有 exe 默认勾选 / 下钻返回 / 手动浏览 / 动态按钮文案），GameCard 右键与 Detail「更多」两处入口接入，带用户数据的条目拆分前弹确认。"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -91,6 +91,7 @@ None.
 | 260513-r6t | 详情页启动按钮走 LE（修复硬编码 use_le=false）+ exe 评分对 _cn/_chs/_zh 后缀 +15 + Detail exe 路径加「浏览…」按钮 | 2026-05-13 | f9e98cc | [260513-r6t-exe-cn](./quick/260513-r6t-exe-cn/) |
 | 260514-upd | Tauri 自动更新 — plugin-updater 接通 GH Releases、启动 5s silent check、Settings 关于区块、release.yml CI、docs/release.md；bump 0.2.0；v0.2.0 已发布到 hamasakin/gal-lib | 2026-05-14 | 7d57bff | [260514-upd-tauri-auto-update](./quick/260514-upd-tauri-auto-update/) |
 | 260515-loading-phase | 刷新元数据 loading 视觉四轮迭代：r1 phase / r2 refresh 并发化 (JoinSet=4) + migration 0011 / r3 metaTouchedIds+metaRefreshActive 排队卡 pulse / r4 删除全部浮顶重排，loading 原地显示（卡片永不移动） | 2026-05-15 | d96045b · 444c2ad · 27f74fc · c24c79b | [260515-loading-phase-sort](./quick/260515-loading-phase-sort/) |
+| 260516-q3y | 新增「整理子目录」能力 — 把误扫成游戏的品牌父目录拆分为多个独立游戏条目（后端 list_subdirs / split_game_into_subdirs 命令 + migration 0012 scan_skip_dirs 持久化跳过表；前端 SubdirSplitDialog 对话框 + GameCard 右键 / Detail「更多」两处入口；带用户数据的条目拆分前弹确认） | 2026-05-16 | 92d0a09 · 3ada5eb · 5006de9 | [260516-q3y-subdir-split](./quick/260516-q3y-subdir-split/) |
 
 ## Session Continuity
 
