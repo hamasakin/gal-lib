@@ -48,6 +48,7 @@ import {
   ExternalLink,
   FolderOpen,
   Heart,
+  FolderTree,
   ImageDown,
   ImageOff,
   Mic2,
@@ -134,6 +135,20 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { MetadataPicker } from "@/components/library/MetadataPicker";
+import {
+  SubdirSplitDialog,
+  gameHasUserData,
+} from "@/components/library/SubdirSplitDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { refreshMetadata } from "@/lib/metadata";
 import {
   addGamesToView,
@@ -420,6 +435,9 @@ export default function Detail() {
 
   // 重新匹配元数据 modal — open ↔ pickerOpen
   const [pickerOpen, setPickerOpen] = useState(false);
+  // Quick 260516-q3y —「整理子目录」拆分对话框 + 用户数据删除确认。
+  const [splitOpen, setSplitOpen] = useState(false);
+  const [splitConfirmOpen, setSplitConfirmOpen] = useState(false);
   // 重新抓取封面 button busy state (prevents double-click during the IPC roundtrip)
   const [refreshingCover, setRefreshingCover] = useState(false);
 
@@ -762,6 +780,17 @@ export default function Detail() {
     void refreshOfficialTags();
   }
 
+  // Quick 260516-q3y —「整理子目录」入口. 带用户数据先弹删除确认 AlertDialog，
+  // 无用户数据直接打开 SubdirSplitDialog。
+  function onSplitSubdirs() {
+    if (!game) return;
+    if (gameHasUserData(game)) {
+      setSplitConfirmOpen(true);
+    } else {
+      setSplitOpen(true);
+    }
+  }
+
   async function onCopyPath() {
     if (!game) return;
     try {
@@ -1077,6 +1106,11 @@ export default function Detail() {
                 >
                   <ImageDown size={14} className="mr-2" />
                   重新抓取封面
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={onSplitSubdirs}>
+                  <FolderTree size={14} className="mr-2" />
+                  整理子目录
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuSub>
@@ -1540,6 +1574,47 @@ export default function Detail() {
       {/* 重新匹配元数据 modal — controlled by the More-menu item; passes the
           current `game` through so MetadataPicker pre-populates the search. */}
       <MetadataPicker game={pickerOpen ? game : null} onClose={onClosePicker} />
+
+      {/* Quick 260516-q3y —「整理子目录」拆分对话框. 拆分成功后原条目被删，
+          Detail 的 game 已失效 → 导航回库首页。 */}
+      <SubdirSplitDialog
+        game={splitOpen ? game : null}
+        onClose={() => setSplitOpen(false)}
+        onSplit={() => {
+          setSplitOpen(false);
+          navigate("/");
+        }}
+      />
+
+      {/* Quick 260516-q3y — 带用户数据条目的拆分前删除确认 */}
+      <AlertDialog
+        open={splitConfirmOpen}
+        onOpenChange={(o) => setSplitConfirmOpen(o)}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>拆分会删除原条目</AlertDialogTitle>
+            <AlertDialogDescription>
+              该条目带有游玩时长 / 笔记 / 评分 / 收藏 / 通关状态等数据。
+              拆分会删除原条目并丢失这些数据，子目录将作为新条目重新匹配元数据。
+              确定继续吗？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSplitConfirmOpen(false)}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                setSplitConfirmOpen(false);
+                setSplitOpen(true);
+              }}
+            >
+              继续拆分
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

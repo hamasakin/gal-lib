@@ -44,6 +44,8 @@ interface GameCardProps {
   coverDataUrl: string | null;
   onPickMetadata: (game: Game) => void;
   onRefreshCover: (game: Game) => void;
+  /** Quick 260516-q3y — open the「整理子目录」dialog for this game. */
+  onSplitSubdirs: (game: Game) => void;
   onMutated?: () => void;
   // Quick 20260510b — batch selection mode (drives the "添加到视图" workflow).
   /** When true, clicking the card toggles selection instead of navigating. */
@@ -123,6 +125,7 @@ function GameCardImpl({
   coverDataUrl,
   onPickMetadata,
   onRefreshCover,
+  onSplitSubdirs,
   onMutated,
   selectMode = false,
   selected = false,
@@ -560,6 +563,10 @@ function GameCardImpl({
         </ContextMenuItem>
         <ContextMenuItem onClick={() => onRefreshCover(game)}>
           重新抓取封面
+        </ContextMenuItem>
+        <ContextMenuSeparator />
+        <ContextMenuItem onClick={() => onSplitSubdirs(game)}>
+          整理子目录
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

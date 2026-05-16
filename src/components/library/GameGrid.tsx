@@ -38,6 +38,8 @@ import { searchGames } from "@/lib/search";
 interface GameGridProps {
   games: Game[];
   onPickMetadata: (game: Game) => void;
+  /** Quick 260516-q3y — open the「整理子目录」dialog (透传到每个 GameCard). */
+  onSplitSubdirs: (game: Game) => void;
   onChildMutation?: () => void;
   /**
    * Scroll container owned by Library.tsx — useVirtualizer's `getScrollElement`
@@ -59,6 +61,7 @@ const META_HEIGHT = 56; // GameCard meta block (title + sub line) + bottom gap
 export function GameGrid({
   games,
   onPickMetadata,
+  onSplitSubdirs,
   onChildMutation,
   scrollContainerRef,
   selectMode = false,
@@ -266,6 +269,7 @@ export function GameGrid({
                   coverDataUrl={resolveCover(g)}
                   onPickMetadata={onPickMetadata}
                   onRefreshCover={onRefreshCover}
+                  onSplitSubdirs={onSplitSubdirs}
                   onMutated={onChildMutated}
                   selectMode={selectMode}
                   selected={selectedIds?.has(g.id) ?? false}

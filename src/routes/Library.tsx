@@ -38,6 +38,20 @@ import { ScanProgressBar } from "@/components/library/ScanProgressBar";
 import { BackfillProgressBar } from "@/components/library/BackfillProgressBar";
 import { ActiveSessionBar } from "@/components/library/ActiveSessionBar";
 import { MetadataPicker } from "@/components/library/MetadataPicker";
+import {
+  SubdirSplitDialog,
+  gameHasUserData,
+} from "@/components/library/SubdirSplitDialog";
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogTitle,
+} from "@/components/ui/alert-dialog";
 import { SearchBar } from "@/components/library/SearchBar";
 import { SortSelect } from "@/components/library/SortSelect";
 import { FilterChip } from "@/components/library/FilterChip";
@@ -109,6 +123,11 @@ export function Library() {
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
 
   const [pickerGame, setPickerGame] = useState<Game | null>(null);
+  // Quick 260516-q3y —「整理子目录」拆分对话框 + 用户数据删除确认。
+  // splitGame 打开 SubdirSplitDialog；splitCandidate 是「有用户数据，待确认」
+  // 的中间态，确认后才转交给 splitGame。
+  const [splitGame, setSplitGame] = useState<Game | null>(null);
+  const [splitCandidate, setSplitCandidate] = useState<Game | null>(null);
   const [advFilter, setAdvFilter] = useState<AdvancedFilter>(EMPTY_ADV_FILTER);
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const navigate = useNavigate();
@@ -336,6 +355,16 @@ export function Library() {
     void refetchGrid();
     void refreshSidebar();
   }, [refetchGrid, refreshSidebar]);
+
+  // Quick 260516-q3y —「整理子目录」入口回调. 带用户数据的条目先弹删除确认
+  // AlertDialog，无用户数据直接打开 SubdirSplitDialog。
+  const onSplitSubdirs = useCallback((game: Game) => {
+    if (gameHasUserData(game)) {
+      setSplitCandidate(game);
+    } else {
+      setSplitGame(game);
+    }
+  }, []);
 
   // Server-fetched array (already narrowed by backend SearchFilter +
   // sort + searchQuery). The advanced FilterPanel runs as a client-side
@@ -580,6 +609,7 @@ export function Library() {
           <GameGrid
             games={visibleGames}
             onPickMetadata={setPickerGame}
+            onSplitSubdirs={onSplitSubdirs}
             onChildMutation={onChildMutation}
             scrollContainerRef={scrollContainerRef}
             selectMode={selectMode}
@@ -680,6 +710,50 @@ export function Library() {
       )}
 
       <MetadataPicker game={pickerGame} onClose={() => setPickerGame(null)} />
+
+      {/* Quick 260516-q3y —「整理子目录」拆分对话框 */}
+      <SubdirSplitDialog
+        game={splitGame}
+        onClose={() => setSplitGame(null)}
+        onSplit={() => {
+          setSplitGame(null);
+          void refetchGrid();
+          void refreshSidebar();
+        }}
+      />
+
+      {/* Quick 260516-q3y — 带用户数据条目的拆分前删除确认 */}
+      <AlertDialog
+        open={splitCandidate != null}
+        onOpenChange={(o) => {
+          if (!o) setSplitCandidate(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>拆分会删除原条目</AlertDialogTitle>
+            <AlertDialogDescription>
+              该条目带有游玩时长 / 笔记 / 评分 / 收藏 / 通关状态等数据。
+              拆分会删除原条目并丢失这些数据，子目录将作为新条目重新匹配元数据。
+              确定继续吗？
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setSplitCandidate(null)}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                const g = splitCandidate;
+                setSplitCandidate(null);
+                if (g) setSplitGame(g);
+              }}
+            >
+              继续拆分
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       <ViewNameDialog
         mode={createViewDialog}

@@ -391,6 +391,7 @@ function RoleSection({
               coverDataUrl={resolveCover(g)}
               onPickMetadata={noopPickMetadata}
               onRefreshCover={noopRefreshCover}
+              onSplitSubdirs={noopSplitSubdirs}
             />
             {voiceCharByGame && voiceCharByGame[g.id] ? (
               <div className="mt-1 font-mono text-[10px] text-ink-3">
@@ -413,6 +414,9 @@ function noopPickMetadata(_g: Game): void {
   // no-op
 }
 function noopRefreshCover(_g: Game): void {
+  // no-op
+}
+function noopSplitSubdirs(_g: Game): void {
   // no-op
 }
 
