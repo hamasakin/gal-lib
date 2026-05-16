@@ -7,11 +7,16 @@
 //!    locked SCAN-04 game-boundary rule ("第 N 层子目录 = 1 款游戏").
 //!    Cancellation is checked at every iteration.
 //!
-//! 2. `pick_best_exe(game_dir)` — full-recursive walk inside one game dir,
-//!    score every `.exe`, return the highest-scoring one (mtime as tiebreak).
-//!    Returns `None` if no `.exe` scored above zero (locked SCAN-05 rule:
-//!    全部为负分时记录"无可识别 exe"; here zero or negative both count as
-//!    "no clear winner" → caller surfaces "no exe" UI state).
+//! 2. `pick_best_exe(game_dir)` — walk one game dir, then match `.exe`
+//!    candidates **layer by layer, shallowest first**: the first directory
+//!    depth that holds a positively-scoring `.exe` wins (mtime as in-layer
+//!    tiebreak), so a shallow game-root exe always beats a deeper
+//!    higher-scoring one; matching descends only when a layer has no
+//!    positive candidate. Returns `None` if no `.exe` scored above zero
+//!    (locked SCAN-05 rule: 全部为负分时记录"无可识别 exe"; here zero or
+//!    negative both count as "no clear winner" → caller surfaces "no exe"
+//!    UI state). This is a layered refinement of SCAN-05 — 浅层优先、深层
+//!    兜底; the scoring heuristic itself (`score_exe`) is unchanged.
 //!
 //! Walkdir errors on individual entries (permission denied / broken symlink
 //! / vanished file) are ignored at the iterator level via `filter_map(Result::ok)`,
