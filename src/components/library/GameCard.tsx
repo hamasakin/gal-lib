@@ -365,18 +365,57 @@ function GameCardImpl({
               </div>
             )}
 
-            {/* Top-right — favorite heart only (no age-rating badge after
-                Quick 260513-404). */}
+            {/* Top-right — favorite corner.
+                Quick 260516-te2 — two layered affordances:
+                  1. Static heart mark (renders only when favorited) — the
+                     at-a-glance「已收藏」indicator. Fades out on hover so it
+                     doesn't stack under the quick-favorite button.
+                  2. Quick-favorite button — fades in on hover, one-click
+                     toggle reusing onToggleFavorite. Hidden in select mode
+                     so it doesn't fight the checkbox tap target. */}
             <div className="absolute right-2 top-2 z-[3] flex flex-col items-end gap-1.5">
               {game.is_favorite && (
                 <div
-                  className="text-brand"
+                  className={cn(
+                    "text-brand transition-opacity duration-200",
+                    !selectMode && "group-hover:opacity-0",
+                  )}
                   style={{ filter: "drop-shadow(0 1px 4px rgba(0,0,0,.5))" }}
                 >
                   <Heart size={14} fill="currentColor" strokeWidth={1.5} />
                 </div>
               )}
             </div>
+
+            {/* Quick-favorite hover button — Quick 260516-te2.
+                Independent z-[4] container with pointer-events-auto so the
+                button stays clickable above the z-[2] pointer-events-none
+                hover overlay. Suppressed in select mode. */}
+            {!selectMode && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  void onToggleFavorite();
+                }}
+                aria-label={game.is_favorite ? "取消收藏" : "收藏"}
+                title={game.is_favorite ? "取消收藏" : "收藏"}
+                className={cn(
+                  "absolute right-2 top-2 z-[4] grid h-[28px] w-[28px] place-items-center rounded-full",
+                  "opacity-0 shadow-lift transition-all duration-200",
+                  "group-hover:opacity-100 group-focus-visible:opacity-100 hover:scale-110",
+                  game.is_favorite
+                    ? "bg-brand text-[var(--accent-on)]"
+                    : "border border-line-strong bg-black/55 text-ink-1 backdrop-blur",
+                )}
+              >
+                <Heart
+                  size={14}
+                  fill={game.is_favorite ? "currentColor" : "none"}
+                  strokeWidth={1.5}
+                />
+              </button>
+            )}
 
             {/* Quick 260515-loading — cover-center overlay while metadata
                 fetch is in flight. Sits below the bottom-left badge (z-[2])
