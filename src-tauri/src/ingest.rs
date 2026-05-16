@@ -110,12 +110,35 @@ async fn pick_best_across_sources(query: &str) -> Option<Candidate> {
         metadata::vndb::search(query),
     );
     let mut pool: Vec<Candidate> = Vec::new();
-    if let Ok(hits) = b {
-        pool.extend(hits);
+    // debug auto-scan-metadata-match-low — surface (don't silently swallow)
+    // search errors. A swallowed VNDB 429 used to be invisible: the game
+    // just came back metadata_source="none" with no trace of why.
+    let mut bangumi_n: isize = -1;
+    let mut vndb_n: isize = -1;
+    match b {
+        Ok(hits) => {
+            bangumi_n = hits.len() as isize;
+            pool.extend(hits);
+        }
+        Err(e) => eprintln!("[ingest] bangumi search failed for {:?}: {}", query, e),
     }
-    if let Ok(hits) = v {
-        pool.extend(hits);
+    match v {
+        Ok(hits) => {
+            vndb_n = hits.len() as isize;
+            pool.extend(hits);
+        }
+        Err(e) => eprintln!("[ingest] vndb search failed for {:?}: {}", query, e),
     }
+    // debug auto-scan-metadata-match-low — one diagnostic line per query so a
+    // single scan run is fully conclusive: it shows the query string, per-source
+    // hit counts (-1 = that source ERRORED, 0 = returned empty), and the best
+    // confidence found. Distinguishes a search FAILURE from a low-confidence /
+    // wrong-query MISS without needing another run.
+    let best = pool.iter().map(|c| c.confidence).max().unwrap_or(0);
+    eprintln!(
+        "[ingest-diag] query={:?} bangumi_hits={} vndb_hits={} best_confidence={}",
+        query, bangumi_n, vndb_n, best
+    );
     pool.into_iter()
         .filter(|c| c.confidence >= AUTO_BIND_THRESHOLD)
         .max_by_key(|c| c.confidence)

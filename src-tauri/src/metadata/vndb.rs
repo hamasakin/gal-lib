@@ -359,14 +359,18 @@ struct VaCharacter {
     original: Option<String>,
 }
 
-/// Exponential backoff [1s, 2s, 4s] for 5xx / 429 / network errors;
+/// Exponential backoff [2s, 5s, 10s, 20s] for 5xx / 429 / network errors;
 /// 4xx (except 429) fails immediately. Mirrors `bangumi::with_retry`.
 async fn with_retry<F, Fut, T>(f: F) -> Result<T, MetadataError>
 where
     F: Fn() -> Fut,
     Fut: std::future::Future<Output = Result<T, MetadataError>>,
 {
-    let delays = [1000u64, 2000, 4000];
+    // debug auto-scan-metadata-match-low — widened from [1s,2s,4s] (~7s
+    // total) to ~37s total: VNDB's server-side 429 throttle window during a
+    // bulk scan outlasted the old budget, so games past the startup batch
+    // exhausted all 3 retries and lost their VNDB candidate entirely.
+    let delays = [2000u64, 5000, 10000, 20000];
     let mut last_err: Option<MetadataError> = None;
     for (i, &delay) in delays.iter().enumerate() {
         match f().await {

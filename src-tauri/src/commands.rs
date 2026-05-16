@@ -33,12 +33,13 @@ use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::task::JoinSet;
 
 /// 20260509g — cross-game ingest concurrency. Bangumi (1 req/s) and VNDB
-/// (100 req/min) limiters are process-wide governor token-buckets, so
-/// raising this number doesn't bypass rate limits — it just lets more
-/// tasks queue on the limiter in parallel. Empirically 4 is a good
-/// balance: ~3x speedup on a 116-game library, no observable starvation
-/// or unbounded memory growth.
-const INGEST_CONCURRENCY: usize = 4;
+/// (~30/min, burst 1) limiters are process-wide governor token-buckets, so
+/// this number does not bypass rate limits — it bounds how many tasks
+/// queue on the limiter in parallel. Lowered 4 -> 2 (debug session
+/// auto-scan-metadata-match-low): VNDB enrichment already fans a matched
+/// game out to 4 VNDB calls, so 2 concurrent games saturates the 30/min
+/// limiter; 4-way only piled extra in-flight load against VNDB throttle.
+const INGEST_CONCURRENCY: usize = 2;
 
 /// Shared scan handle — wrapped Arc<ScanContext> stored across the lifetime
 /// of the app so `cancel_scan` and `mark_skip_dir` can reach into the in-flight
@@ -99,15 +100,26 @@ fn err_str<E: std::fmt::Display>(e: E) -> String {
 /// 20260509f — Phase 1 of two-phase ingest: idempotent placeholder INSERT.
 ///
 /// Writes the minimum row (path / name / executable_path / screenshot_interval_sec=0)
-/// without doing any network I/O or cover work. Resolves the `games.id` —
-/// either freshly inserted (last_insert_rowid != 0) or via the ON CONFLICT(path)
-/// `SELECT id` fallback when the row already exists.
+/// without doing any network I/O or cover work. Resolves the `games.id` via
+/// the `RETURNING id` clause — correct for BOTH the fresh-insert path and the
+/// ON CONFLICT(path) upsert-update path.
 ///
 /// Idempotent: a second call with the same path returns the same id (the
 /// ON CONFLICT branch keeps the row stable). `start_scan` deliberately calls
 /// it twice per discovered directory — once in the pre-ingest batch loop to
 /// make placeholders visible immediately, then again at the head of each
 /// ingest iteration to recover the id without threading a parallel `Vec<i64>`.
+///
+/// 20260516 — id resolution fixed. The previous form keyed off
+/// `last_insert_rowid() != 0`, assuming the value is 0 when the upsert takes
+/// the DO UPDATE branch. It is not: SQLite leaves `last_insert_rowid()`
+/// pointing at the connection's *previous* real INSERT when no new row is
+/// inserted. On the pooled connection that ran the pre-ingest batch loop,
+/// every ingest-loop call therefore resolved a STALE rowid (the last
+/// placeholder inserted) instead of the row actually being processed —
+/// metadata was applied to the wrong `games` row and most games never got
+/// enriched. `RETURNING id` reports the affected row's id directly, so both
+/// branches are correct regardless of pooled-connection history.
 async fn insert_placeholder_dir(
     pool: &SqlitePool,
     dg: &scan::DiscoveredGame,
@@ -119,26 +131,19 @@ async fn insert_placeholder_dir(
     // games; users who want it can flip the per-game value via the Detail
     // page's 设置 tab. The schema column default of 300 (set in v5) is not
     // referenced because we always specify the column explicitly here.
-    let insert_res = sqlx::query(
+    let game_id: i64 = sqlx::query(
         "INSERT INTO games (path, name, executable_path, screenshot_interval_sec) \
          VALUES (?, ?, ?, 0) \
-         ON CONFLICT(path) DO UPDATE SET name=excluded.name, executable_path=excluded.executable_path",
+         ON CONFLICT(path) DO UPDATE SET name=excluded.name, executable_path=excluded.executable_path \
+         RETURNING id",
     )
     .bind(&path_str)
     .bind(&dg.clean_name)
     .bind(&exec_str)
-    .execute(pool)
-    .await;
-
-    let game_id: i64 = match insert_res {
-        Ok(r) if r.last_insert_rowid() != 0 => r.last_insert_rowid(),
-        _ => sqlx::query("SELECT id FROM games WHERE path = ?")
-            .bind(&path_str)
-            .fetch_one(pool)
-            .await
-            .and_then(|r| r.try_get::<i64, _>("id"))
-            .map_err(err_str)?,
-    };
+    .fetch_one(pool)
+    .await
+    .and_then(|r| r.try_get::<i64, _>("id"))
+    .map_err(err_str)?;
 
     Ok(game_id)
 }
@@ -497,11 +502,15 @@ pub async fn start_scan(
     state: State<'_, AppPaths>,
     scan_state: State<'_, ScanState>,
 ) -> Result<(), String> {
-    let incremental = match mode.as_str() {
-        "full" => false,
-        "incremental" => true,
+    // 20260516 — scan modes unified to incremental behaviour. Both "full" and
+    // "incremental" now skip games already bound to a source and only (re)run
+    // the metadata pipeline on unbound directories — see the `existing_paths`
+    // query below. `mode` is still validated for API compatibility (the
+    // frontend passes "full"/"incremental") but no longer changes behaviour.
+    match mode.as_str() {
+        "full" | "incremental" => {}
         other => return Err(format!("mode must be 'full' or 'incremental' (got '{}')", other)),
-    };
+    }
 
     // Fresh ScanContext for this scan run.
     let ctx = Arc::new(scan::ScanContext::new());
@@ -546,17 +555,20 @@ pub async fn start_scan(
         return Ok(());
     }
 
-    // Read existing games.path set (only used in incremental mode).
-    //
-    // Filter to *bound* rows only — directories whose row has
+    // Skip set for the scan: directories whose `games` row is already bound
+    // to a source. Filter to *bound* rows only — directories whose row has
     // metadata_source='none' (i.e. 「待复核」: scan happened but neither
     // Bangumi nor VNDB cleared the auto-bind threshold) are intentionally
-    // excluded so an incremental rescan re-runs the metadata pipeline on
-    // them. The standard cleaning + scoring rules may have improved
-    // (see 20260509c) and the user shouldn't have to right-click each
-    // unbound card to retry. Manual binds are kept in the skip set so
-    // a rescan never overwrites a user's explicit choice.
-    let existing_paths: HashSet<PathBuf> = if incremental {
+    // excluded so a rescan re-runs the metadata pipeline on them. The
+    // standard cleaning + scoring rules may have improved (see 20260509c)
+    // and the user shouldn't have to right-click each unbound card to retry.
+    // Manual binds ARE in the skip set so a rescan never overwrites a user's
+    // explicit choice.
+    //
+    // 20260516 — applied unconditionally (both scan modes). A matched game
+    // missing only its cover stays skipped here; covers are refreshed per
+    // game via GameCard's 「重新抓取封面」, not by a full re-ingest.
+    let existing_paths: HashSet<PathBuf> = {
         let rows = sqlx::query(
             "SELECT path FROM games \
              WHERE metadata_source IN ('bangumi', 'vndb', 'manual')",
@@ -567,8 +579,6 @@ pub async fn start_scan(
         rows.into_iter()
             .filter_map(|r| r.try_get::<String, _>("path").ok().map(PathBuf::from))
             .collect()
-    } else {
-        HashSet::new()
     };
 
     // Spawn the scan + ingest pipeline; command returns immediately.
@@ -586,7 +596,9 @@ pub async fn start_scan(
         let scan_res = scan::run_scan(
             roots,
             existing_paths,
-            incremental,
+            // 20260516 — always run with the skip set active; see the
+            // mode-unification note in start_scan above.
+            true,
             ctx.clone(),
             on_progress,
         )
