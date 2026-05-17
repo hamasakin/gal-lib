@@ -18,7 +18,7 @@
  * Routing-export note: router.tsx uses `import { Library }` — keep NAMED export.
  */
 
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
 import { toastScanFinished } from "@/lib/toast";
@@ -229,7 +229,16 @@ export function Library() {
   // of a `scroll` event listener on purpose — listening would write to the
   // store on every frame of a high-frequency scroll; we only need the single
   // value captured the instant the user leaves the page.
-  useEffect(() => {
+  //
+  // MUST be useLayoutEffect, NOT useEffect: when this route unmounts, React
+  // detaches refs (`scrollContainerRef.current` → null) during the mutation
+  // phase, BEFORE passive (useEffect) cleanups run. A useEffect cleanup here
+  // would read a null ref, get `undefined`, and silently never persist the
+  // position — the restore on the next visit then sees `saved === 0` and
+  // bails. A useLayoutEffect cleanup runs synchronously in the mutation
+  // phase: the parent's layout cleanup fires before the child <div>'s ref is
+  // detached, so `scrollTop` is still live and the snapshot actually lands.
+  useLayoutEffect(() => {
     return () => {
       const top = scrollContainerRef.current?.scrollTop;
       if (top != null) setLibraryScrollTop(top);
