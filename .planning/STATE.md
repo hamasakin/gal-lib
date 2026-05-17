@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ✅ (verification-only)
 Plan: 全部完成；下一步 /gsd-audit-milestone v1.3
 Status: 4/4 phases shipped；自动化全绿；real-app walkthrough 清单交付待 audit
-Last activity: 2026-05-17 — Completed quick task 260517-qnn: 三项改进（修复网格滚动条拖动回弹 / 新增删除条目能力 / 简化详情页启动配置）
+Last activity: 2026-05-17 — Completed quick task 260517-sm9: 发布 v0.2.2 小版本（版本号 bump 0.2.1 → 0.2.2）
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -97,6 +97,7 @@ None.
 | 260516-ulm | 修复 pick_best_exe EXE 匹配逻辑 — 从「全树递归平铺、纯按分数取最高」改为「按目录深度分层、浅层优先」：所有正分 exe 按 WalkDir entry.depth() 分桶进 BTreeMap，升序取首个非空层的最佳；游戏根目录有正分 exe 时深层子目录（redist/tools/汉化补丁等）的更高分 exe 不再压过正主，浅层无正分候选才下探兜底；SCAN-05 评分契约（score>0 门槛 / parent_dir=game_dir 根 / 全负返回 None / 同层并列 mtime 较新者胜）逐字不变；新增浅层优先 + 深层兜底 2 个单元测试 | 2026-05-16 | a779cbb · cc6a8cc · 2d426b1 | [260516-ulm-pick-best-exe-exe-exe](./quick/260516-ulm-pick-best-exe-exe-exe/) |
 | 260516-v47 | 发布 v0.2.1 小版本 — package.json / tauri.conf.json / Cargo.toml / Cargo.lock(gal-lib 自身条目) 四处版本号 0.2.0 → 0.2.1 单原子提交；打 tag v0.2.1 并推送触发 release.yml 出包 | 2026-05-16 | 8edf43e | [260516-v47-release-v0-2-1](./quick/260516-v47-release-v0-2-1/) |
 | 260517-qnn | 三项改进：① 修复 useSmoothWheel 网格滚动条拖动回弹——新鲜启动拖动滚动条被弹回拖动前位置，根因是 lerp target 只在空闲+下次 wheel 才重对齐，外部滚动期间过期 target 拽回视图；加 scroll 监听 + lastWritten 比对，外部滚动时重新同步 target 并停 rAF（非 vs4 回归）② 新增 delete_game 命令 + GameCard 右键「删除条目」+ Library 确认对话框（删 8 张 game_id 子表 + games 行，不碰磁盘文件）③ Detail 启动方式从 4 个 LE profile 收敛为日区 LE 启动 / 直接启动，删除 isCnVersionExe，旧值平滑回落 | 2026-05-17 | cc2244b · 86aa131 · c8cfa25 | [260517-qnn-scroll-delete-launch](./quick/260517-qnn-scroll-delete-launch/) |
+| 260517-sm9 | 发布 v0.2.2 小版本 — package.json / tauri.conf.json / Cargo.toml / Cargo.lock(gal-lib 自身条目) 四处版本号 0.2.1 → 0.2.2 单原子提交；打 tag v0.2.2 并推送触发 release.yml 出包 | 2026-05-17 | 2c0a022 | [260517-sm9-v0-2-2](./quick/260517-sm9-v0-2-2/) |
 
 ## Session Continuity
 
