@@ -2,20 +2,31 @@ import { useState, useRef, useEffect } from "react";
 import { Play, Square, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-const LE_PROFILES = [
-  { id: "Japanese", label: "ja-JP / Shift-JIS", note: "默认", color: "var(--accent)" },
-  { id: "Simplified Chinese", label: "zh-CN / 简体", note: "原生", color: "#6fd1c8" },
-  { id: "Traditional Chinese", label: "zh-TW / 繁体", note: "原生", color: "#ffd166" },
-  { id: "Custom", label: "自定义参数", note: "高级", color: "var(--ink-2)" },
+// Quick 260517-qnn — 两种启动方式，取代旧的 4 个 LE profile
+// （日 / 简中 / 繁中 / Custom）。le-jp 走 Locale Emulator（默认 ja-JP），
+// direct 不经 LE 直接拉起 exe。
+const LAUNCH_METHODS = [
+  {
+    id: "le-jp",
+    label: "日区 LE 启动",
+    note: "转区",
+    color: "var(--accent)",
+  },
+  {
+    id: "direct",
+    label: "直接启动",
+    note: "原生",
+    color: "#6fd1c8",
+  },
 ] as const;
 
-type LaunchProfile = (typeof LE_PROFILES)[number]["id"];
+export type LaunchMethod = (typeof LAUNCH_METHODS)[number]["id"];
 
 interface LaunchButtonProps {
-  /** Active profile id (controlled). */
-  profile: LaunchProfile;
-  /** Notify parent of profile change (sets up backend launch arg). */
-  onProfileChange: (next: LaunchProfile) => void;
+  /** Active launch method (controlled). */
+  profile: LaunchMethod;
+  /** Notify parent of launch-method change. */
+  onProfileChange: (next: LaunchMethod) => void;
   /** Click handler — main launch (left) or 强制结束 (when active). */
   onClick: () => void;
   /** Render as the "running" state (square stop icon, no popover). */
@@ -28,8 +39,9 @@ interface LaunchButtonProps {
 
 /**
  * Signature launch button — 44px circle that expands to 240px on hover.
- * Above the button: a 260px popover listing 4 LE profiles. Hover/focus
- * keeps the popover open via a small grace zone (mouseLeave + 200ms timer).
+ * Above the button: a 260px popover listing the 2 launch methods
+ * （日区 LE 启动 / 直接启动）. Hover/focus keeps the popover open via a
+ * small grace zone (mouseLeave + 200ms timer).
  *
  * Active state (game currently running): renders the destructive-red
  * square stop icon and skips the popover entirely.
@@ -70,7 +82,7 @@ export function LaunchButton({
 
   const expanded = hover && !disabled && !isActive;
   const activeProfile =
-    LE_PROFILES.find((p) => p.id === profile) ?? LE_PROFILES[0];
+    LAUNCH_METHODS.find((p) => p.id === profile) ?? LAUNCH_METHODS[0];
 
   // Active (game running) state — solid stop button, no popover
   if (isActive) {
@@ -108,7 +120,7 @@ export function LaunchButton({
         type="button"
         onClick={onClick}
         disabled={disabled}
-        title={disabled ? disabledTitle : `启动 · LE: ${activeProfile.label}`}
+        title={disabled ? disabledTitle : `启动 · ${activeProfile.label}`}
         aria-label={`启动 · ${activeProfile.label}`}
         className={cn(
           "relative inline-flex items-center overflow-hidden whitespace-nowrap rounded-full",
@@ -149,7 +161,7 @@ export function LaunchButton({
         </span>
       </button>
 
-      {/* Profile popover */}
+      {/* 启动方式 popover */}
       <div
         role="menu"
         className={cn(
@@ -159,16 +171,12 @@ export function LaunchButton({
         style={{ bottom: "calc(100% + 12px)", borderRadius: "var(--r-md)" }}
       >
         <div className="px-2 pb-2 pt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">
-          Locale Emulator · Profile
+          启动方式
         </div>
-        {LE_PROFILES.map((p, i) => {
+        {LAUNCH_METHODS.map((p) => {
           const on = p.id === profile;
-          const isLast = i === LE_PROFILES.length - 1;
           return (
             <div key={p.id}>
-              {isLast && (
-                <hr className="my-1 border-0 border-t border-line" />
-              )}
               <button
                 type="button"
                 role="menuitemradio"
