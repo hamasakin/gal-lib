@@ -392,6 +392,7 @@ function RoleSection({
               onPickMetadata={noopPickMetadata}
               onRefreshCover={noopRefreshCover}
               onSplitSubdirs={noopSplitSubdirs}
+              onRequestDelete={noopRequestDelete}
             />
             {voiceCharByGame && voiceCharByGame[g.id] ? (
               <div className="mt-1 font-mono text-[10px] text-ink-3">
@@ -417,6 +418,12 @@ function noopRefreshCover(_g: Game): void {
   // no-op
 }
 function noopSplitSubdirs(_g: Game): void {
+  // no-op
+}
+// Quick 260517-qnn — deletion is a Library-only flow (it owns the confirm
+// AlertDialog + grid refetch). The Persons page's game grid is read-only, so
+// the「删除条目」context-menu item is a silent no-op here.
+function noopRequestDelete(_g: Game): void {
   // no-op
 }
 

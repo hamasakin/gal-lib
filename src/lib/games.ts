@@ -182,3 +182,17 @@ export async function openGameDir(path: string): Promise<void> {
 export async function openPath(path: string): Promise<void> {
   await invoke("open_path", { path });
 }
+
+/**
+ * Quick 260517-qnn — remove a game from the library.
+ *
+ * Deletes ONLY the database record for `gameId` (the `games` row plus every
+ * child row that references it — sessions / screenshots / save_backups /
+ * game_tags / game_staff / game_official_tags / custom_view_games /
+ * scan_review_queue). The on-disk game folder and files are NOT touched, so a
+ * later re-scan will legitimately re-add the game. Throws "游戏不存在" if no
+ * row matched the id.
+ */
+export async function deleteGame(gameId: number): Promise<void> {
+  await invoke("delete_game", { gameId });
+}
