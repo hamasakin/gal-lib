@@ -20,6 +20,16 @@
  * 与 react-virtual 兼容：仍然写 native scrollTop，浏览器派发 scroll 事件，
  * react-virtual 监听 scroll 更新 virtualItems — 行虚拟化逻辑无需改动。
  *
+ * 外部滚动再同步（external-scroll re-sync）：
+ *   除滚轮外，用户还能用滚动条拖拽 / 键盘 PageDown / 程序写 scrollTop 改变
+ *   位置。这些「非滚轮」滚动若发生在 RAF lerp 循环仍在跑时，闭包里的 `target`
+ *   会失同步，下一帧 `tick` 算出一个大 `diff` 把 `scrollTop` 又拽回旧位置
+ *   （肉眼看就是滚动条「弹回」）。为此 hook 监听 `el` 的 `scroll` 事件，并
+ *   记录每次自己的 `tick` 写入的值 `lastWritten`：当 scroll 事件里的真实
+ *   `scrollTop` 与 `lastWritten` 偏差超过 1px，说明改动来自 hook 之外，
+ *   立即把 `target` 重对齐到真实 `scrollTop` 并取消正在跑的 lerp 循环——
+ *   不再与外部滚动较劲。滚轮平滑本身完全不变。
+ *
  * 不拦截：
  *   - ctrlKey + wheel（pinch zoom）
  *   - horizontal wheel（|deltaX| > |deltaY|）
@@ -61,6 +71,9 @@ export function useSmoothWheel(
     // target — 目标滚动位置，初始化为当前 scrollTop。
     let target = el.scrollTop;
     let raf: number | null = null;
+    // lastWritten — hook 自己的 tick 最近一次写入 el.scrollTop 的值。
+    // scroll 事件处理器用它区分「滚动来自 hook」还是「来自外部」。
+    let lastWritten = el.scrollTop;
 
     const tick = () => {
       // 每帧重夹 target：scrollHeight 在虚拟列表下会变化，每帧 clamp 更稳。
@@ -73,12 +86,28 @@ export function useSmoothWheel(
       // target 不会超界，diff 自然收敛到 0，不空转顶墙）。
       if (Math.abs(diff) < 0.5) {
         el.scrollTop = target;
+        lastWritten = el.scrollTop;
         raf = null;
         return;
       }
 
       el.scrollTop = el.scrollTop + diff * lerpFactor;
+      lastWritten = el.scrollTop;
       raf = requestAnimationFrame(tick);
+    };
+
+    // 外部滚动再同步 — 滚动条拖拽 / 键盘 / 程序写 scrollTop 都会派发
+    // scroll 事件。若真实 scrollTop 与 hook 自己最近写入的值偏差超过 1px，
+    // 说明改动来自外部：把 target 重对齐并取消 lerp 循环，不再较劲。
+    const onScroll = () => {
+      if (Math.abs(el.scrollTop - lastWritten) > 1) {
+        target = el.scrollTop;
+        lastWritten = el.scrollTop;
+        if (raf != null) {
+          cancelAnimationFrame(raf);
+          raf = null;
+        }
+      }
     };
 
     const onWheel = (e: WheelEvent) => {
@@ -103,8 +132,10 @@ export function useSmoothWheel(
     };
 
     el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("scroll", onScroll, { passive: true });
     return () => {
       el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("scroll", onScroll);
       if (raf != null) cancelAnimationFrame(raf);
     };
   }, [ref, lerpFactor, step]);
