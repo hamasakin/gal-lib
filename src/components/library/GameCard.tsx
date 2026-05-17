@@ -46,6 +46,13 @@ interface GameCardProps {
   onRefreshCover: (game: Game) => void;
   /** Quick 260516-q3y — open the「整理子目录」dialog for this game. */
   onSplitSubdirs: (game: Game) => void;
+  /**
+   * Quick 260517-qnn — request deletion of this game's library record.
+   * The card does NOT own the confirm dialog: Library.tsx renders the
+   * AlertDialog, because the card unmounts the instant its row is deleted
+   * (which would tear down an in-card dialog mid-interaction).
+   */
+  onRequestDelete: (game: Game) => void;
   onMutated?: () => void;
   // Quick 20260510b — batch selection mode (drives the "添加到视图" workflow).
   /** When true, clicking the card toggles selection instead of navigating. */
@@ -126,6 +133,7 @@ function GameCardImpl({
   onPickMetadata,
   onRefreshCover,
   onSplitSubdirs,
+  onRequestDelete,
   onMutated,
   selectMode = false,
   selected = false,
@@ -606,6 +614,12 @@ function GameCardImpl({
         <ContextMenuSeparator />
         <ContextMenuItem onClick={() => onSplitSubdirs(game)}>
           整理子目录
+        </ContextMenuItem>
+        <ContextMenuItem
+          onClick={() => onRequestDelete(game)}
+          className="text-destructive focus:text-destructive"
+        >
+          删除条目
         </ContextMenuItem>
       </ContextMenuContent>
     </ContextMenu>

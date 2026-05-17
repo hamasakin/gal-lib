@@ -279,6 +279,8 @@ pub fn run() {
             // Quick 260516-q3y — subdir split
             commands::list_subdirs,
             commands::split_game_into_subdirs,
+            // Quick 260517-qnn — delete game entry
+            commands::delete_game,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

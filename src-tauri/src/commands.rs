@@ -1064,6 +1064,56 @@ pub async fn split_game_into_subdirs(
     Ok(new_ids)
 }
 
+/// Quick 260517-qnn — delete a single game's library record.
+///
+/// Removes ONLY the database rows for `game_id`: every child table that holds
+/// a `game_id` FK (screenshots / save_backups / sessions / game_tags /
+/// game_staff / game_official_tags / custom_view_games / scan_review_queue) is
+/// cleared first, then the parent `games` row. Child rows are deleted
+/// explicitly so the command works regardless of the connection's
+/// `PRAGMA foreign_keys` state (sqlx doesn't auto-enable it per connection).
+///
+/// The on-disk game folder/files are deliberately NOT touched — a later
+/// re-scan legitimately re-adds the game, which is the expected behavior.
+/// (Contrast with `clear_all_data`, which also removes the cover/screenshot/
+/// save subdirectories from disk.)
+///
+/// Returns `Err("游戏不存在")` if no `games` row matched the id.
+#[tauri::command]
+pub async fn delete_game(game_id: i64, state: State<'_, AppPaths>) -> Result<(), String> {
+    let pool = state.pool().await.map_err(err_str)?;
+
+    // Delete child rows first so this works even with FK enforcement off.
+    for table in [
+        "screenshots",
+        "save_backups",
+        "sessions",
+        "game_tags",
+        "game_staff",
+        "game_official_tags",
+        "custom_view_games",
+        "scan_review_queue",
+    ] {
+        sqlx::query(&format!("DELETE FROM {} WHERE game_id = ?", table))
+            .bind(game_id)
+            .execute(&*pool)
+            .await
+            .map_err(err_str)?;
+    }
+
+    let result = sqlx::query("DELETE FROM games WHERE id = ?")
+        .bind(game_id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+
+    if result.rows_affected() == 0 {
+        return Err("游戏不存在".to_string());
+    }
+
+    Ok(())
+}
+
 /// Wipe all game-related data — for debugging only. Clears the games table
 /// (and its child rows in screenshots / save_backups / sessions / game_tags)
 /// plus scan_roots, then best-effort removes the on-disk cover, screenshot,

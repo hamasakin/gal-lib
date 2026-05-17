@@ -157,27 +157,34 @@ import {
 } from "@/lib/customViews";
 import { getSidebarCategories } from "@/lib/search";
 
-const LE_PROFILES = [
-  "Japanese",
-  "Simplified Chinese",
-  "Traditional Chinese",
-  "Custom",
-] as const;
-type LeProfile = (typeof LE_PROFILES)[number];
+// Quick 260517-qnn — 启动方式收敛为两种：日区 LE 启动 / 直接启动。
+// 旧的简中 / 繁中 / Custom LE profile 已废弃。
+//   le-jp  → 经 Locale Emulator 启动（后端固定 ja-JP profile）
+//   direct → 不经 LE，直接拉起 exe
+// 持久化到 games.le_profile 这一自由 TEXT 列（后端 LE 路径忽略它的值，
+// 始终用默认 ja-JP）：le-jp 存 "Japanese"，direct 存 "direct"。
+type LaunchMethod = "le-jp" | "direct";
+
+const LAUNCH_METHOD_LABEL: Record<LaunchMethod, string> = {
+  "le-jp": "日区 LE 启动",
+  direct: "直接启动",
+};
 
 /**
- * 判断一个可执行文件路径是否为中文补丁版 EXE。
- * 后缀集合与后端 src-tauri/src/scan/exe_score.rs 的 `cn_suffixes`
- * 保持一致（六个后缀，全部对应简体中文）。两处因跨语言无法共享，
- * 修改任一处务必同步另一处。
+ * 把持久化的 le_profile 字符串映射回 LaunchMethod。
+ * 规则：只有显式的 "direct" / "Direct" 哨兵值算「直接启动」；其余一切值
+ * （"Japanese"、已废弃的 "Simplified Chinese" / "Traditional Chinese" /
+ * "Custom"、空串等）一律回落到「日区 LE 启动」。这样此前用已删除 profile
+ * 保存过的游戏也能平滑加载为日区 LE 启动，不会报错。
  */
-function isCnVersionExe(path: string | null | undefined): boolean {
-  if (!path) return false;
-  // 取文件名 stem：去掉路径分隔符（兼容 \ 与 /）与扩展名
-  const base = path.split(/[\\/]/).pop() ?? "";
-  const stem = base.replace(/\.[^.]*$/, "").toLowerCase();
-  const cnSuffixes = ["_cn", "_chs", "_zh", "-cn", "-chs", "-zh"];
-  return cnSuffixes.some((suf) => stem.endsWith(suf));
+function leProfileToMethod(saved: string | null | undefined): LaunchMethod {
+  const v = (saved ?? "").trim().toLowerCase();
+  return v === "direct" ? "direct" : "le-jp";
+}
+
+/** 把 LaunchMethod 映射回写入 le_profile 列的稳定哨兵值。 */
+function methodToLeProfile(method: LaunchMethod): string {
+  return method === "direct" ? "direct" : "Japanese";
 }
 
 const STATUS_OPTIONS: Array<{ value: Game["status"]; label: string }> = [
@@ -430,7 +437,9 @@ export default function Detail() {
   }
 
   const [game, setGame] = useState<Game | null>(null);
-  const [profile, setProfile] = useState<LeProfile>("Japanese");
+  // Quick 260517-qnn — 启动方式（日区 LE / 直接启动）。沿用 profile 命名
+  // 是为了把改动面收敛在 launch 相关代码内。
+  const [launchMethod, setLaunchMethod] = useState<LaunchMethod>("le-jp");
   const [args, setArgs] = useState<string>("");
   const [cwd, setCwd] = useState<string>("");
   const [exePath, setExePath] = useState<string>("");
@@ -485,13 +494,9 @@ export default function Detail() {
     setGame(g);
     if (g) {
       const x = g as Game & LaunchExtras;
-      const saved = x.le_profile ?? "";
-      const p: LeProfile = (LE_PROFILES as readonly string[]).includes(saved)
-        ? (saved as LeProfile)
-        : isCnVersionExe(g.executable_path)
-          ? "Simplified Chinese"
-          : "Japanese";
-      setProfile(p);
+      // Quick 260517-qnn — 把持久化的 le_profile 映射回两种启动方式之一。
+      // 已废弃 profile（简中 / 繁中 / Custom）一律回落到「日区 LE 启动」。
+      setLaunchMethod(leProfileToMethod(x.le_profile));
       setArgs(x.launch_args ?? "");
       setCwd(x.cwd ?? "");
       setExePath(g.executable_path ?? "");
@@ -714,15 +719,17 @@ export default function Detail() {
     if (!game) return;
     try {
       await updateGameLaunchConfig(gameId, {
-        le_profile: profile,
+        le_profile: methodToLeProfile(launchMethod),
         launch_args: args,
         cwd: cwd.length > 0 ? cwd : undefined,
         executable_path: exePath.length > 0 ? exePath : undefined,
       });
-      // 详情页的启动按钮只暴露 LE profile（Japanese / 简中 / 繁中 / Custom），
-      // 设计上始终走 Locale Emulator。主界面的「直接启动」走 GameCard 的菜单。
-      await launchGame(gameId, true);
-      toastLaunchSuccess(displayName, profile);
+      // Quick 260517-qnn — 日区 LE 启动经 Locale Emulator，直接启动不经 LE。
+      await launchGame(gameId, launchMethod === "le-jp");
+      toastLaunchSuccess(
+        displayName,
+        launchMethod === "le-jp" ? "日区 LE" : "直接",
+      );
     } catch (e: unknown) {
       toast.error(`启动失败 — ${String(e)}`);
     }
@@ -760,7 +767,7 @@ export default function Detail() {
     if (!game) return;
     try {
       await updateGameLaunchConfig(gameId, {
-        le_profile: profile,
+        le_profile: methodToLeProfile(launchMethod),
         launch_args: args,
         cwd: cwd.length > 0 ? cwd : undefined,
         executable_path: exePath.length > 0 ? exePath : undefined,
@@ -1161,8 +1168,8 @@ export default function Detail() {
               </DropdownMenuContent>
             </DropdownMenu>
             <LaunchButton
-              profile={profile}
-              onProfileChange={(p) => setProfile(p as LeProfile)}
+              profile={launchMethod}
+              onProfileChange={setLaunchMethod}
               onClick={() => void onLaunchClick()}
               isActive={isActive}
               disabled={launchDisabled}
@@ -1330,20 +1337,21 @@ export default function Detail() {
             <TabsContent value="config" className="space-y-5 pt-1">
               <DSection title="启动配置">
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <ConfigField label="LE Profile">
+                  <ConfigField label="启动方式">
                     <Select
-                      value={profile}
-                      onValueChange={(v) => setProfile(v as LeProfile)}
+                      value={launchMethod}
+                      onValueChange={(v) => setLaunchMethod(v as LaunchMethod)}
                     >
                       <SelectTrigger>
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        {LE_PROFILES.map((p) => (
-                          <SelectItem key={p} value={p}>
-                            {p}
-                          </SelectItem>
-                        ))}
+                        <SelectItem value="le-jp">
+                          {LAUNCH_METHOD_LABEL["le-jp"]}
+                        </SelectItem>
+                        <SelectItem value="direct">
+                          {LAUNCH_METHOD_LABEL.direct}
+                        </SelectItem>
                       </SelectContent>
                     </Select>
                   </ConfigField>

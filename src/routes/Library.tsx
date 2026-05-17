@@ -29,6 +29,7 @@ import {
   type SearchFilter,
 } from "@/lib/search";
 import type { Game } from "@/lib/games";
+import { deleteGame } from "@/lib/games";
 import { onGamesChanged, startScan, listScanRoots } from "@/lib/scan";
 import { GameGrid } from "@/components/library/GameGrid";
 import { GameList } from "@/components/library/GameList";
@@ -132,6 +133,9 @@ export function Library() {
   // 的中间态，确认后才转交给 splitGame。
   const [splitGame, setSplitGame] = useState<Game | null>(null);
   const [splitCandidate, setSplitCandidate] = useState<Game | null>(null);
+  // Quick 260517-qnn —「删除条目」确认对话框的待删游戏。GameCard 右键菜单的
+  // 删除项通过 onRequestDelete 把游戏写入这里，确认后才真正删库。
+  const [deleteCandidate, setDeleteCandidate] = useState<Game | null>(null);
   const [advFilter, setAdvFilter] = useState<AdvancedFilter>(EMPTY_ADV_FILTER);
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const navigate = useNavigate();
@@ -424,6 +428,27 @@ export function Library() {
     }
   }, []);
 
+  // Quick 260517-qnn —「删除条目」入口回调. 卡片右键菜单的删除项把游戏丢进
+  // deleteCandidate，由下方的 AlertDialog 二次确认后真正删库。
+  const onRequestDelete = useCallback((game: Game) => {
+    setDeleteCandidate(game);
+  }, []);
+
+  // Quick 260517-qnn — 确认删除：删库记录后刷新网格 + 侧边栏。磁盘文件不动。
+  const onConfirmDelete = useCallback(async () => {
+    const g = deleteCandidate;
+    if (!g) return;
+    setDeleteCandidate(null);
+    try {
+      await deleteGame(g.id);
+      void refetchGrid();
+      void refreshSidebar();
+      toast.success("已删除条目");
+    } catch (e: unknown) {
+      toast.error(`删除失败 — ${String(e)}`);
+    }
+  }, [deleteCandidate, refetchGrid, refreshSidebar]);
+
   // Server-fetched array (already narrowed by backend SearchFilter +
   // sort + searchQuery). The advanced FilterPanel runs as a client-side
   // post-filter on top of this — keeps all complex multi-axis logic out
@@ -668,6 +693,7 @@ export function Library() {
             games={visibleGames}
             onPickMetadata={setPickerGame}
             onSplitSubdirs={onSplitSubdirs}
+            onRequestDelete={onRequestDelete}
             onChildMutation={onChildMutation}
             scrollContainerRef={scrollContainerRef}
             selectMode={selectMode}
@@ -808,6 +834,32 @@ export function Library() {
               }}
             >
               继续拆分
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+
+      {/* Quick 260517-qnn —「删除条目」二次确认 */}
+      <AlertDialog
+        open={deleteCandidate != null}
+        onOpenChange={(o) => {
+          if (!o) setDeleteCandidate(null);
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>删除该条目？</AlertDialogTitle>
+            <AlertDialogDescription>
+              仅从图书馆移除这条记录（游玩时长 / 笔记 / 评分等数据会一并丢失）。
+              磁盘上的游戏文件不会被删除，重新扫描会再次找到它。
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel onClick={() => setDeleteCandidate(null)}>
+              取消
+            </AlertDialogCancel>
+            <AlertDialogAction onClick={() => void onConfirmDelete()}>
+              删除
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

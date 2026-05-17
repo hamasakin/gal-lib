@@ -40,6 +40,8 @@ interface GameGridProps {
   onPickMetadata: (game: Game) => void;
   /** Quick 260516-q3y — open the「整理子目录」dialog (透传到每个 GameCard). */
   onSplitSubdirs: (game: Game) => void;
+  /** Quick 260517-qnn — request a game's deletion (透传到每个 GameCard). */
+  onRequestDelete: (game: Game) => void;
   onChildMutation?: () => void;
   /**
    * Scroll container owned by Library.tsx — useVirtualizer's `getScrollElement`
@@ -62,6 +64,7 @@ export function GameGrid({
   games,
   onPickMetadata,
   onSplitSubdirs,
+  onRequestDelete,
   onChildMutation,
   scrollContainerRef,
   selectMode = false,
@@ -270,6 +273,7 @@ export function GameGrid({
                   onPickMetadata={onPickMetadata}
                   onRefreshCover={onRefreshCover}
                   onSplitSubdirs={onSplitSubdirs}
+                  onRequestDelete={onRequestDelete}
                   onMutated={onChildMutated}
                   selectMode={selectMode}
                   selected={selectedIds?.has(g.id) ?? false}
