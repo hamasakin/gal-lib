@@ -314,14 +314,14 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                           ) : null}
                         </div>
                         <div className="flex min-w-0 flex-1 flex-col gap-1">
-                          <div className="flex min-w-0 items-center gap-2">
+                          <div className="flex min-w-0 items-start gap-2">
                             <span
-                              className="min-w-0 flex-1 truncate text-body font-medium text-foreground"
+                              className="min-w-0 flex-1 line-clamp-3 text-body font-medium text-foreground"
                               title={c.title}
                             >
                               {c.title}
                             </span>
-                            <span className="flex-shrink-0">
+                            <span className="mt-0.5 flex-shrink-0">
                               {confidenceBadge(c.confidence)}
                             </span>
                           </div>
@@ -331,6 +331,14 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                               title={c.alias.join(" · ")}
                             >
                               {c.alias.join(" · ")}
+                            </span>
+                          )}
+                          {c.summary && c.summary.trim().length > 0 && (
+                            <span
+                              className="line-clamp-3 text-label text-muted-foreground/80"
+                              title={c.summary}
+                            >
+                              {c.summary}
                             </span>
                           )}
                           <span className="truncate text-label text-muted-foreground">
