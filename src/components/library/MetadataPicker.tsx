@@ -198,6 +198,12 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
     >
       <DialogContent
         className="grid-cols-1 sm:max-w-2xl overflow-hidden"
+        // Quick 260519-21s — 关闭 picker 时不要把焦点强行甩回打开它的菜单
+        // 触发元素。Dialog 默认的 onCloseAutoFocus 会聚焦回 ContextMenu /
+        // DropdownMenu 的 Trigger，进而可能重放上一个被激活过的菜单项
+        // （「打开目录」），导致重复弹出文件管理器窗口。配合菜单项改用
+        // onSelect，从事件链路上彻底断掉这次重放。
+        onCloseAutoFocus={(e) => e.preventDefault()}
       >
         <DialogHeader className="min-w-0">
           <DialogTitle
