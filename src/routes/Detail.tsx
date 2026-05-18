@@ -1112,28 +1112,35 @@ export default function Detail() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
-                <DropdownMenuItem onClick={() => void onOpenDir()}>
+                {/*
+                  Quick 260519-21s — 菜单项一律用 Radix 的 `onSelect` 而非
+                  `onClick`。根因见 GameCard.tsx 同名注释：用 `onClick` 时被点过的
+                  菜单项（「打开本地目录」）会留下未被 Radix 清理的激活态，随后
+                  「重新匹配元数据」打开 MetadataPicker 的 modal，Dialog 关闭时
+                  把焦点甩回菜单触发元素重放该激活态，导致再弹一个文件管理器窗口。
+                */}
+                <DropdownMenuItem onSelect={() => void onOpenDir()}>
                   <FolderOpen size={14} className="mr-2" />
                   打开本地目录
                 </DropdownMenuItem>
-                <DropdownMenuItem onClick={() => void onCopyPath()}>
+                <DropdownMenuItem onSelect={() => void onCopyPath()}>
                   <Copy size={14} className="mr-2" />
                   复制路径
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={() => setPickerOpen(true)}>
+                <DropdownMenuItem onSelect={() => setPickerOpen(true)}>
                   <RefreshCw size={14} className="mr-2" />
                   重新匹配元数据
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={refreshingCover}
-                  onClick={() => void onRefreshCover()}
+                  onSelect={() => void onRefreshCover()}
                 >
                   <ImageDown size={14} className="mr-2" />
                   重新抓取封面
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
-                <DropdownMenuItem onClick={onSplitSubdirs}>
+                <DropdownMenuItem onSelect={onSplitSubdirs}>
                   <FolderTree size={14} className="mr-2" />
                   整理子目录
                 </DropdownMenuItem>
@@ -1150,7 +1157,7 @@ export default function Detail() {
                       {customViews.map((cv) => (
                         <DropdownMenuItem
                           key={cv.id}
-                          onClick={() => void onAddToView(cv.id, cv.name)}
+                          onSelect={() => void onAddToView(cv.id, cv.name)}
                         >
                           {cv.name}
                           <span className="ml-auto font-mono text-[10px] text-ink-3">
@@ -1159,7 +1166,7 @@ export default function Detail() {
                         </DropdownMenuItem>
                       ))}
                       <DropdownMenuSeparator />
-                      <DropdownMenuItem onClick={() => void onCreateAndAddView()}>
+                      <DropdownMenuItem onSelect={() => void onCreateAndAddView()}>
                         新建视图…
                       </DropdownMenuItem>
                     </DropdownMenuSubContent>

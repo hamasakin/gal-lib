@@ -43,15 +43,20 @@ pub fn score(query: &str, candidate: &str) -> u8 {
     // with high confidence (Rule 1: original Levenshtein-only scoring
     // returned 44 for this case, breaking META-07's >=80 auto-bind).
     //
-    // Quick 20260512d — prefix containment with reasonable query length
-    // (≥3 chars on the shorter side) is a strong signal that the directory
-    // name was a short form of the candidate (e.g. `アマエミDL版` cleaned
-    // to `アマエミ` should auto-bind `アマエミ ～甘やかさせて♥もっと
-    // デキてる彼女～`). Boost the baseline from 70 → 80 for the prefix case
-    // so it clears AUTO_BIND_THRESHOLD even when the candidate is much
-    // longer than the query. Non-prefix containment (mid-string substring,
-    // e.g. `クロスチャンネル` inside `初音島Iクロスチャンネル合集`) keeps
-    // the safer 70 baseline.
+    // Quick 260519-21s — 置信度最低门槛降到 0。此前 containment 分支用一个
+    // 人为下限 baseline（prefix 80 / 非 prefix 70）把弱匹配候选硬抬上去，
+    // 用户在 MetadataPicker 里看到的是被美化过的虚高分。现在 baseline 改为
+    // 0：containment 候选只拿到由 coverage（短串对长串的覆盖率）算出的真实
+    // 低分，最差的候选也能如实显示接近 0 的置信度并被用户手动选中应用。
+    //
+    // prefix 仍是强信号——目录名是候选标题前缀（≥3 字符）通常意味着用户的
+    // 目录名是该作品的简写。因此保留一个**相对加成**（不是下限）：prefix
+    // 命中在同等 coverage 下比非 prefix 高一档，使排序里 prefix 候选仍排在
+    // 前面，但不再凭空抬到 70/80。
+    //
+    // 注意：auto-bind（≥80 自动绑定）门槛是 ingest 阶段的独立常量
+    // （AUTO_BIND_THRESHOLD），不复用本函数的 baseline——本次只降匹配评分的
+    // 保底门槛，不动 auto-bind 行为。
     if c.contains(&q) || q.contains(&c) {
         let short_len = q.chars().count().min(c.chars().count()) as f64;
         let long_len = q.chars().count().max(c.chars().count()) as f64;
@@ -59,9 +64,14 @@ pub fn score(query: &str, candidate: &str) -> u8 {
         let coverage = short_len / long_len;
         let is_prefix =
             (c.starts_with(&q) || q.starts_with(&c)) && short_len >= 3.0;
-        let baseline: u8 = if is_prefix { 80 } else { 70 };
+        // 门槛降到 0：不再有人为下限抬升。真实分 = coverage 映射到 0..=99。
+        let baseline: u8 = 0;
         let span = (99 - baseline) as f64;
-        return baseline + (coverage * span) as u8;
+        // prefix 相对加成（非下限）：同 coverage 下 prefix 比非 prefix 高一档，
+        // 保证排序里 prefix 候选仍占优；clamp 到 99 避免越过 exact-match 的 100。
+        let prefix_bonus: u8 = if is_prefix { 10 } else { 0 };
+        let raw = baseline + (coverage * span) as u8;
+        return raw.saturating_add(prefix_bonus).min(99);
     }
 
     let dist = levenshtein(&q, &c);
@@ -125,8 +135,17 @@ mod tests {
 
     #[test]
     fn fuzzy_high_score() {
+        // Quick 260519-21s — baseline 降到 0 后，containment 命中只拿真实
+        // coverage 分（不再有 70 下限）。这里仍验证：prefix containment 命中
+        // 拿到一个明显非 0 的正分，且永远低于 exact-match 的 100。
         let s = score("CLANNAD", "CLANNAD - 全年齢版");
-        assert!(s >= 70 && s < 100, "got {}", s);
+        assert!(s > 0 && s < 100, "got {}", s);
+        // 同时它应高于一个完全不相关的低分对照，证明 containment 仍是强信号。
+        assert!(
+            s > score("CLANNAD", "Symphonic Rain"),
+            "containment 命中应高于无关候选, got {}",
+            s,
+        );
     }
 
     #[test]
@@ -164,38 +183,55 @@ mod tests {
     }
 
     #[test]
-    fn prefix_containment_clears_auto_bind_threshold() {
-        // Quick 20260512d — user reported `アマエミDL版` (cleaned to
-        // `アマエミ`) wouldn't auto-bind even though VNDB returns the
-        // full title `アマエミ ～甘やかさせて♥もっとデキてる彼女～`.
-        // The short query is a strict prefix of the long candidate, so the
-        // new baseline-80 path must produce ≥80 confidence.
-        let s = score("アマエミ", "アマエミ ～甘やかさせて♥もっとデキてる彼女～");
-        assert!(s >= 80, "expected ≥80 for prefix containment, got {}", s);
-        assert!(s < 100, "shouldn't be exact, got {}", s);
+    fn prefix_containment_scores_above_short_prefix() {
+        // Quick 260519-21s — baseline 降到 0 后不再有 70/80 人为下限。
+        // 原 Quick 20260512d 的语义（`アマエミ` 应作为 `アマエミ ～…～`
+        // 的强 prefix 命中）改为验证**相对关系**：≥3 字符的 prefix 命中
+        // 比 2 字符的短 prefix 命中分更高（更长的 prefix → 更高 coverage
+        // + prefix 相对加成），且都低于 exact-match 的 100。
+        let long_prefix =
+            score("アマエミ", "アマエミ ～甘やかさせて♥もっとデキてる彼女～");
+        let short_prefix =
+            score("アマ", "アマエミ ～甘やかさせて♥もっとデキてる彼女～");
+        assert!(long_prefix < 100, "shouldn't be exact, got {}", long_prefix);
+        assert!(
+            long_prefix > short_prefix,
+            "更长的 prefix 命中应分更高: long={} short={}",
+            long_prefix,
+            short_prefix,
+        );
     }
 
     #[test]
-    fn prefix_short_query_below_floor_stays_at_baseline_70() {
-        // A 2-character query like `アマ` is too short to safely auto-bind
-        // every candidate that happens to start with those chars. Stay at
-        // the conservative 70-baseline so the user sees a low-confidence
-        // match and can rebind manually.
-        let s = score("アマ", "アマエミ ～甘やかさせて♥もっとデキてる彼女～");
-        // Still containment (70-99 range); the test asserts it's NOT
-        // promoted to the 80+ band the 3+-char prefix path uses.
-        assert!(s >= 70 && s < 80, "expected 70..80 for short prefix, got {}", s);
+    fn prefix_scores_above_non_prefix_at_same_coverage() {
+        // Quick 260519-21s — baseline 降到 0 后，prefix 不再是「下限」而是
+        // 「相对加成」。验证：同等 coverage 下，prefix 命中仍比非 prefix
+        // 命中分更高，保证 MetadataPicker 候选排序里 prefix 候选占优。
+        //
+        // `abc` vs `abcxyz`：prefix（c.starts_with(q)），coverage = 3/6。
+        // `bcd` vs `abcdef`：非 prefix 子串，coverage 同为 3/6。
+        let prefix_hit = score("abc", "abcxyz");
+        let non_prefix_hit = score("bcd", "abcdef");
+        assert!(
+            prefix_hit > non_prefix_hit,
+            "同 coverage 下 prefix 应高于非 prefix: prefix={} non_prefix={}",
+            prefix_hit,
+            non_prefix_hit,
+        );
     }
 
     #[test]
-    fn non_prefix_containment_keeps_baseline_70() {
-        // Substring NOT at the start should keep the safer 70 baseline.
-        // (`Channel` is inside `Cross Channel`, but not a prefix.)
-        let s = score("Channel", "Cross Channel");
-        assert!(s >= 70, "expected ≥70 for containment, got {}", s);
-        // Coverage = 7/12 = 0.58, so on the 70-baseline path:
-        //   70 + 0.58 * 29 = 70 + 16 = 86 — still high, but via the
-        //   non-prefix branch (we just assert it didn't get the 80-floor
-        //   gift; the value itself can vary as long as the branch is right).
+    fn weak_containment_no_longer_floored() {
+        // Quick 260519-21s — 核心需求：置信度门槛降到 0。一个 coverage 很低
+        // 的 containment 候选（短串只覆盖长串一小部分）此前被 70 下限硬抬，
+        // 现在应如实拿到一个明显 < 70 的低分，让用户看到「这是个差候选」。
+        let s = score("Channel", "Cross Channel Long Edition Extra");
+        assert!(
+            s < 70,
+            "弱 containment 候选不应再被抬到 70 下限, got {}",
+            s,
+        );
+        // 仍是正分（containment 命中），用户可手动选中应用。
+        assert!(s > 0, "containment 命中仍应有正分, got {}", s);
     }
 }

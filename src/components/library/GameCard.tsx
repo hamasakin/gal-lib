@@ -563,26 +563,36 @@ function GameCardImpl({
       </ContextMenuTrigger>
 
       <ContextMenuContent className="w-44">
+        {/*
+          Quick 260519-21s — 菜单项一律用 Radix 的 `onSelect` 而非 `onClick`。
+          根因：用 `onClick` 时 Radix 不会把这次「选中」纳入它的 select →
+          关菜单 → 焦点恢复 生命周期，被点过的菜单项（如「打开目录」）会留下
+          一个未被清理的激活态。随后「重新匹配元数据」打开 MetadataPicker
+          的 modal Dialog，Dialog 关闭时默认 onCloseAutoFocus 把焦点甩回菜单
+          触发元素，残留激活态被重放 → 「打开目录」的 handler 第二次执行，
+          多弹一个文件管理器窗口。改用 onSelect 后 Radix 完整接管生命周期，
+          不再有悬挂激活态。
+        */}
         {!activeSession && !noExe && (
           <>
-            <ContextMenuItem onClick={() => void onLaunch(false)}>
+            <ContextMenuItem onSelect={() => void onLaunch(false)}>
               启动
             </ContextMenuItem>
-            <ContextMenuItem onClick={() => void onLaunch(true)}>
+            <ContextMenuItem onSelect={() => void onLaunch(true)}>
               用日区启动器
             </ContextMenuItem>
           </>
         )}
         {isActive && (
           <ContextMenuItem
-            onClick={() => void onForceEnd()}
+            onSelect={() => void onForceEnd()}
             className="text-destructive focus:text-destructive"
           >
             强制结束
           </ContextMenuItem>
         )}
         {(!activeSession || isActive) && <ContextMenuSeparator />}
-        <ContextMenuItem onClick={() => void onToggleFavorite()}>
+        <ContextMenuItem onSelect={() => void onToggleFavorite()}>
           {game.is_favorite ? "取消收藏" : "收藏"}
         </ContextMenuItem>
         <ContextMenuSub>
@@ -593,7 +603,7 @@ function GameCardImpl({
                 <ContextMenuItem
                   key={value}
                   disabled={value === game.status}
-                  onClick={() => void onSetStatus(value)}
+                  onSelect={() => void onSetStatus(value)}
                 >
                   {label}
                 </ContextMenuItem>
@@ -602,21 +612,21 @@ function GameCardImpl({
           </ContextMenuPortal>
         </ContextMenuSub>
         <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => void onOpenDir()}>
+        <ContextMenuItem onSelect={() => void onOpenDir()}>
           打开目录
         </ContextMenuItem>
-        <ContextMenuItem onClick={() => onPickMetadata(game)}>
+        <ContextMenuItem onSelect={() => onPickMetadata(game)}>
           重新匹配元数据
         </ContextMenuItem>
-        <ContextMenuItem onClick={() => onRefreshCover(game)}>
+        <ContextMenuItem onSelect={() => onRefreshCover(game)}>
           重新抓取封面
         </ContextMenuItem>
         <ContextMenuSeparator />
-        <ContextMenuItem onClick={() => onSplitSubdirs(game)}>
+        <ContextMenuItem onSelect={() => onSplitSubdirs(game)}>
           整理子目录
         </ContextMenuItem>
         <ContextMenuItem
-          onClick={() => onRequestDelete(game)}
+          onSelect={() => onRequestDelete(game)}
           className="text-destructive focus:text-destructive"
         >
           删除条目
