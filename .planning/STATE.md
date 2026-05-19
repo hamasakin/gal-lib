@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: shipped
 stopped_at: "v1.3 milestone shipped + archived (2026-05-12). 下一步: `/gsd-cleanup` 归档 phase 目录 → `/gsd-new-milestone` 定义 v1.4 (first task: 12-step walkthrough)。"
-last_updated: "2026-05-19T08:15:33.280Z"
-last_activity: "2026-05-19 — Quick 260519-l9n：两项库条目生命周期改进。① 有累计游玩时长的 unplayed 条目在 end_session/cancel_session 结束时自动升级为 playing（带 status='unplayed' 守卫，cleared/dropped 不被改写）+ backfill_playing_status 历史补齐 IPC。② 删除游戏时在磁盘目录写 .gal-lib-removed 隐藏标记（复用已有 windows crate 的 SetFileAttributesW），扫描跳过带标记目录不再重扫加回，run_scan 返回值改为 ScanOutcome{discovered,removed_dirs}，Scan 页新增『已删除条目』区域 + list_removed_dirs/restore_removed_dir 两个 IPC 支持点「重新添加」恢复。自动化门全绿（cargo test --lib 83 passed / npm run build）；删除→重扫跳过→Scan 页恢复完整链路待真机验证。"
+last_updated: "2026-05-19T10:10:48.274Z"
+last_activity: "2026-05-19 — Quick 260519-p90：发布 v0.2.3 小版本。package.json / tauri.conf.json / Cargo.toml / Cargo.lock(gal-lib 自身条目) 四处版本字段 0.2.2 → 0.2.3 单原子提交（c34bdef）；打 tag v0.2.3 并推送触发 release.yml 出包。"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ✅ (verification-only)
 Plan: 全部完成；下一步 /gsd-audit-milestone v1.3
 Status: 4/4 phases shipped；自动化全绿；real-app walkthrough 清单交付待 audit
-Last activity: 2026-05-19 — Quick 260519-oh9：扫描复核页两项 UI 改进（纯前端）——ReviewQueue「待复核」列表加 max-height 块内滚动；Scan 页 KPI「无匹配」卡合入「待复核」卡副行，4 卡变 3 卡 span-4
+Last activity: 2026-05-19 — Quick 260519-p90：发布 v0.2.3 小版本（四处版本字段 0.2.2 → 0.2.3 单原子提交，打 tag v0.2.3 触发 release.yml）
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -103,6 +103,7 @@ None.
 | 260519-l9n | 两项库条目生命周期改进：① 有累计游玩时长的 unplayed 条目在 end_session/cancel_session 结束时自动升级为 playing（UPDATE 带 status='unplayed' 守卫，cleared/dropped 即使有时长也不被改写）+ backfill_playing_status 一次性历史补齐 IPC；② 删除游戏时在其磁盘目录写 .gal-lib-removed 隐藏标记（复用已有 windows crate v0.58 加 Win32_Storage_FileSystem feature 调 SetFileAttributesW，非新增依赖），扫描 Pass 2 跳过带标记目录不再重扫加回，run_scan 返回值 Vec<DiscoveredGame> → ScanOutcome{discovered,removed_dirs}，Scan 页两栏 feed 下方新增『已删除条目』区域 + list_removed_dirs / restore_removed_dir 两个 IPC，点「重新添加」删标记并经 ingest_one_dir 重新入库。自动化门全绿（cargo test --lib 83 passed / npm run build）；删除→重扫跳过→Scan 页恢复完整链路 + 隐藏属性效果待真机验证 | 2026-05-19 | cb80348 · 493bdc0 · cad57d5 | [260519-l9n-playing-status-delete-marker](./quick/260519-l9n-playing-status-delete-marker/) |
 | 260519-lxm | 扫描按钮收敛（纯前端，运行时零变化）—— 后端 start_scan 自 20260516 起 full/incremental 两 mode 已统一为同一行为，前端「增量扫描」「全量重扫」两按钮本就完全等价。① /scan 页删除「增量扫描」按钮，「全量重扫」改名「扫描」，onScan 收敛为无参（内部固定 startScan("full")、toast 改「已开始扫描」），清理 RefreshCw import + 头注释；② /settings「扫描操作」区「全量扫描」按钮改名「扫描」、同步区块 lede 文案 + 头注释，onScan 收敛为无参。后端 src-tauri/ 与 src/lib/scan.ts 的 startScan(mode) 签名保留不动（前端固定传 "full"）；tsc 通过 | 2026-05-19 | 7564e18 · 6976ca5 | [260519-lxm-scan-button-converge](./quick/260519-lxm-scan-button-converge/) |
 | 260519-oh9 | 扫描复核页两项 UI 改进（纯前端）：① ReviewQueue「待复核」列表根 div 加 max-h-[calc(100vh-280px)] —— 内部既有 overflow-y-auto 此前因无高度上限不生效、整页被撑长，加上限后列表超出在块内滚动；② Scan 页 KPI 条把「无匹配」卡合入「待复核」卡：删除独立「无匹配」KpiCard，unmatched 数并入「待复核」卡 delta 副行（>0 显示『其中 N 项无匹配 · 需人工确认』、=0 回退原文案），KpiCard gridColumn span-3 → span-4，4 卡变 3 卡铺满 12 列。KPI 数值口径与后端 get_scan_kpis / ScanKpis 均不变 | 2026-05-19 | 3fe09c6 · f5ee6ba | [260519-oh9-scan-page-ui](./quick/260519-oh9-scan-page-ui/) |
+| 260519-p90 | 发布 v0.2.3 小版本 — package.json / tauri.conf.json / Cargo.toml / Cargo.lock(gal-lib 自身条目) 四处版本号 0.2.2 → 0.2.3 单原子提交；打 tag v0.2.3 并推送触发 release.yml 出包 | 2026-05-19 | c34bdef | [260519-p90-v0-2-3](./quick/260519-p90-v0-2-3/) |
 
 ## Session Continuity
 
