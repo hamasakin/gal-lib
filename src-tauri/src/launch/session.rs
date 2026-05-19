@@ -116,6 +116,18 @@ pub async fn end_session(
     .bind(session_id)
     .execute(pool)
     .await?;
+
+    // L9N-01 — 有真实游玩时长且状态仍为默认 unplayed 时自动升级为 playing。
+    // 守卫条件 status='unplayed' 保证不覆盖用户手动设置的 cleared/dropped；
+    // total_playtime_sec>0 保证只有真的累计过时长的条目才升级。
+    sqlx::query(
+        "UPDATE games SET status='playing', updated_at=datetime('now') \
+         WHERE id = (SELECT game_id FROM sessions WHERE id=?) \
+           AND status='unplayed' AND total_playtime_sec > 0",
+    )
+    .bind(session_id)
+    .execute(pool)
+    .await?;
     Ok(())
 }
 
@@ -158,6 +170,17 @@ pub async fn cancel_session(pool: &SqlitePool, session_id: i64) -> Result<(), Se
     )
     .bind(dur_sec)
     .bind(&now)
+    .bind(session_id)
+    .execute(pool)
+    .await?;
+
+    // L9N-01 — 取消的会话时长也是真实游玩，与 end_session 一致地把仍为
+    // unplayed 的条目自动升级为 playing（守卫保证不覆盖 cleared/dropped）。
+    sqlx::query(
+        "UPDATE games SET status='playing', updated_at=datetime('now') \
+         WHERE id = (SELECT game_id FROM sessions WHERE id=?) \
+           AND status='unplayed' AND total_playtime_sec > 0",
+    )
     .bind(session_id)
     .execute(pool)
     .await?;

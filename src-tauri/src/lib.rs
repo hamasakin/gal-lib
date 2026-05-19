@@ -228,6 +228,8 @@ pub fn run() {
             commands::set_game_tags,
             commands::list_game_tags,
             commands::update_game_status,
+            // L9N-01 — one-shot historical backfill: unplayed + playtime>0 → playing
+            commands::backfill_playing_status,
             commands::update_game_favorite,
             commands::update_game_rating,
             commands::update_game_notes,

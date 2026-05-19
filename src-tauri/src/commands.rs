@@ -2812,6 +2812,22 @@ pub async fn update_game_status(
     Ok(())
 }
 
+/// L9N-01 — 一次性把"有累计游玩时长但状态仍为 unplayed"的历史条目升级为 playing。
+/// status 为 cleared/dropped 的行即使有时长也不改写（用户手动设置优先）。
+/// 返回升级的行数。幂等：再次调用不再有未升级行时返回 0。
+#[tauri::command]
+pub async fn backfill_playing_status(state: State<'_, AppPaths>) -> Result<i64, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let result = sqlx::query(
+        "UPDATE games SET status='playing', updated_at=datetime('now') \
+         WHERE status='unplayed' AND total_playtime_sec > 0",
+    )
+    .execute(&*pool)
+    .await
+    .map_err(err_str)?;
+    Ok(result.rows_affected() as i64)
+}
+
 #[tauri::command]
 pub async fn update_game_favorite(
     game_id: i64,
