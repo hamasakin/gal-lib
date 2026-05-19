@@ -186,12 +186,15 @@ export async function openPath(path: string): Promise<void> {
 /**
  * Quick 260517-qnn — remove a game from the library.
  *
- * Deletes ONLY the database record for `gameId` (the `games` row plus every
- * child row that references it — sessions / screenshots / save_backups /
- * game_tags / game_staff / game_official_tags / custom_view_games /
- * scan_review_queue). The on-disk game folder and files are NOT touched, so a
- * later re-scan will legitimately re-add the game. Throws "游戏不存在" if no
- * row matched the id.
+ * Deletes the database record for `gameId` (the `games` row plus every child
+ * row that references it — sessions / screenshots / save_backups / game_tags /
+ * game_staff / game_official_tags / custom_view_games / scan_review_queue).
+ *
+ * L9N-02 — additionally writes a hidden `.gal-lib-removed` marker file into the
+ * game's on-disk folder so the next scan SKIPS that directory instead of
+ * silently re-adding the game the user just deleted. The game files themselves
+ * are NOT touched; the marker is reversible via the Scan page『已删除条目』
+ * section (`restoreRemovedDir`). Throws "游戏不存在" if no row matched the id.
  */
 export async function deleteGame(gameId: number): Promise<void> {
   await invoke("delete_game", { gameId });
