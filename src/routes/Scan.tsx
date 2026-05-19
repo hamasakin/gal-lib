@@ -27,6 +27,7 @@ import { PageHeader } from "@/components/library/PageHeader";
 import { ScanProgressBar } from "@/components/library/ScanProgressBar";
 import { ScanFeed } from "@/components/library/ScanFeed";
 import { ReviewQueue } from "@/components/library/ReviewQueue";
+import { RemovedDirs } from "@/components/library/RemovedDirs";
 import {
   cancelScan,
   getScanKpis,
@@ -242,6 +243,11 @@ export default function Scan() {
               onMutated={() => void refreshKpis()}
             />
           </div>
+        </div>
+
+        {/* L9N-02 — 已删除条目区域（删除后写了 .gal-lib-removed 标记的目录） */}
+        <div className="mt-6">
+          <RemovedDirs onRestored={() => void refreshKpis()} />
         </div>
       </div>
     </div>

@@ -56,7 +56,7 @@ sqlx = { version = "0.8", default-features = false, features = ["sqlite", "runti
 # windows: OpenProcess / WaitForSingleObject for low-overhead exit watcher (03c).
 winreg = "0.52"
 sysinfo = "0.32"
-windows = { version = "0.58", features = ["Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry"] }
+windows = { version = "0.58", features = ["Win32_System_Threading", "Win32_System_ProcessStatus", "Win32_Foundation", "Win32_System_Diagnostics_ToolHelp", "Win32_UI_Shell", "Win32_UI_WindowsAndMessaging", "Win32_System_Registry", "Win32_Storage_FileSystem"] }
 # 03c — RFC3339 timestamps for session lifecycle (started_at / ended_at) and
 # elapsed-second math in `launch::session`. Pinned to 0.4 (workspace-wide,
 # also matches sqlx's transitive expectations).

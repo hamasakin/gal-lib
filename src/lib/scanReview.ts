@@ -78,3 +78,15 @@ export async function fetchReviewCandidates(
 export async function reseedReviewQueue(): Promise<number> {
   return invoke<number>("reseed_review_queue");
 }
+
+/** L9N-02 — 枚举所有 scan_roots 下带 `.gal-lib-removed` 标记的目录绝对路径。
+ *  这些是用户从库中删除过的游戏目录，删除时写了磁盘标记、扫描会跳过它们。 */
+export async function listRemovedDirs(): Promise<string[]> {
+  return invoke<string[]>("list_removed_dirs");
+}
+
+/** L9N-02 — 把一个被标记删除的目录重新加回库：删 `.gal-lib-removed` 标记 +
+ *  作为新条目导入。返回新 `games.id`。 */
+export async function restoreRemovedDir(path: string): Promise<number> {
+  return invoke<number>("restore_removed_dir", { path });
+}

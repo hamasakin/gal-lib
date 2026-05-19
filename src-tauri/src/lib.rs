@@ -228,6 +228,8 @@ pub fn run() {
             commands::set_game_tags,
             commands::list_game_tags,
             commands::update_game_status,
+            // L9N-01 — one-shot historical backfill: unplayed + playtime>0 → playing
+            commands::backfill_playing_status,
             commands::update_game_favorite,
             commands::update_game_rating,
             commands::update_game_notes,
@@ -281,6 +283,9 @@ pub fn run() {
             commands::split_game_into_subdirs,
             // Quick 260517-qnn — delete game entry
             commands::delete_game,
+            // L9N-02 — removed-marker enumerate + restore
+            commands::list_removed_dirs,
+            commands::restore_removed_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

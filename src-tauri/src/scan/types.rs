@@ -66,6 +66,17 @@ pub struct DiscoveredGame {
     pub executable: Option<PathBuf>,
 }
 
+/// L9N-02 — `run_scan` 的完整产出 —— 正常发现的游戏 + 被 removed 标记跳过的目录。
+///
+/// `discovered` 与原 `run_scan` 返回的 `Vec<DiscoveredGame>` 语义相同。
+/// `removed_dirs` 是扫描期间遇到的、带 `.gal-lib-removed` 标记而被跳过的
+/// 目录绝对路径列表（调用方可忽略；复核界面另走 `list_removed_dirs` 枚举）。
+#[derive(Debug)]
+pub struct ScanOutcome {
+    pub discovered: Vec<DiscoveredGame>,
+    pub removed_dirs: Vec<PathBuf>,
+}
+
 /// Errors surfaced by the scan engine.
 ///
 /// `Cancelled` is the cooperative-cancellation signal raised when the
