@@ -8,7 +8,7 @@
  *   3. 添加单个游戏               — directory picker for ad-hoc add
  *   4. Locale Emulator           — bundled LE info + override picker
  *   5. 标签管理                   — TagManager component
- *   6. 扫描操作                   — full/incremental scan
+ *   6. 扫描操作                   — scan
  *   7. UI 偏好                    — UIPreferences component
  *   8. 调试                       — clear-all-data
  *
@@ -243,13 +243,13 @@ export function Settings() {
     }
   }
 
-  async function onScan(mode: "full" | "incremental") {
+  async function onScan() {
     if (scanRoots.length === 0) {
       toast.error("请先添加至少一个扫描根目录");
       return;
     }
     try {
-      await startScan(mode);
+      await startScan("full");
       toast.info("扫描已启动");
       navigate("/");
     } catch (e: unknown) {
@@ -491,12 +491,12 @@ export function Settings() {
           <Section
             id="scan-ops"
             title="扫描操作"
-            lede="全量扫描发现并匹配新游戏；刷新元数据对已收录游戏重抓元数据（已绑定的按 ID 直拉、未绑定的走模糊匹配）"
+            lede="扫描发现并匹配新游戏；刷新元数据对已收录游戏重抓元数据（已绑定的按 ID 直拉、未绑定的走模糊匹配）"
             sectionRefs={sectionRefs}
           >
             <div className="flex flex-wrap gap-2.5">
-              <SettingButton primary onClick={() => void onScan("full")}>
-                全量扫描
+              <SettingButton primary onClick={() => void onScan()}>
+                扫描
               </SettingButton>
               <SettingButton onClick={() => void onRefreshMetadata()}>
                 刷新元数据
