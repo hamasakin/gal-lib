@@ -207,15 +207,14 @@ export default function Scan() {
             label="待复核"
             value={reviewPending}
             unit="项"
-            delta={reviewPending > 0 ? "需要人工确认" : "队列已清空"}
+            delta={
+              unmatched > 0
+                ? `其中 ${unmatched} 项无匹配 · 需人工确认`
+                : reviewPending > 0
+                  ? "需要人工确认"
+                  : "队列已清空"
+            }
             highlight={reviewPending > 0}
-          />
-          <KpiCard
-            label="无匹配"
-            value={unmatched}
-            unit="部"
-            delta={unmatched > 0 ? "Bangumi/VNDB 都未命中" : "全部命中"}
-            tone="muted"
           />
         </div>
 
@@ -263,7 +262,7 @@ function KpiCard({
         highlight ? "border-brand/40" : "border-line",
       )}
       style={{
-        gridColumn: "span 3 / span 3",
+        gridColumn: "span 4 / span 4",
         borderRadius: "var(--r-md)",
       }}
     >
