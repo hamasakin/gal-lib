@@ -1091,7 +1091,7 @@ export default function Detail() {
               aria-label="收藏"
               className={cn(
                 "grid h-9 w-9 place-items-center rounded-full border border-line bg-bg-1/80 transition-colors hover:bg-bg-2 backdrop-blur",
-                game.is_favorite ? "text-brand" : "text-ink-2",
+                game.is_favorite ? "text-rose-400" : "text-ink-2",
               )}
             >
               <Heart
