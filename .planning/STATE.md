@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ✅ (verification-only)
 Plan: 全部完成；下一步 /gsd-audit-milestone v1.3
 Status: 4/4 phases shipped；自动化全绿；real-app walkthrough 清单交付待 audit
-Last activity: 2026-05-19 — Completed quick task 260519-21s: 元数据匹配三项改进（候选卡片 3 行 line-clamp / 修复匹配后重复弹目录 BUG / 置信度门槛降到 0）
+Last activity: 2026-05-19 — 修复『打开目录后元数据查询时多弹文件管理器窗口』BUG（debug 会话 open-dir-thread-block-popup：Cycle 2 查清 COM STA 脏套间根因，改用 detached explorer.exe 根除）；详情页收藏按钮颜色统一为主页 rose
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -99,6 +99,7 @@ None.
 | 260517-qnn | 三项改进：① 修复 useSmoothWheel 网格滚动条拖动回弹——新鲜启动拖动滚动条被弹回拖动前位置，根因是 lerp target 只在空闲+下次 wheel 才重对齐，外部滚动期间过期 target 拽回视图；加 scroll 监听 + lastWritten 比对，外部滚动时重新同步 target 并停 rAF（非 vs4 回归）② 新增 delete_game 命令 + GameCard 右键「删除条目」+ Library 确认对话框（删 8 张 game_id 子表 + games 行，不碰磁盘文件）③ Detail 启动方式从 4 个 LE profile 收敛为日区 LE 启动 / 直接启动，删除 isCnVersionExe，旧值平滑回落 | 2026-05-17 | cc2244b · 86aa131 · c8cfa25 | [260517-qnn-scroll-delete-launch](./quick/260517-qnn-scroll-delete-launch/) |
 | 260517-sm9 | 发布 v0.2.2 小版本 — package.json / tauri.conf.json / Cargo.toml / Cargo.lock(gal-lib 自身条目) 四处版本号 0.2.1 → 0.2.2 单原子提交；打 tag v0.2.2 并推送触发 release.yml 出包 | 2026-05-17 | 2c0a022 | [260517-sm9-v0-2-2](./quick/260517-sm9-v0-2-2/) |
 | 260519-21s | 元数据匹配三项改进：① MetadataPicker 候选卡片标题/描述过长改 3 行 line-clamp（标题去 truncate、新增 summary 段仅非空渲染、confidence badge 行改 items-start）② 根治『右键打开目录后再匹配元数据会重复弹文件管理器』BUG——根因是 GameCard ContextMenuItem / Detail DropdownMenuItem 用 React onClick 而非 Radix onSelect，被点过的「打开目录」项激活态未被 Radix 清理，随后 MetadataPicker Dialog 关闭时默认 onCloseAutoFocus 把焦点甩回菜单 Trigger 重放该 onClick → open_in_explorer 二次 invoke；改 onClick→onSelect + DialogContent onCloseAutoFocus preventDefault ③ match_score.rs containment 分支 baseline 80/70 → 0（prefix 保留 +10 相对加成而非下限），最弱候选可手动选中，4 个单元测试改为相对关系断言；AUTO_BIND_THRESHOLD=80 未动 | 2026-05-19 | 8a70094 · 7059eee · c4ae04b | [260519-21s-metadata-match-fixes](./quick/260519-21s-metadata-match-fixes/) |
+| 260519-fav | 详情页收藏按钮颜色与主页统一 —— Detail 收藏按钮 favorited 态从品牌色 text-brand 改为 text-rose-400，与 GameCard 主页卡片常驻爱心标记 (text-rose-400) 一致 | 2026-05-19 | 50d0816 | —（/gsd-fast 内联任务，无任务目录） |
 
 ## Session Continuity
 
