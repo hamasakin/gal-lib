@@ -43,40 +43,47 @@ updated: 2026-05-19
   - 失败的修复 (quick-260519-21s Task 2)：把 GameCard `ContextMenuItem` / Detail `DropdownMenuItem` 的 `onClick` 改为 Radix `onSelect`，并给 MetadataPicker 的 `DialogContent` 加 `onCloseAutoFocus={(e)=>e.preventDefault()}`。
   - 结果：用户反馈「还是会重放打开目录」。前端菜单/Dialog 焦点链路修改**无效** → 根因不在前端 Radix 交互层。
 
+- hypothesis（Cycle 2 排查后排除）：「『打开 Detail 详情页』或『触发匹配元数据』流程中存在第二处真实 invoke `open_in_explorer` / `open_path` 的代码路径」
+  - 排查：grep 枚举全部前端调用点 —— `openGameDir` 仅 3 处（`GameCard.tsx:265`、`Detail.tsx:832`、`Screenshots.tsx:164`），全部位于显式 onClick 处理器内，无任何 `useEffect` / `listen(` / `addEventListener` 与「打开目录」相关。后端 grep `opener()` —— 仅 `open_path_impl`（目录/文件）与 `open_external_url`（仅 http url）两处，无重放机制。GameCard 右键菜单「重新匹配元数据」调 `onPickMetadata(game)`，不碰 `openGameDir`。
+  - 结论：**不存在第二次 invoke**。「弹第二个窗口」并非二次调用，而是**单次 invoke 内部、被搁置的 shell 窗口创建消息延迟兑现**。
+
 ## Investigation Leads
 
-调试代理应优先排查**后端线程模型**，而非前端：
-
-- `open_in_explorer` Tauri 命令（`src-tauri/src/commands.rs:3374`）：是否为同步（非 async）命令？同步命令在 Tauri 中跑在主线程上。`app.opener().open_path()` 在 Windows 上是否阻塞？
-- 「重新匹配元数据」对应的 Tauri 命令：是否 async？是否与 `open_in_explorer` 抢同一个 runtime / 线程池 / Mutex？
-- 是否存在某个全局 `Mutex` / `RwLock` / 连接池被 `open_in_explorer` 持有未释放。
-- 前端 `openGameDir` 调用链：invoke 是否被 await。
-- Windows 特有：用 `Command`/`explorer.exe` 打开目录时进程退出码与是否 detach。
+调试代理应优先排查**后端线程模型**，而非前端。（已完成 —— 见 Evidence。）
 
 ## Evidence
 
 - timestamp: 2026-05-19 — `open_in_explorer` 与 `open_path` 命令均定义为**同步 `pub fn`**（非 `async fn`），见 `src-tauri/src/commands.rs:3374` 和 `:3382`，两者都委托 `open_path_impl`（同步 `fn`，`commands.rs:3386`）。Tauri 2.x 中用 `fn`（非 `async fn`）声明的命令**在主线程上同步执行**（主线程承载 WebView 事件循环 / 窗口消息泵）。
-- timestamp: 2026-05-19 — `open_path_impl` 调用 `app.opener().open_path(path, None)`。`tauri-plugin-opener` v2.5.4 的 `open_path(None)` → `open` crate 的 `that_detached`（见 `tauri-plugin-opener-2.5.4/src/open.rs`）。
+- timestamp: 2026-05-19 — `open_path_impl` 调用 `app.opener().open_path(path, None)`。`tauri-plugin-opener` v2.5.4 的 `open_path(None)` → `open` crate 的 `that_detached`（见 `tauri-plugin-opener-2.5.4/src/open.rs:54-61`）。
 - timestamp: 2026-05-19 — `tauri-plugin-opener` v2.5.4 的 `Cargo.toml:59-61` 为 `open` crate 开启了 `features = ["shellexecute-on-windows"]`。因此 `that_detached` 对**目录**走 `shell_open_folder` 分支（`open-5.3.4/src/windows.rs:40-78`），其内部执行 `CoInitialize(NULL)` 把当前线程 COM 初始化为 STA，再同步调用 `ILCreateFromPathW` + `SHOpenFolderAndSelectItems`。
-- timestamp: 2026-05-19 — `shell_open_folder` 的 `CoInitialize` **没有配对的 `CoUninitialize`**（函数返回前只 `ILFree`），在主线程留下未平衡的 COM apartment 初始化引用计数；`SHOpenFolderAndSelectItems` 是同步 shell 调用，在主线程上执行时会占用 / 驱动消息泵 —— 这就是用户感知的「线程被阻塞」。
-- timestamp: 2026-05-19 — 「重新匹配元数据」命令 `refresh_metadata_smart`（`commands.rs:1428`）是 `async fn`，跑在 Tokio 线程池。它通过 `app.emit("scan-progress", ...)`（`commands.rs:1461`）发进度事件，事件派发回 WebView 必须经过**主线程事件循环**。主线程被打开目录的同步 shell 调用占用后，详情页 loading 一直挂起，直到元数据命令返回那一刻主线程被冲刷 —— 被搁置的 shell 窗口创建（多弹的 Explorer 窗口）与 loading 完成被同时处理。完全吻合用户观察：「弹窗与 loading 完成同时发生」「只弹一次」。
-- timestamp: 2026-05-19 — 前置依赖解释：不先「打开本地目录」就没有 `CoInitialize` + 同步 shell 调用污染主线程 → 元数据查询正常返回、不弹窗、不卡 loading。与「必须先打开目录才复现」精确吻合。
-- timestamp: 2026-05-19 — 前端调用链确认无关：`openGameDir`（`src/lib/games.ts:172`）正常 `await invoke("open_in_explorer", { path })`，GameCard / Detail 调用方均正确 `await`，无未 resolve 的 promise。问题纯在后端命令的线程模型。
+- timestamp: 2026-05-19 — `shell_open_folder`（`open-5.3.4/src/windows.rs:69-80`）的 `CoInitialize` **没有配对的 `CoUninitialize`**（函数返回前只 `ILFree`），在调用线程留下未平衡的 STA apartment 初始化引用计数。
+- timestamp: 2026-05-19 — 前端调用链确认无关：`openGameDir`（`src/lib/games.ts:172`）正常 `await invoke("open_in_explorer", { path })`，GameCard / Detail / Screenshots 调用方均正确 `await`，无未 resolve 的 promise。问题纯在后端命令的线程模型。
+- timestamp: 2026-05-19 (Cycle 2) — grep 全量复核：前端 `openGameDir` 仅 3 处，全在 onClick 内；无 effect / `listen(` / `addEventListener` 触发它。后端仅 `open_path_impl` 一处经 opener 打开目录/文件。**确认不存在第二次 invoke** —— 弹窗不是「再次调用」，是「同一次调用里被延迟兑现的 shell 窗口消息」。
+- timestamp: 2026-05-19 (Cycle 2) — 阅读 `open-5.3.4/src/windows.rs:40-66` `that_detached`：目录分支先 `shell_open_folder`，失败才落 fallback `ShellExecuteExW(EXPLORE)`。`SHOpenFolderAndSelectItems` 在 **STA apartment** 上是「投递窗口创建到该 STA 线程消息队列」的语义；真正的窗口要等该线程**抽取消息泵**才出现。
+- timestamp: 2026-05-19 (Cycle 2) — Cycle 1（commit 775e4f0）把整个 opener 调用挪进 `tauri::async_runtime::spawn_blocking`。**这只是把 bug 从 Tauri 主线程平移到了 Tokio blocking 线程池线程**：① `CoInitialize` 仍在调用线程留下永久脏 STA，且 Tokio blocking 线程会被**复用**；② `spawn_blocking` 闭包返回后该线程回池待命、**不抽消息泵**，投递给 STA 的窗口创建消息被搁置。
+- timestamp: 2026-05-19 (Cycle 2) — `refresh_metadata_smart`（`commands.rs:1428` 起）是 `async fn`，内部 `tokio::spawn` + `JoinSet` 并发跑 SQLx 查询 + Bangumi/VNDB HTTP。SQLx / 同步收尾工作会调度到**同一个 Tokio runtime 的 blocking 线程池**。当某个元数据子任务命中此前被「打开目录」污染过的那条 blocking 线程时，该线程被唤醒执行代码、间接驱动其 STA，**搁置已久的 Explorer 窗口创建消息此刻才兑现** —— 表现为「元数据查询返回的那一刻多弹一个目录窗」。
+- timestamp: 2026-05-19 (Cycle 2) — 该机制精确吻合全部观察事实：①「必须先打开过目录」——只有真实「打开目录」会 `CoInitialize` 污染 blocking 线程并留下搁置消息；不打开目录则无脏 STA、无搁置消息。②「只弹一次」——搁置的窗口创建消息只有一条，被兑现一次即清空。③「与 loading 完成同时发生」——Cycle 1 已消除主线程阻塞，loading 不再卡；但弹窗时机仍绑定在「blocking 线程被元数据任务再次唤醒」这一刻。
 
-## Current Focus
+## Cycle 1 复盘 —— 部分修复（commit 775e4f0：阻塞消除，弹窗未根除）
 
-- hypothesis: 已确认 —— `open_in_explorer` / `open_path` 是同步命令，在 Tauri 主线程上执行 `tauri-plugin-opener` → `open` crate 的 `shellexecute-on-windows` 路径，其中 `CoInitialize`（无配对 `CoUninitialize`）+ 同步 `SHOpenFolderAndSelectItems` 阻塞/污染主线程消息泵。后续 `refresh_metadata_smart`（async）的事件派发被卡在主线程上，直到查询返回时主线程冲刷，搁置的 Explorer 窗口与 loading 同时被处理。
-- next_action: 应用修复 —— 将 `open_in_explorer` / `open_path` 改为 `async fn`，把 shell 调用移出主线程。
+> 用户实测 commit `775e4f0`（open_in_explorer/open_path 改 async + spawn_blocking）后：
+> 主线程阻塞确实消失了 —— 详情页**不再卡 loading**。
+> 但**打开详情页 / 匹配元数据时仍会自动弹出一个新目录窗口**。
+>
+> → Cycle 2 结论：Cycle 1 没有真正消灭弹窗，只是把「脏 STA + 搁置 shell 消息」
+> 从 Tauri 主线程平移到了 Tokio blocking 线程池线程。COM 套间和它的待处理
+> 窗口创建消息只是换了个宿主线程，弹窗机制完全不变。
 
-## Resolution
+## Cycle 2 Resolution（已应用 —— 根除弹窗，commit 待提交）
 
 **root_cause:**
-`open_in_explorer` / `open_path` 定义为同步 Tauri 命令（`pub fn`），因此在主线程（WebView 事件循环 / 窗口消息泵所在线程）上执行；其底层经 `tauri-plugin-opener` → `open` crate 的 `shellexecute-on-windows` 路径，对目录调用 `CoInitialize` + 同步 `SHOpenFolderAndSelectItems`，阻塞并污染主线程。后续 `refresh_metadata_smart`（async）的 `app.emit` 事件派发需经主线程，被卡住直到元数据查询返回时才冲刷 —— 搁置的 Explorer 窗口创建与 loading 完成同时出现，表现为「查询返回时多弹一个目录窗 + 详情页一直加载中」。
+弹「第二个目录窗口」不是任何一处的二次 invoke，而是**同一次「打开目录」调用内部、被搁置的 Windows shell 窗口创建消息延迟兑现**。链路：`open_path` → `tauri-plugin-opener` → `open` crate `that_detached` → 目录分支 `shell_open_folder`（`open-5.3.4/src/windows.rs:69-80`）。`shell_open_folder` 调用 `CoInitialize(NULL)` 把**调用线程**初始化为 STA apartment 却**永不 `CoUninitialize`**；`SHOpenFolderAndSelectItems` 在 STA 上的语义是把真正的窗口创建**投递到该线程的消息队列**，需该线程抽消息泵才兑现。Cycle 1 把调用挪进 `spawn_blocking` 只是把这条脏 STA 从 Tauri 主线程平移到了一条**会被复用**的 Tokio blocking 线程；`spawn_blocking` 闭包返回后该线程回池、不抽消息泵，投递的窗口创建消息被搁置。随后 `refresh_metadata_smart` 的 SQLx/HTTP 收尾工作调度回同一条 blocking 线程、唤醒它执行代码并间接驱动其 STA，搁置已久的窗口创建消息此刻兑现 —— 这就是「元数据查询返回时多弹一个目录窗、只弹一次、必须先打开过目录才复现」的完整成因。
 
 **fix:**
-（已应用，`src-tauri/src/commands.rs`）
-- `open_in_explorer` / `open_path` 由同步 `pub fn` 改为 `pub async fn` —— async 命令跑在 Tokio 线程池，不再占用 Tauri 主线程。
-- 新增私有 helper `open_path_offthread(app, path)`：用 `tauri::async_runtime::spawn_blocking` 把实际的 opener 调用（`open_path_impl`，含路径存在性校验 + COM/shell 同步调用）整体搬到专用 blocking 线程执行。即使 `SHOpenFolderAndSelectItems` 阻塞，也只阻塞该 blocking 线程，绝不触碰主线程消息泵。
-- `open_path_impl` 函数体未变；命令注册（`lib.rs:250-252`）与前端 `openGameDir`/`openPath`（`src/lib/games.ts`）无需改动 —— `#[tauri::command]` 对 sync/async 生成兼容 handler，前端调用方已正确 `await`。
-- 验证：`cargo check`（src-tauri）通过，0 错误（仅 5 个与本修复无关的既有 warning）。
-- 说明：调试代理无法运行 GUI，无法实机验证多弹窗是否消除；需用户手动按 Reproduction 步骤回归确认。
+（已应用，`src-tauri/src/commands.rs` `open_path_impl`）
+- **目录**（Windows）：彻底绕开 `tauri-plugin-opener` / `open::that_detached` 那条有缺陷的 `shell_open_folder` 路径，改为直接 `std::process::Command::new("explorer.exe").arg(path)` 启动一个独立的 explorer 子进程，并加 `creation_flags(DETACHED_PROCESS = 0x8)` 让子进程与本进程不共享 console / 句柄。`explorer.exe` 自带独立进程与自己的消息泵 —— 窗口在 explorer 进程内创建，**不会 COM 初始化我们的任何线程**，`spawn()` 返回即完全 detach，不 `wait()` / 不检查退出码（explorer 正常退出码也常为非零）。
+- **文件**及**非 Windows 平台**：保留原 `app.opener().open_path(path, None)` 路径 —— 该分支不进入 `shell_open_folder`、不碰 COM。
+- `open_in_explorer` / `open_path` / `open_path_offthread` 仍为 `async fn` + `spawn_blocking`，保留 Cycle 1 「不占用主线程」的收益（`explorer.exe` 的 `spawn()` 虽快也仍是阻塞 syscall）。
+- 命令注册（`lib.rs:250-252`）与前端 `openGameDir` / `openPath`（`src/lib/games.ts`）无需改动。
+- 验证：`cargo check`（src-tauri）通过，0 错误（仅 5 个与本修复无关的既有 warning：metadata/mod.rs 未用 import、title_clean.rs 多余 mut、ingest.rs 未读字段、orchestrator/types.rs 未构造变体）。
+- 说明：调试代理无法运行 GUI，无法实机验证多弹窗是否消除；需用户手动按 Reproduction 步骤回归确认 —— 先「打开本地目录」，再「重新匹配元数据」/ 进详情页，确认**不再弹出多余窗口**且 loading 正常结束。

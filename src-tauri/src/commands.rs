@@ -3362,39 +3362,55 @@ pub async fn delete_save_backup(
 // ── Quick task 20260509b / Phase 14 (FS-01,02,03) — open path in OS file manager
 //
 // Originally a `Command::new("explorer")` shell-out used by Detail's 更多 menu.
-// Phase 14 routes the implementation through `tauri-plugin-opener` so the same
-// Rust function handles file managers across platforms and gets the plugin's
-// permission-gated access checks for free. Path-existence validation stays in
-// Rust so a stale `games.path` (deleted directory) surfaces a clean Chinese
-// error instead of the OS's generic "location not available" dialog.
+// Phase 14 routed it through `tauri-plugin-opener`. The debug session
+// `open-dir-thread-block-popup` reverts that decision for the directory case:
+//
+//   Cycle 1 found `open_in_explorer` ran synchronously on the Tauri main
+//   thread; the opener plugin's Windows path (`open` crate +
+//   `shellexecute-on-windows`) calls `CoInitialize` + a synchronous
+//   `SHOpenFolderAndSelectItems`, stalling the message pump. Moving the call
+//   onto `spawn_blocking` fixed the *stalled-loading* symptom but NOT the
+//   *stray Explorer window* — it merely relocated the bug.
+//
+//   Cycle 2 root cause: `open::that_detached` for a directory does
+//   `CoInitialize(NULL)` (initialising the *calling* thread as an STA
+//   apartment) and NEVER calls `CoUninitialize`. On a Tokio `spawn_blocking`
+//   pool thread this leaves a permanently dirty STA on a thread that is then
+//   recycled. `SHOpenFolderAndSelectItems` on an STA posts the real window
+//   creation to that thread's message queue; the blocking thread returns to
+//   the pool without pumping messages, so the Explorer window stays pending.
+//   It finally appears the next time that pool thread is woken — which is
+//   exactly when `refresh_metadata_smart`'s SQLx/HTTP work lands on it, i.e.
+//   "the moment the metadata query returns". Matches every observed fact:
+//   only reproduces after a real "打开目录" (nothing dirties the STA
+//   otherwise) and the stray window pops exactly once.
+//
+// Fix: for directories, shell out to `explorer.exe <dir>` directly. Explorer
+// is its own process with its own message pump — the window is created in
+// that process, nothing COM-initialises our threads, and the child is fully
+// detached the instant `spawn` returns. The `tauri-plugin-opener` path is
+// kept only for the non-directory (file) case, which does not hit the
+// `shell_open_folder` branch. Path-existence validation stays in Rust so a
+// stale `games.path` surfaces a clean Chinese error.
 //
 // `open_in_explorer` keeps its name for backward compatibility with existing
-// frontend callsites; `open_path` is the canonical Phase 14 alias.
-// debug-session open-dir-thread-block-popup — these commands MUST stay
-// `async fn`. A synchronous (`pub fn`) Tauri command runs on the main thread
-// (the WebView event loop / Win32 message pump). The opener plugin's Windows
-// path (`open` crate, `shellexecute-on-windows` feature) calls `CoInitialize`
-// + a synchronous `SHOpenFolderAndSelectItems`, which blocked the pump and
-// stalled `app.emit` dispatch from concurrent async commands such as
-// `refresh_metadata_smart` — surfacing as a stray Explorer window popping
-// open exactly when the metadata query returned. Running async + offloading
-// the shell call onto `spawn_blocking` keeps the COM/shell call off the main
-// thread entirely.
+// frontend callsites; `open_path` is the canonical Phase 14 alias. Both stay
+// `async fn` so the (brief, non-COM) work never occupies the main thread.
 #[tauri::command]
 pub async fn open_in_explorer(app: AppHandle, path: String) -> Result<(), String> {
     open_path_offthread(app, path).await
 }
 
-/// Phase 14 (FS-01) — canonical open-path IPC. Validates existence then
-/// delegates to `tauri-plugin-opener`. New frontend callers should prefer
-/// this over `open_in_explorer`.
+/// Phase 14 (FS-01) — canonical open-path IPC. Validates existence then opens
+/// the path in the OS file manager. New frontend callers should prefer this
+/// over `open_in_explorer`.
 #[tauri::command]
 pub async fn open_path(app: AppHandle, path: String) -> Result<(), String> {
     open_path_offthread(app, path).await
 }
 
-/// Runs the (potentially blocking, COM-touching) opener call on a dedicated
-/// blocking thread so it never occupies the Tauri main thread / message pump.
+/// Runs the open-path work on a dedicated blocking thread so it never occupies
+/// the Tauri main thread / message pump.
 async fn open_path_offthread(app: AppHandle, path: String) -> Result<(), String> {
     tauri::async_runtime::spawn_blocking(move || open_path_impl(&app, &path))
         .await
@@ -3402,13 +3418,39 @@ async fn open_path_offthread(app: AppHandle, path: String) -> Result<(), String>
 }
 
 fn open_path_impl(app: &AppHandle, path: &str) -> Result<(), String> {
-    use tauri_plugin_opener::OpenerExt;
-    if !Path::new(path).exists() {
+    let p = Path::new(path);
+    if !p.exists() {
         return Err(format!("路径不存在：{}", path));
     }
+
+    // Directory → spawn a detached `explorer.exe`. This deliberately bypasses
+    // `tauri-plugin-opener` / `open::that_detached`, whose Windows directory
+    // branch leaks an STA `CoInitialize` onto the calling thread and posts the
+    // window creation to that thread's (un-pumped) message queue. See the
+    // module comment above for the full debug-session analysis.
+    #[cfg(target_os = "windows")]
+    if p.is_dir() {
+        use std::os::windows::process::CommandExt;
+        // DETACHED_PROCESS — the child shares no console / handles with us.
+        const DETACHED_PROCESS: u32 = 0x0000_0008;
+        std::process::Command::new("explorer.exe")
+            .arg(path)
+            .creation_flags(DETACHED_PROCESS)
+            .spawn()
+            // explorer.exe routinely exits non-zero even on success, so we
+            // intentionally do NOT wait on / inspect the child. A failure
+            // here means the process itself could not be launched.
+            .map(|_child| ())
+            .map_err(|e| format!("无法打开目录：{}", e))?;
+        return Ok(());
+    }
+
+    // Files (and every non-Windows target) keep the plugin path: the opener's
+    // file branch does not touch `shell_open_folder` / COM.
+    use tauri_plugin_opener::OpenerExt;
     app.opener()
         .open_path(path, None::<&str>)
-        .map_err(|e| format!("无法打开目录：{}", e))
+        .map_err(|e| format!("无法打开：{}", e))
 }
 
 // ── Phase 11 / 11c — metadata enrichment IPCs ──────────────────────────────
