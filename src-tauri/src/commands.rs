@@ -3370,17 +3370,35 @@ pub async fn delete_save_backup(
 //
 // `open_in_explorer` keeps its name for backward compatibility with existing
 // frontend callsites; `open_path` is the canonical Phase 14 alias.
+// debug-session open-dir-thread-block-popup — these commands MUST stay
+// `async fn`. A synchronous (`pub fn`) Tauri command runs on the main thread
+// (the WebView event loop / Win32 message pump). The opener plugin's Windows
+// path (`open` crate, `shellexecute-on-windows` feature) calls `CoInitialize`
+// + a synchronous `SHOpenFolderAndSelectItems`, which blocked the pump and
+// stalled `app.emit` dispatch from concurrent async commands such as
+// `refresh_metadata_smart` — surfacing as a stray Explorer window popping
+// open exactly when the metadata query returned. Running async + offloading
+// the shell call onto `spawn_blocking` keeps the COM/shell call off the main
+// thread entirely.
 #[tauri::command]
-pub fn open_in_explorer(app: AppHandle, path: String) -> Result<(), String> {
-    open_path_impl(&app, &path)
+pub async fn open_in_explorer(app: AppHandle, path: String) -> Result<(), String> {
+    open_path_offthread(app, path).await
 }
 
 /// Phase 14 (FS-01) — canonical open-path IPC. Validates existence then
 /// delegates to `tauri-plugin-opener`. New frontend callers should prefer
 /// this over `open_in_explorer`.
 #[tauri::command]
-pub fn open_path(app: AppHandle, path: String) -> Result<(), String> {
-    open_path_impl(&app, &path)
+pub async fn open_path(app: AppHandle, path: String) -> Result<(), String> {
+    open_path_offthread(app, path).await
+}
+
+/// Runs the (potentially blocking, COM-touching) opener call on a dedicated
+/// blocking thread so it never occupies the Tauri main thread / message pump.
+async fn open_path_offthread(app: AppHandle, path: String) -> Result<(), String> {
+    tauri::async_runtime::spawn_blocking(move || open_path_impl(&app, &path))
+        .await
+        .map_err(|e| format!("无法打开目录：{}", e))?
 }
 
 fn open_path_impl(app: &AppHandle, path: &str) -> Result<(), String> {
