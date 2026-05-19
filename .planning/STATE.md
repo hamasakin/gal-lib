@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: shipped
 stopped_at: "v1.3 milestone shipped + archived (2026-05-12). 下一步: `/gsd-cleanup` 归档 phase 目录 → `/gsd-new-milestone` 定义 v1.4 (first task: 12-step walkthrough)。"
-last_updated: "2026-05-19T10:10:48.274Z"
-last_activity: "2026-05-19 — Quick 260519-p90：发布 v0.2.3 小版本。package.json / tauri.conf.json / Cargo.toml / Cargo.lock(gal-lib 自身条目) 四处版本字段 0.2.2 → 0.2.3 单原子提交（c34bdef）；打 tag v0.2.3 并推送触发 release.yml 出包。"
+last_updated: "2026-05-19T10:21:39.433Z"
+last_activity: "2026-05-19 — Quick 260519-pi1：新增 npm run release 发版脚本。scripts/release.mjs（纯 Node 标准库 ESM）把手工发版收成一条命令：参数解析 patch/minor/major/X.Y.Z、三项前置检查、四处版本字段精确替换 bump、commit、tag 草稿编辑器定稿、push master+tag 触发 release.yml；package.json scripts 加 release 入口。先于本任务已发布 v0.2.3（Quick 260519-p90，commit c34bdef）。"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ✅ (verification-only)
 Plan: 全部完成；下一步 /gsd-audit-milestone v1.3
 Status: 4/4 phases shipped；自动化全绿；real-app walkthrough 清单交付待 audit
-Last activity: 2026-05-19 — Quick 260519-p90：发布 v0.2.3 小版本（四处版本字段 0.2.2 → 0.2.3 单原子提交，打 tag v0.2.3 触发 release.yml）
+Last activity: 2026-05-19 — Quick 260519-pi1：新增 npm run release 发版脚本（scripts/release.mjs，一条命令完成 bump → commit → tag → push）
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -104,6 +104,7 @@ None.
 | 260519-lxm | 扫描按钮收敛（纯前端，运行时零变化）—— 后端 start_scan 自 20260516 起 full/incremental 两 mode 已统一为同一行为，前端「增量扫描」「全量重扫」两按钮本就完全等价。① /scan 页删除「增量扫描」按钮，「全量重扫」改名「扫描」，onScan 收敛为无参（内部固定 startScan("full")、toast 改「已开始扫描」），清理 RefreshCw import + 头注释；② /settings「扫描操作」区「全量扫描」按钮改名「扫描」、同步区块 lede 文案 + 头注释，onScan 收敛为无参。后端 src-tauri/ 与 src/lib/scan.ts 的 startScan(mode) 签名保留不动（前端固定传 "full"）；tsc 通过 | 2026-05-19 | 7564e18 · 6976ca5 | [260519-lxm-scan-button-converge](./quick/260519-lxm-scan-button-converge/) |
 | 260519-oh9 | 扫描复核页两项 UI 改进（纯前端）：① ReviewQueue「待复核」列表根 div 加 max-h-[calc(100vh-280px)] —— 内部既有 overflow-y-auto 此前因无高度上限不生效、整页被撑长，加上限后列表超出在块内滚动；② Scan 页 KPI 条把「无匹配」卡合入「待复核」卡：删除独立「无匹配」KpiCard，unmatched 数并入「待复核」卡 delta 副行（>0 显示『其中 N 项无匹配 · 需人工确认』、=0 回退原文案），KpiCard gridColumn span-3 → span-4，4 卡变 3 卡铺满 12 列。KPI 数值口径与后端 get_scan_kpis / ScanKpis 均不变 | 2026-05-19 | 3fe09c6 · f5ee6ba | [260519-oh9-scan-page-ui](./quick/260519-oh9-scan-page-ui/) |
 | 260519-p90 | 发布 v0.2.3 小版本 — package.json / tauri.conf.json / Cargo.toml / Cargo.lock(gal-lib 自身条目) 四处版本号 0.2.2 → 0.2.3 单原子提交；打 tag v0.2.3 并推送触发 release.yml 出包 | 2026-05-19 | c34bdef | [260519-p90-v0-2-3](./quick/260519-p90-v0-2-3/) |
+| 260519-pi1 | 新增 `npm run release` 发版脚本 —— scripts/release.mjs（纯 Node 标准库 ESM）把手工发版收成一条命令：参数解析（无参 patch / patch / minor / major / 显式 X.Y.Z）+ 三项前置检查（工作区干净 / 分支 master / 目标 tag 本地+远端未占用，全在写文件前）+ 四处版本字段精确正则替换 bump（package.json / tauri.conf.json / Cargo.toml [package] 段 / Cargo.lock 严格锚定 name="gal-lib" 条目，其余依赖不动，每处命中数须为 1）+ git commit `chore: bump version to X.Y.Z` + tag 草稿（预填上个 tag 以来 git log，editor 兜底链 core.editor→GIT_EDITOR→EDITOR→VISUAL→notepad）让用户定稿、空消息中止 + push master 与 tag 触发 release.yml；commit 后任一步失败均打印中文手动收尾指引。package.json scripts 新增 `"release": "node scripts/release.mjs"` | 2026-05-19 | aca2470 | [260519-pi1-npm-run-release](./quick/260519-pi1-npm-run-release/) |
 
 ## Session Continuity
 
