@@ -206,7 +206,7 @@ export function ReviewQueue({ onMutated, reseedSeq }: ReviewQueueProps) {
 
   return (
     <div
-      className="flex h-full min-h-[420px] flex-col border border-line bg-bg-1"
+      className="flex h-full max-h-[calc(100vh-280px)] min-h-[420px] flex-col border border-line bg-bg-1"
       style={{ borderRadius: "var(--r-md)" }}
     >
       <div className="flex items-center justify-between border-b border-line px-4 py-2.5">
