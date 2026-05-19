@@ -621,7 +621,10 @@ pub async fn start_scan(
         .await;
 
         let discovered = match scan_res {
-            Ok(d) => d,
+            // L9N-02 — run_scan now returns a ScanOutcome; start_scan only
+            // needs the discovered games. removed_dirs is surfaced separately
+            // via the `list_removed_dirs` IPC for the /scan review section.
+            Ok(o) => o.discovered,
             Err(e) => {
                 let _ = app_for_emit.emit(
                     "scan-progress",
@@ -1083,6 +1086,15 @@ pub async fn split_game_into_subdirs(
 pub async fn delete_game(game_id: i64, state: State<'_, AppPaths>) -> Result<(), String> {
     let pool = state.pool().await.map_err(err_str)?;
 
+    // L9N-02 — capture the on-disk directory path BEFORE the games row is
+    // deleted, so a removed-marker can be written afterwards (a marker stops
+    // the next scan from silently re-adding the game).
+    let game_path: Option<String> = sqlx::query_scalar("SELECT path FROM games WHERE id = ?")
+        .bind(game_id)
+        .fetch_optional(&*pool)
+        .await
+        .map_err(err_str)?;
+
     // Delete child rows first so this works even with FK enforcement off.
     for table in [
         "screenshots",
@@ -1111,7 +1123,90 @@ pub async fn delete_game(game_id: i64, state: State<'_, AppPaths>) -> Result<(),
         return Err("游戏不存在".to_string());
     }
 
+    // L9N-02 — write a `.gal-lib-removed` marker into the game folder so the
+    // next scan skips it instead of re-adding the game the user just deleted.
+    // best-effort: a marker-write failure must not fail the delete itself.
+    if let Some(p) = game_path {
+        if let Err(e) = scan::removed_marker::write_marker(std::path::Path::new(&p)) {
+            eprintln!("[delete_game] write removed-marker failed for {}: {}", p, e);
+        }
+    }
+
     Ok(())
+}
+
+/// L9N-02 — 枚举所有 scan_roots 下带 `.gal-lib-removed` 标记的目录。
+///
+/// 供 Scan 页『已删除条目』区域。复用 `collect_game_dirs`（与扫描遍历同一
+/// 套目录树枚举逻辑），过滤出带标记的目录，返回绝对路径列表。
+#[tauri::command]
+pub async fn list_removed_dirs(state: State<'_, AppPaths>) -> Result<Vec<String>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+
+    // Read scan_roots — same query shape as start_scan.
+    let roots: Vec<(PathBuf, u8)> = {
+        let rows = sqlx::query("SELECT path, depth FROM scan_roots ORDER BY id ASC")
+            .fetch_all(&*pool)
+            .await
+            .map_err(err_str)?;
+        rows.into_iter()
+            .filter_map(|r| {
+                let p: String = r.try_get("path").ok()?;
+                let d: i64 = r.try_get("depth").ok()?;
+                Some((PathBuf::from(p), d as u8))
+            })
+            .collect()
+    };
+
+    // collect_game_dirs needs an Arc<AtomicBool> cancel handle; a fresh
+    // never-cancelled flag is fine for this one-shot enumeration.
+    let cancel = Arc::new(std::sync::atomic::AtomicBool::new(false));
+    let dirs = scan::walker::collect_game_dirs(&roots, &cancel).map_err(err_str)?;
+
+    Ok(dirs
+        .into_iter()
+        .filter(|d| scan::removed_marker::has_marker(d))
+        .map(|d| d.to_string_lossy().into_owned())
+        .collect())
+}
+
+/// L9N-02 — 把一个被标记为已删除的目录重新加回库：删磁盘标记 + 作为新条目导入。
+///
+/// 先删 `.gal-lib-removed` 标记（否则导入后下次扫描仍会被跳过），再复用
+/// `add_game` 同款的 `DiscoveredGame` 构造 + `ingest_one_dir`。返回新 `games.id`。
+#[tauri::command]
+pub async fn restore_removed_dir(
+    path: String,
+    state: State<'_, AppPaths>,
+) -> Result<i64, String> {
+    let dir = PathBuf::from(&path);
+    // T-l9n-01 — validate the caller-supplied path is a real directory before
+    // touching the filesystem or DB.
+    if !dir.is_dir() {
+        return Err(format!("目录不存在: {}", path));
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+
+    // Remove the marker first — otherwise the next scan would skip the dir we
+    // just re-imported.
+    scan::removed_marker::remove_marker(&dir).map_err(err_str)?;
+
+    // Reuse the add_game DiscoveredGame construction pattern.
+    let raw_name = dir
+        .file_name()
+        .and_then(|s| s.to_str())
+        .unwrap_or("")
+        .to_string();
+    let clean_name = crate::title_clean::clean_title(&raw_name);
+    let executable = scan::walker::pick_best_exe(&dir);
+    let dg = scan::DiscoveredGame {
+        path: dir,
+        raw_name,
+        clean_name,
+        executable,
+    };
+    ingest_one_dir(&*pool, &data_dir, &dg).await
 }
 
 /// Wipe all game-related data — for debugging only. Clears the games table

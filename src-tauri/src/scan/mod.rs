@@ -12,6 +12,7 @@
 //! into `app.emit("scan-progress", payload)`.
 
 pub mod exe_score;
+pub mod removed_marker;
 pub mod types;
 pub mod walker;
 
@@ -21,7 +22,7 @@ use std::path::PathBuf;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
-pub use types::{DiscoveredGame, ScanError, ScanPhase, ScanProgress, ScanStatus};
+pub use types::{DiscoveredGame, ScanError, ScanOutcome, ScanPhase, ScanProgress, ScanStatus};
 
 /// Shared cancellation + skip handle for one scan run.
 ///
@@ -80,7 +81,7 @@ pub async fn run_scan<F>(
     incremental: bool,
     ctx: Arc<ScanContext>,
     on_progress: F,
-) -> Result<Vec<DiscoveredGame>, ScanError>
+) -> Result<ScanOutcome, ScanError>
 where
     F: Fn(ScanProgress) + Send + Sync + 'static,
 {
@@ -88,6 +89,9 @@ where
     let game_dirs = walker::collect_game_dirs(&roots, &ctx.cancel)?;
     let total = game_dirs.len();
     let mut discovered: Vec<DiscoveredGame> = Vec::with_capacity(total);
+    // L9N-02 — directories carrying a removed-marker; returned to the caller
+    // for diagnostics (the /scan UI enumerates them via `list_removed_dirs`).
+    let mut removed_dirs: Vec<PathBuf> = Vec::new();
 
     // Pass 2 — process each game dir.
     for (i, dir) in game_dirs.into_iter().enumerate() {
@@ -132,6 +136,21 @@ where
             continue;
         }
 
+        // L9N-02 — directories the user explicitly removed carry a
+        // `.gal-lib-removed` marker file. Skip them (do NOT re-add to the
+        // library) and record them so the caller knows they were seen.
+        if removed_marker::has_marker(&dir) {
+            removed_dirs.push(dir.clone());
+            on_progress(ScanProgress {
+                current_dir: dir.to_string_lossy().into_owned(),
+                completed: i + 1,
+                total,
+                status: ScanStatus::Running,
+                phase: ScanPhase::Discovering,
+            });
+            continue;
+        }
+
         // Find the best executable inside this game dir.
         let exe = walker::pick_best_exe(&dir);
         let raw = dir
@@ -156,7 +175,10 @@ where
         });
     }
 
-    Ok(discovered)
+    Ok(ScanOutcome {
+        discovered,
+        removed_dirs,
+    })
 }
 
 #[cfg(test)]
@@ -206,7 +228,8 @@ mod tests {
             cb,
         )
         .await
-        .expect("happy path scan");
+        .expect("happy path scan")
+        .discovered;
 
         assert_eq!(result.len(), 2, "should discover 2 games");
         for g in &result {
@@ -253,7 +276,8 @@ mod tests {
             cb,
         )
         .await
-        .expect("incremental scan");
+        .expect("incremental scan")
+        .discovered;
 
         // Only Newcomer should be discovered; Existing is silently skipped.
         assert_eq!(result.len(), 1, "incremental should yield 1 (got {})", result.len());
@@ -310,7 +334,8 @@ mod tests {
             cb,
         )
         .await
-        .expect("skip-set scan");
+        .expect("skip-set scan")
+        .discovered;
 
         assert_eq!(result.len(), 1, "should yield only the non-skipped dir");
         assert_eq!(

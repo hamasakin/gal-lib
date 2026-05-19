@@ -283,6 +283,9 @@ pub fn run() {
             commands::split_game_into_subdirs,
             // Quick 260517-qnn — delete game entry
             commands::delete_game,
+            // L9N-02 — removed-marker enumerate + restore
+            commands::list_removed_dirs,
+            commands::restore_removed_dir,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
