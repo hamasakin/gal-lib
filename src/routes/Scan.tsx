@@ -4,7 +4,7 @@
  * Layout:
  *   <ScanProgressBar />          ← sticky top (auto-hides post-terminal)
  *   <PageHeader>                  ← breadcrumb · serif H1 · sub · actions
- *     actions: 增量扫描 / 全量扫描 / 取消（active 时）
+ *     actions: 扫描 / 重新生成待复核队列 / 取消（active 时）
  *   <KpiStrip>                    ← 4 KPI cards (12-col grid, span-3 each)
  *   <TwoColumnFeed>               ← grid 12-col: 5 (feed) + 7 (queue)
  *     <ScanFeed />                  ← rolling 200-line live log (left)
@@ -22,7 +22,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "sonner";
-import { ListRestart, RefreshCw, Search, X } from "lucide-react";
+import { ListRestart, Search, X } from "lucide-react";
 import { PageHeader } from "@/components/library/PageHeader";
 import { ScanProgressBar } from "@/components/library/ScanProgressBar";
 import { ScanFeed } from "@/components/library/ScanFeed";
@@ -83,23 +83,20 @@ export default function Scan() {
     };
   }, [refreshKpis]);
 
-  const onScan = useCallback(
-    async (mode: "incremental" | "full") => {
-      try {
-        const roots = await listScanRoots();
-        if (roots.length === 0) {
-          toast.error("还没有扫描根目录 — 请先到设置页添加");
-          navigate("/settings");
-          return;
-        }
-        await startScan(mode);
-        toast.info(mode === "full" ? "已开始全量重扫" : "已开始增量扫描");
-      } catch (e: unknown) {
-        toast.error(`扫描失败 — ${String(e)}`);
+  const onScan = useCallback(async () => {
+    try {
+      const roots = await listScanRoots();
+      if (roots.length === 0) {
+        toast.error("还没有扫描根目录 — 请先到设置页添加");
+        navigate("/settings");
+        return;
       }
-    },
-    [navigate],
-  );
+      await startScan("full");
+      toast.info("已开始扫描");
+    } catch (e: unknown) {
+      toast.error(`扫描失败 — ${String(e)}`);
+    }
+  }, [navigate]);
 
   const onCancel = useCallback(async () => {
     try {
@@ -162,23 +159,13 @@ export default function Scan() {
           <>
             <button
               type="button"
-              onClick={() => void onScan("incremental")}
-              disabled={scanRunning}
-              className={cn(TOOLBAR_BTN, scanRunning && "cursor-not-allowed opacity-60")}
-              style={{ borderRadius: "var(--r-md)" }}
-            >
-              <RefreshCw size={14} strokeWidth={1.7} />
-              <span>增量扫描</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => void onScan("full")}
+              onClick={() => void onScan()}
               disabled={scanRunning}
               className={cn(TOOLBAR_BTN, scanRunning && "cursor-not-allowed opacity-60")}
               style={{ borderRadius: "var(--r-md)" }}
             >
               <Search size={14} strokeWidth={1.7} />
-              <span>全量重扫</span>
+              <span>扫描</span>
             </button>
             <button
               type="button"
