@@ -269,9 +269,16 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
             )}
           </div>
 
-          {/* Candidate list */}
-          <ScrollArea className="max-h-[400px] min-w-0">
-            <ul className="flex min-w-0 flex-col gap-2">
+          {/* Candidate list
+              Quick 260524-dlr — 行内文案宽度严格收敛到容器：
+                · button 三件套 w-full / max-w-full / min-w-0 + overflow-hidden
+                  确保 flex item 不被子内容撑开
+                · 文本块统一用 <div> + break-words（CJK 长串无空格也能换行），
+                  以兼容 line-clamp 触发条件
+                · 标题 / 简介保留 line-clamp-3，溢出依靠 button 上的 title
+                  做 hover tooltip 展示完整原文 */}
+          <ScrollArea className="max-h-[400px] min-w-0 max-w-full overflow-x-hidden">
+            <ul className="flex w-full min-w-0 max-w-full flex-col gap-2">
               {searching && (
                 <li className="rounded-md border border-dashed border-border p-4 text-center text-body text-muted-foreground">
                   搜索中…
@@ -286,17 +293,25 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                 candidates.map((c) => {
                   const isSelected =
                     selected?.source === c.source && selected?.sourceId === c.source_id;
+                  const hoverTitle = [
+                    c.title,
+                    c.alias.length > 0 ? `别名：${c.alias.join(" · ")}` : null,
+                    c.summary && c.summary.trim().length > 0 ? c.summary : null,
+                  ]
+                    .filter(Boolean)
+                    .join("\n\n");
                   return (
-                    <li key={`${c.source}-${c.source_id}`}>
+                    <li key={`${c.source}-${c.source_id}`} className="w-full min-w-0 max-w-full">
                       <button
                         type="button"
+                        title={hoverTitle}
                         onClick={() =>
                           setSelected({
                             source: c.source === "bangumi" || c.source === "vndb" ? c.source : "bangumi",
                             sourceId: c.source_id,
                           })
                         }
-                        className={`flex w-full max-w-full items-start gap-3 overflow-hidden border p-3 text-left transition ${
+                        className={`flex w-full min-w-0 max-w-full items-start gap-3 overflow-hidden border p-3 text-left transition ${
                           isSelected
                             ? "border-brand bg-brand-soft border-l-[3px]"
                             : "border-line hover:border-line-strong hover:bg-bg-2"
@@ -319,38 +334,38 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                             />
                           ) : null}
                         </div>
-                        <div className="flex min-w-0 flex-1 flex-col gap-1">
-                          <div className="flex min-w-0 items-start gap-2">
-                            <span
-                              className="min-w-0 flex-1 line-clamp-3 text-body font-medium text-foreground"
+                        <div className="flex min-w-0 max-w-full flex-1 flex-col gap-1 overflow-hidden">
+                          <div className="flex min-w-0 max-w-full items-start gap-2">
+                            <div
+                              className="min-w-0 flex-1 line-clamp-3 break-words text-body font-medium text-foreground"
                               title={c.title}
                             >
                               {c.title}
-                            </span>
+                            </div>
                             <span className="mt-0.5 flex-shrink-0">
                               {confidenceBadge(c.confidence)}
                             </span>
                           </div>
                           {c.alias.length > 0 && (
-                            <span
-                              className="truncate text-label text-muted-foreground"
+                            <div
+                              className="line-clamp-2 break-words text-label text-muted-foreground"
                               title={c.alias.join(" · ")}
                             >
                               {c.alias.join(" · ")}
-                            </span>
+                            </div>
                           )}
                           {c.summary && c.summary.trim().length > 0 && (
-                            <span
-                              className="line-clamp-3 text-label text-muted-foreground/80"
+                            <div
+                              className="line-clamp-3 break-words text-label text-muted-foreground/80"
                               title={c.summary}
                             >
                               {c.summary}
-                            </span>
+                            </div>
                           )}
-                          <span className="truncate text-label text-muted-foreground">
+                          <div className="truncate text-label text-muted-foreground">
                             {c.source.toUpperCase()} · {c.source_id}
                             {c.release_date ? ` · ${c.release_date}` : ""}
-                          </span>
+                          </div>
                         </div>
                       </button>
                     </li>
