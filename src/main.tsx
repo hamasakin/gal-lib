@@ -28,25 +28,83 @@ void getDb().catch((e) => {
   console.error("[gal-lib] failed to initialize DB:", e);
 });
 
+// Module-level Tauri event subscriptions.
+//
+// Attached at app entrypoint (NOT inside a component) so subscriptions
+// outlive any single route mount.
+//
+// Why a globalThis registry: the original `let __xxxUnsub: ...` guards
+// were no-ops — `let` declarations re-evaluate to `undefined` on every
+// module evaluation, so `if (!__xxxUnsub)` was always true. The first
+// guard worked by accident (because `if (!undefined)` happens to be true
+// on first run too) but provided zero protection against Vite HMR
+// re-evaluating main.tsx, after which the previous module's listeners
+// were leaked and every event was consumed N times (BL-01 in 260524
+// review).
+//
+// The registry lives on `globalThis` so HMR survives, and an
+// `import.meta.hot.dispose` hook clears the old listeners before the new
+// module evaluates and re-registers fresh ones.
+type Unsub = () => void;
+const REGISTRY_KEY = "__galLibListenerRegistry";
+interface RegistryEntry {
+  unsub?: Unsub;
+  cancelled: boolean;
+}
+const w = globalThis as unknown as {
+  [REGISTRY_KEY]?: Map<string, RegistryEntry>;
+};
+const registry: Map<string, RegistryEntry> = w[REGISTRY_KEY] ?? new Map();
+w[REGISTRY_KEY] = registry;
+
+function registerOnce(key: string, attach: () => Promise<Unsub>): void {
+  if (registry.has(key)) return;
+  const entry: RegistryEntry = { cancelled: false };
+  registry.set(key, entry);
+  attach()
+    .then((unsub) => {
+      if (entry.cancelled) {
+        // HMR disposed before listen() resolved — fire the unsub immediately
+        // so the listener never leaks.
+        try {
+          unsub();
+        } catch {
+          /* swallow */
+        }
+      } else {
+        entry.unsub = unsub;
+      }
+    })
+    .catch((e: unknown) => {
+      // eslint-disable-next-line no-console
+      console.error(`[gal-lib] failed to subscribe ${key}:`, e);
+      registry.delete(key);
+    });
+}
+
+if (import.meta.hot) {
+  import.meta.hot.dispose(() => {
+    for (const entry of registry.values()) {
+      entry.cancelled = true;
+      try {
+        entry.unsub?.();
+      } catch {
+        /* swallow */
+      }
+    }
+    registry.clear();
+  });
+}
+
 // 02f: Global scan-progress subscription.
 //
-// Attached at app entrypoint (NOT inside a component) so the subscription
-// outlives any single route; the Library route + ScanProgressBar can read
-// the latest payload from the Zustand store regardless of whether the user
-// triggered the scan from /settings then immediately navigated to / before
-// the first event arrived.
-//
-// Idempotency: this module is import-evaluated exactly once per app load
-// (Vite caches modules; we don't HMR the listener attach below). If we ever
-// adopt strict-mode double-mount in dev or move this into a component, we
-// must add a module-scope guard to prevent duplicate listener accumulation.
-let __scanProgressUnsub: (() => void) | undefined;
-if (!__scanProgressUnsub) {
-  void onScanProgress((p) => {
-    // 20260509f — single getState() for both calls (avoids two-pass overhead)
-    // and bulk-clears fetchingMetaIds on terminal status as a safety net for
-    // any missed `meta-fetch-progress { phase: "finished" }` (e.g. a backend
-    // panic between started/finished, or a process kill mid-iteration).
+// Outlives any single route mount; ScanProgressBar and Library both read
+// the latest payload from the Zustand store regardless of triggering
+// route. Bulk-clears fetchingMetaIds on terminal status as a safety net
+// for any missed `meta-fetch-progress { phase: "finished" }` (backend
+// panic between started/finished, mid-iteration kill).
+registerOnce("scan-progress", () =>
+  onScanProgress((p) => {
     const store = useLibraryStore.getState();
     // Quick 260515-cancel — once we've recorded a `cancelled` terminal event,
     // ignore any further events for this run. The backend's ingest task may
@@ -67,32 +125,17 @@ if (!__scanProgressUnsub) {
     ) {
       store.clearFetchingMetaIds();
     }
-  })
-    .then((unsub) => {
-      __scanProgressUnsub = unsub;
-    })
-    .catch((e: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error("[gal-lib] failed to subscribe to scan-progress:", e);
-    });
-}
+  }),
+);
 
 // 20260509f: Global meta-fetch-progress subscription.
 //
 // Per-game pulse highlight stream. `started` marks the id as "in_flight";
 // `finished` transitions it to "awaiting_refetch" (Library.tsx clears it
 // once the throttled `games-changed` refetch reflects the bound row).
-// Covers all four backend trigger paths (start_scan ingest loop /
-// refresh_all_metadata / refresh_metadata / bind_metadata).
-//
-// Terminal-status fallback for missed finishes lives in the scan-progress
-// listener above (clearFetchingMetaIds on completed/cancelled/failed).
-// bind_metadata + single refresh_metadata don't go through scan-progress —
-// they rely on the inner async-block wrapping in commands.rs to guarantee
-// the finished emit fires on both success and error paths.
-let __metaFetchProgressUnsub: (() => void) | undefined;
-if (!__metaFetchProgressUnsub) {
-  void onMetaFetchProgress((p) => {
+// Covers all four backend trigger paths.
+registerOnce("meta-fetch-progress", () =>
+  onMetaFetchProgress((p) => {
     const store = useLibraryStore.getState();
     if (p.phase === "started") {
       store.addFetchingMetaId(p.game_id);
@@ -102,79 +145,42 @@ if (!__metaFetchProgressUnsub) {
     // "in_flight" to "awaiting_refetch". The id stays in the map (loading
     // visual persists); Library.tsx's reconcile effect only checks bound
     // state for "awaiting_refetch" entries, which preserves the
-    // loading-persist intent (#260515-loading-persist) without wiping the
-    // loading visual the instant `started` fires for an already-bound row
-    // (the `refresh_metadata_smart` case).
-    //
-    // Bulk safety net for missed/late removals (backend panic mid-task,
-    // single-game paths that don't trigger a grid-wide refetch) lives in
-    // the `scan-progress` terminal listener (clearFetchingMetaIds).
+    // loading-persist intent without wiping the loading visual the instant
+    // `started` fires for an already-bound row (refresh_metadata_smart).
     store.markFetchingMetaFinished(p.game_id);
-  })
-    .then((unsub) => {
-      __metaFetchProgressUnsub = unsub;
-    })
-    .catch((e: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error(
-        "[gal-lib] failed to subscribe to meta-fetch-progress:",
-        e,
-      );
-    });
-}
+  }),
+);
 
 // 03f: Global active-session subscription.
 //
-// Same rationale as scan-progress above — module-scope so the bar stays
-// in sync regardless of which route is mounted. The backend emits both
-// "session started" (Some) and "session ended" (null) on this channel;
-// we mirror both into Zustand verbatim (no client-side fan-out logic).
-//
-// Boot-time hydration: getActiveSession() is invoked once so a webview
-// reload mid-session re-populates the store without waiting for the next
-// event (which only fires on lifecycle transitions). Errors are non-fatal
-// — a missing session simply means no rehydration is needed.
-let __activeSessionUnsub: (() => void) | undefined;
-if (!__activeSessionUnsub) {
-  void getActiveSession()
-    .then((s) => {
-      useLibraryStore.getState().setActiveSession(s);
-    })
-    .catch((e: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error("[gal-lib] failed to hydrate active session:", e);
-    });
-  void onActiveSessionChanged((s) => {
+// Backend emits both "session started" (Some) and "session ended" (null)
+// on this channel; we mirror both into Zustand verbatim (no client-side
+// fan-out logic). Boot-time hydration via getActiveSession() runs once so
+// a webview reload mid-session re-populates the store without waiting for
+// the next event.
+void getActiveSession()
+  .then((s) => {
     useLibraryStore.getState().setActiveSession(s);
   })
-    .then((unsub) => {
-      __activeSessionUnsub = unsub;
-    })
-    .catch((e: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error(
-        "[gal-lib] failed to subscribe to active-session-changed:",
-        e,
-      );
-    });
-}
+  .catch((e: unknown) => {
+    // eslint-disable-next-line no-console
+    console.error("[gal-lib] failed to hydrate active session:", e);
+  });
+registerOnce("active-session-changed", () =>
+  onActiveSessionChanged((s) => {
+    useLibraryStore.getState().setActiveSession(s);
+  }),
+);
 
 // 03f: Close-to-tray toast (first-time-only).
 //
 // 03e's WindowEvent::CloseRequested interceptor hides the window AND emits
 // the "close-to-tray" event so the frontend can show a one-shot toast
-// reassuring the user the app didn't quit. The user can dismiss permanently
-// via the "不再提示" action — that flips a localStorage flag which we check
-// before rendering each subsequent toast.
-//
-// localStorage is the right persistence layer here (NOT a backend config
-// field): the dismissal is purely a UI affordance, doesn't need to survive
-// a full-uninstall, and writes are synchronous which the action handler
-// expects.
+// reassuring the user the app didn't quit. localStorage holds the
+// "不再提示" dismissal.
 const TRAY_TOAST_DISMISSED_KEY = "gal-lib:tray-toast-dismissed";
-let __closeToTrayUnsub: (() => void) | undefined;
-if (!__closeToTrayUnsub) {
-  void onCloseToTray(() => {
+registerOnce("close-to-tray", () =>
+  onCloseToTray(() => {
     if (localStorage.getItem(TRAY_TOAST_DISMISSED_KEY) === "1") return;
     toast.info("已最小化到系统托盘", {
       description: "应用仍在后台运行；右键托盘图标可恢复或退出",
@@ -186,15 +192,8 @@ if (!__closeToTrayUnsub) {
         },
       },
     });
-  })
-    .then((unsub) => {
-      __closeToTrayUnsub = unsub;
-    })
-    .catch((e: unknown) => {
-      // eslint-disable-next-line no-console
-      console.error("[gal-lib] failed to subscribe to close-to-tray:", e);
-    });
-}
+  }),
+);
 
 const rootEl = document.getElementById("root");
 if (!rootEl) {
