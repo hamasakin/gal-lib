@@ -40,11 +40,23 @@ fn normalize_vndb_role(role: &str) -> Option<StaffRole> {
     }
 }
 
-fn client() -> reqwest::Client {
-    reqwest::Client::builder()
+/// Lazily-built shared HTTP client. See bangumi.rs for full rationale —
+/// memoizes the first successful build, surfaces TLS-init failure as
+/// `MetadataError::Http` rather than panicking the whole Tauri backend
+/// (CR-04 in 260524 review).
+static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+fn client() -> Result<&'static reqwest::Client, MetadataError> {
+    if let Some(c) = CLIENT.get() {
+        return Ok(c);
+    }
+    let c = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .expect("reqwest client")
+        .build()?;
+    let _ = CLIENT.set(c);
+    Ok(CLIENT
+        .get()
+        .expect("CLIENT initialized above or by racing thread"))
 }
 
 pub async fn search(query: &str) -> Result<Vec<Candidate>, MetadataError> {
@@ -68,7 +80,7 @@ pub async fn search(query: &str) -> Result<Vec<Candidate>, MetadataError> {
     });
     let raw: SearchResp = with_retry(|| async {
         limiter::wait_vndb().await;
-        let resp = client().post(ENDPOINT).json(&body).send().await?;
+        let resp = client()?.post(ENDPOINT).json(&body).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(MetadataError::NotFound);
         }
@@ -118,7 +130,7 @@ pub async fn fetch_detail(vndb_id: &str) -> Result<MetadataDetail, MetadataError
     });
     let raw: DetailResp = with_retry(|| async {
         limiter::wait_vndb().await;
-        let resp = client().post(ENDPOINT).json(&body).send().await?;
+        let resp = client()?.post(ENDPOINT).json(&body).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(MetadataError::NotFound);
         }
@@ -186,7 +198,7 @@ pub async fn fetch_persons(vndb_id: &str) -> Result<Vec<PersonRef>, MetadataErro
     });
     let raw: StaffResp = with_retry(|| async {
         limiter::wait_vndb().await;
-        let resp = client().post(ENDPOINT).json(&body).send().await?;
+        let resp = client()?.post(ENDPOINT).json(&body).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(MetadataError::NotFound);
         }
@@ -222,7 +234,7 @@ pub async fn fetch_characters(vndb_id: &str) -> Result<Vec<PersonRef>, MetadataE
     });
     let raw: VaResp = with_retry(|| async {
         limiter::wait_vndb().await;
-        let resp = client().post(ENDPOINT).json(&body).send().await?;
+        let resp = client()?.post(ENDPOINT).json(&body).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(MetadataError::NotFound);
         }

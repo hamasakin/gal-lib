@@ -38,12 +38,30 @@ fn normalize_bangumi_role(relation: &str) -> Option<StaffRole> {
     }
 }
 
-fn client() -> reqwest::Client {
-    reqwest::Client::builder()
+/// Lazily-built shared HTTP client. Original code called
+/// `.build().expect("reqwest client")` on every fn invocation, which both
+/// rebuilt the client per request (no connection reuse — Warning in 260524
+/// review) AND panicked the whole Tauri backend if TLS init transiently
+/// failed (CR-04). OnceLock memoizes the first successful build; failures
+/// surface as `MetadataError::Http` and the caller's retry path handles
+/// them gracefully.
+static CLIENT: std::sync::OnceLock<reqwest::Client> = std::sync::OnceLock::new();
+
+fn client() -> Result<&'static reqwest::Client, MetadataError> {
+    if let Some(c) = CLIENT.get() {
+        return Ok(c);
+    }
+    let c = reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .timeout(std::time::Duration::from_secs(15))
-        .build()
-        .expect("reqwest client")
+        .build()?;
+    // OnceLock::set returns Err only if another thread initialized between
+    // our get() and set() — the stored client (theirs or ours) is equally
+    // valid; we drop the loser and return whichever is in the cell.
+    let _ = CLIENT.set(c);
+    Ok(CLIENT
+        .get()
+        .expect("CLIENT initialized above or by racing thread"))
 }
 
 pub async fn search(query: &str) -> Result<Vec<Candidate>, MetadataError> {
@@ -53,7 +71,7 @@ pub async fn search(query: &str) -> Result<Vec<Candidate>, MetadataError> {
     });
     let raw: SearchResp = with_retry(|| async {
         limiter::wait_bangumi().await;
-        let resp = client().post(SEARCH_URL).json(&body).send().await?;
+        let resp = client()?.post(SEARCH_URL).json(&body).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(MetadataError::NotFound);
         }
@@ -86,7 +104,7 @@ pub async fn fetch_detail(bangumi_id: &str) -> Result<MetadataDetail, MetadataEr
     let url = format!("{}{}", DETAIL_BASE, bangumi_id);
     let raw: SubjectDetail = with_retry(|| async {
         limiter::wait_bangumi().await;
-        let resp = client().get(&url).send().await?;
+        let resp = client()?.get(&url).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(MetadataError::NotFound);
         }
@@ -135,7 +153,7 @@ pub async fn fetch_persons(bangumi_id: &str) -> Result<Vec<PersonRef>, MetadataE
     let url = format!("{}{}/persons", DETAIL_BASE, bangumi_id);
     let raw: Vec<PersonHit> = with_retry(|| async {
         limiter::wait_bangumi().await;
-        let resp = client().get(&url).send().await?;
+        let resp = client()?.get(&url).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(MetadataError::NotFound);
         }
@@ -168,7 +186,7 @@ pub async fn fetch_characters(bangumi_id: &str) -> Result<Vec<PersonRef>, Metada
     let url = format!("{}{}/characters", DETAIL_BASE, bangumi_id);
     let raw: Vec<CharacterHit> = with_retry(|| async {
         limiter::wait_bangumi().await;
-        let resp = client().get(&url).send().await?;
+        let resp = client()?.get(&url).send().await?;
         if resp.status() == reqwest::StatusCode::NOT_FOUND {
             return Err(MetadataError::NotFound);
         }

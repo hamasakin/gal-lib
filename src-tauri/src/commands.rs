@@ -447,6 +447,60 @@ async fn ingest_one_dir(
     Ok(game_id)
 }
 
+// ── Path-guard for IPC commands that accept arbitrary game directories ─────
+
+/// Defense-in-depth guard against the frontend (or a malicious renderer)
+/// registering a Windows system directory as a "game" — which the
+/// subsequent ingest + on-disk cover/save-backup paths would then dutifully
+/// touch. CR-03 in 260524 review. Applied to `add_game`, `restore_removed_dir`,
+/// and `split_game_into_subdirs`.
+///
+/// Strategy: canonicalize the input, then reject if the result lies under
+/// any well-known Windows system root resolved from environment variables
+/// (so the guard works correctly on machines where Windows is installed on
+/// a drive other than C:). Also rejects the literal drive-root case, since
+/// registering an entire drive as a single game would be nonsensical and
+/// would let any path under that drive be touched.
+fn ensure_safe_game_dir(target: &Path) -> Result<(), String> {
+    // canonicalize handles symlinks + relative-resolution. Fail closed on
+    // bad inputs (path doesn't exist or unreadable).
+    let canon = std::fs::canonicalize(target)
+        .map_err(|e| format!("路径不可解析: {} ({})", target.display(), e))?;
+
+    // Resolve forbidden roots from Windows env vars (no hard-coded "C:\Windows"
+    // — works regardless of system drive letter).
+    let forbidden_roots: Vec<PathBuf> = [
+        std::env::var_os("SystemRoot"),
+        std::env::var_os("WINDIR"),
+        std::env::var_os("ProgramFiles"),
+        std::env::var_os("ProgramFiles(x86)"),
+        std::env::var_os("ProgramData"),
+    ]
+    .into_iter()
+    .flatten()
+    .filter_map(|s| std::fs::canonicalize(PathBuf::from(s)).ok())
+    .collect();
+
+    for root in &forbidden_roots {
+        if canon.starts_with(root) {
+            return Err(format!(
+                "禁止将系统目录注册为游戏: {}",
+                target.display()
+            ));
+        }
+    }
+
+    // Reject literal drive-root (`C:\` after canonicalization has no parent).
+    if canon.parent().is_none() {
+        return Err(format!(
+            "禁止注册整个驱动器为游戏: {}",
+            target.display()
+        ));
+    }
+
+    Ok(())
+}
+
 // ── scan_roots CRUD ─────────────────────────────────────────────────────────
 
 #[derive(Debug, Serialize, Deserialize, Clone)]
@@ -926,6 +980,7 @@ pub async fn add_game(
     if !dir.is_dir() {
         return Err(format!("path is not a directory: {}", dir_path));
     }
+    ensure_safe_game_dir(&dir)?;
     let pool = state.pool().await.map_err(err_str)?;
     let data_dir = state.data_dir.clone();
 
@@ -1044,6 +1099,9 @@ pub async fn split_game_into_subdirs(
         if dir == parent_pathbuf {
             continue;
         }
+        // CR-03 — refuse to register system paths even if the frontend
+        // injects them into the subdir list.
+        ensure_safe_game_dir(&dir)?;
         let raw_name = dir
             .file_name()
             .and_then(|s| s.to_str())
@@ -1199,6 +1257,7 @@ pub async fn restore_removed_dir(
     if !dir.is_dir() {
         return Err(format!("目录不存在: {}", path));
     }
+    ensure_safe_game_dir(&dir)?;
     let pool = state.pool().await.map_err(err_str)?;
     let data_dir = state.data_dir.clone();
 
