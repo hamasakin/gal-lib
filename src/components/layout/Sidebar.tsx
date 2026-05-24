@@ -22,6 +22,7 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   BarChart3,
   Bookmark,
@@ -66,20 +67,25 @@ import {
   type DeleteViewTarget,
 } from "@/components/library/DeleteViewDialog";
 
+/**
+ * Quick 260524-olt — 状态行的 dot 颜色与 value 在编译期固定；label 在
+ * 组件内调 t() 得到，所以这里只保留稳定部分。
+ */
 const STATUS_DISPLAY: Array<{
   value: "unplayed" | "playing" | "cleared" | "dropped";
-  label: string;
+  i18nKey: string;
   dotClass: string;
 }> = [
-  { value: "playing", label: "游玩中", dotClass: "bg-brand" },
-  { value: "cleared", label: "已通关", dotClass: "bg-[#6fd1c8]" },
-  { value: "unplayed", label: "未开始", dotClass: "bg-ink-stamp" },
-  { value: "dropped", label: "弃坑", dotClass: "bg-ink-2" },
+  { value: "playing", i18nKey: "sidebar.status.playing", dotClass: "bg-brand" },
+  { value: "cleared", i18nKey: "sidebar.status.cleared", dotClass: "bg-[#6fd1c8]" },
+  { value: "unplayed", i18nKey: "sidebar.status.unplayed", dotClass: "bg-ink-stamp" },
+  { value: "dropped", i18nKey: "sidebar.status.dropped", dotClass: "bg-ink-2" },
 ];
 
 type SidebarRowIcon = React.ComponentType<{ size?: number; strokeWidth?: number }>;
 
 export function Sidebar() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const location = useLocation();
   const isSettingsActive = location.pathname === "/settings";
@@ -248,9 +254,9 @@ export function Sidebar() {
         const id = await createCustomView(name);
         await refreshSidebar();
         applyFilter({ custom_view_id: id });
-        toast.success(`已创建视图「${name}」`);
+        toast.success(t("toast.view_created", { name }));
       } catch (e: unknown) {
-        toast.error(`创建失败 — ${String(e)}`);
+        toast.error(t("toast.view_create_failed", { err: String(e) }));
       }
     } else {
       const id = viewDialog.viewId;
@@ -258,9 +264,9 @@ export function Sidebar() {
       try {
         await renameCustomView(id, name);
         await refreshSidebar();
-        toast.success("已重命名");
+        toast.success(t("toast.view_renamed"));
       } catch (e: unknown) {
-        toast.error(`重命名失败 — ${String(e)}`);
+        toast.error(t("toast.view_rename_failed", { err: String(e) }));
       }
     }
   }
@@ -272,9 +278,9 @@ export function Sidebar() {
         setFilter({});
       }
       await refreshSidebar();
-      toast.success(`已删除视图「${target.name}」`);
+      toast.success(t("toast.view_deleted", { name: target.name }));
     } catch (e: unknown) {
-      toast.error(`删除失败 — ${String(e)}`);
+      toast.error(t("toast.delete_failed", { err: String(e) }));
     }
   }
 
@@ -287,9 +293,9 @@ export function Sidebar() {
       >
         <ScrollArea className="flex-1">
           <div className="flex flex-col pb-3 pt-1.5">
-            {!isIconMode && <SectionLabel>图书馆</SectionLabel>}
+            {!isIconMode && <SectionLabel>{t("sidebar.library")}</SectionLabel>}
             <SidebarRow
-              label="图书馆全景"
+              label={t("sidebar.library_all")}
               icon={LibraryIcon}
               count={totalGames}
               active={isAllActive}
@@ -297,7 +303,7 @@ export function Sidebar() {
               iconMode={isIconMode}
             />
             <SidebarRow
-              label="收藏夹"
+              label={t("sidebar.favorites")}
               icon={Heart}
               count={sidebar?.favorite_count ?? 0}
               active={isFavoriteActive}
@@ -305,7 +311,7 @@ export function Sidebar() {
               iconMode={isIconMode}
             />
             <SidebarRow
-              label="扫描复核"
+              label={t("sidebar.scan_review")}
               icon={SearchCheck}
               count={reviewPending > 0 ? reviewPending : undefined}
               badge={reviewPending > 0}
@@ -314,15 +320,15 @@ export function Sidebar() {
               iconMode={isIconMode}
             />
 
-            {!isIconMode && <SectionLabel>通关状态</SectionLabel>}
+            {!isIconMode && <SectionLabel>{t("sidebar.status_section")}</SectionLabel>}
             {isIconMode && <div aria-hidden className="mx-3 my-2 h-px bg-line" />}
-            {STATUS_DISPLAY.map(({ value, label, dotClass }) => {
+            {STATUS_DISPLAY.map(({ value, i18nKey, dotClass }) => {
               const count =
                 sidebar?.statuses.find((s) => s.status === value)?.count ?? 0;
               return (
                 <SidebarRow
                   key={value}
-                  label={label}
+                  label={t(i18nKey)}
                   count={count}
                   active={isStatusActive(value)}
                   onClick={() => applyFilter({ status: value })}
@@ -345,14 +351,14 @@ export function Sidebar() {
                         "hover:bg-bg-2 hover:text-ink-0",
                       )}
                       style={{ borderRadius: "var(--r-sm)" }}
-                      title="新建视图"
-                      aria-label="新建视图"
+                      title={t("sidebar.new_view")}
+                      aria-label={t("sidebar.new_view")}
                     >
                       <Plus size={11} strokeWidth={1.8} />
                     </button>
                   }
                 >
-                  我的视图
+                  {t("sidebar.my_views")}
                 </SectionLabel>
 
                 {(sidebar?.custom_views ?? []).length === 0 ? (
@@ -367,7 +373,7 @@ export function Sidebar() {
                   >
                     <Plus size={14} strokeWidth={1.7} className="text-ink-3" />
                     <span className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">
-                      新建第一个视图
+                      {t("sidebar.new_first_view")}
                     </span>
                   </button>
                 ) : (
@@ -391,11 +397,11 @@ export function Sidebar() {
 
             {!isIconMode && (sidebar?.tags ?? []).length > 0 && (
               <>
-                <SectionLabel>自定义标签</SectionLabel>
+                <SectionLabel>{t("sidebar.custom_tags")}</SectionLabel>
                 {sidebar!.tags.map(({ tag, count }) => (
                   <SidebarRow
                     key={`t-${tag.id}`}
-                    label={`# ${tag.name}`}
+                    label={t("sidebar.tag_with_hash", { name: tag.name })}
                     count={count}
                     active={isTagActive(tag.id)}
                     onClick={() => applyFilter({ tag_id: tag.id })}
@@ -409,21 +415,21 @@ export function Sidebar() {
         {/* 底部固定导航 — 次要页面入口，不参与筛选，不随主区滚动 */}
         <div className="flex shrink-0 flex-col border-t border-line py-1.5">
           <SidebarRow
-            label="游玩统计"
+            label={t("sidebar.stats")}
             icon={BarChart3}
             active={isStatsActive}
             onClick={() => navigate("/stats")}
             iconMode={isIconMode}
           />
           <SidebarRow
-            label="截图集"
+            label={t("sidebar.screenshots")}
             icon={ImageIcon}
             active={isScreenshotsActive}
             onClick={() => navigate("/screenshots")}
             iconMode={isIconMode}
           />
           <SidebarRow
-            label="设置"
+            label={t("sidebar.settings")}
             icon={SettingsIcon}
             active={isSettingsActive}
             onClick={() => navigate("/settings")}
@@ -617,6 +623,7 @@ function CustomViewRow({
   onRename: () => void;
   onDelete: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={cn(
@@ -661,7 +668,7 @@ function CustomViewRow({
         <DropdownMenuTrigger asChild>
           <button
             type="button"
-            aria-label={`视图操作 — ${name}`}
+            aria-label={t("sidebar.view_actions", { name })}
             className={cn(
               "absolute right-1.5 grid h-6 w-6 place-items-center text-ink-2 opacity-0 transition-opacity",
               "group-hover:opacity-100 hover:bg-bg-3 hover:text-ink-0",
@@ -677,7 +684,7 @@ function CustomViewRow({
         <DropdownMenuContent align="end" className="w-36">
           <DropdownMenuItem onClick={onRename}>
             <Pencil size={13} className="mr-2" />
-            重命名
+            {t("sidebar.rename")}
           </DropdownMenuItem>
           <DropdownMenuSeparator />
           <DropdownMenuItem
@@ -685,7 +692,7 @@ function CustomViewRow({
             className="text-destructive focus:text-destructive"
           >
             <Trash2 size={13} className="mr-2" />
-            删除视图
+            {t("sidebar.delete_view")}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

@@ -28,6 +28,7 @@ import { open as openDialog } from "@tauri-apps/plugin-dialog";
 import { toast } from "sonner";
 import { Trash2 } from "lucide-react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -64,19 +65,25 @@ import { UIPreferences } from "@/components/settings/UIPreferences";
 import { AboutSection } from "@/components/settings/AboutSection";
 import { cn } from "@/lib/utils";
 
+/**
+ * Quick 260524-olt — nav label 改由 t() 解析,这里只保留 id + i18nKey 配对。
+ * "Locale Emulator" 是专有名词,与英文/日文版同名,直接走 i18n 也能输出 LE,
+ * 不再硬编码字面值,保证排序、扫描操作等条目跟随语言切换。
+ */
 const SECTIONS = [
-  { id: "appearance", label: "外观" },
-  { id: "scan-roots", label: "扫描根目录" },
-  { id: "single-add", label: "添加单个游戏" },
-  { id: "le", label: "Locale Emulator" },
-  { id: "tags", label: "标签管理" },
-  { id: "scan-ops", label: "扫描操作" },
-  { id: "ui", label: "UI 偏好" },
-  { id: "debug", label: "调试" },
-  { id: "about", label: "关于" },
+  { id: "appearance", i18nKey: "settings.section.appearance" },
+  { id: "scan-roots", i18nKey: "settings.section.scan_roots" },
+  { id: "single-add", i18nKey: "settings.section.single_add" },
+  { id: "le", i18nKey: "settings.section.le" },
+  { id: "tags", i18nKey: "settings.section.tags" },
+  { id: "scan-ops", i18nKey: "settings.section.scan_ops" },
+  { id: "ui", i18nKey: "settings.section.ui" },
+  { id: "debug", i18nKey: "settings.section.debug" },
+  { id: "about", i18nKey: "settings.section.about" },
 ] as const;
 
 export function Settings() {
+  const { t } = useTranslation();
   const scanRoots = useLibraryStore((s) => s.scanRoots);
   const setScanRoots = useLibraryStore((s) => s.setScanRoots);
   const navigate = useNavigate();
@@ -137,16 +144,16 @@ export function Settings() {
         multiple: false,
       });
     } catch (e: unknown) {
-      toast.error(`打开文件选择失败 — ${String(e)}`);
+      toast.error(t("toast.pick_file_failed", { err: String(e) }));
       return;
     }
     if (typeof picked !== "string") return;
     try {
       await applyLePath(picked);
       setLePath(picked);
-      toast.success("已设置 LE 路径");
+      toast.success(t("toast.le_set"));
     } catch (e: unknown) {
-      toast.error(`设置失败 — ${String(e)}`);
+      toast.error(t("toast.set_failed", { err: String(e) }));
     }
   }
 
@@ -155,7 +162,7 @@ export function Settings() {
     try {
       picked = await openDialog({ directory: true, multiple: false });
     } catch (e: unknown) {
-      toast.error(`打开目录选择失败 — ${String(e)}`);
+      toast.error(t("toast.pick_dir_failed", { err: String(e) }));
       return;
     }
     if (typeof picked !== "string") return;
@@ -163,9 +170,9 @@ export function Settings() {
       await addScanRoot(picked, 1);
       const rs = await listScanRoots();
       setScanRoots(rs);
-      toast.success("已添加根目录");
+      toast.success(t("toast.root_added"));
     } catch (e: unknown) {
-      toast.error(`添加失败 — ${String(e)}`);
+      toast.error(t("toast.add_failed", { err: String(e) }));
     }
   }
 
@@ -174,7 +181,7 @@ export function Settings() {
     try {
       picked = await openDialog({ directory: true, multiple: false });
     } catch (e: unknown) {
-      toast.error(`打开目录选择失败 — ${String(e)}`);
+      toast.error(t("toast.pick_dir_failed", { err: String(e) }));
       return;
     }
     if (typeof picked !== "string") return;
@@ -190,9 +197,9 @@ export function Settings() {
       useLibraryStore.getState().setSidebar(sidebar);
     })();
     toast.promise(job, {
-      loading: `正在添加 ${basename} ...`,
-      success: "已添加游戏",
-      error: (e) => `添加失败 — ${String(e)}`,
+      loading: t("toast.adding_basename", { basename }),
+      success: t("toast.game_added"),
+      error: (e) => t("toast.add_failed", { err: String(e) }),
     });
     try {
       await job;
@@ -208,9 +215,9 @@ export function Settings() {
       await removeScanRoot(id);
       const rs = await listScanRoots();
       setScanRoots(rs);
-      toast.success("已移除根目录");
+      toast.success(t("toast.root_removed"));
     } catch (e: unknown) {
-      toast.error(`移除失败 — ${String(e)}`);
+      toast.error(t("toast.remove_failed", { err: String(e) }));
     }
   }
 
@@ -226,7 +233,7 @@ export function Settings() {
       const rs = await listScanRoots();
       setScanRoots(rs);
     } catch (e: unknown) {
-      toast.error(`修改深度失败 — ${String(e)}`);
+      toast.error(t("toast.depth_failed", { err: String(e) }));
     }
   }
 
@@ -241,23 +248,23 @@ export function Settings() {
       useLibraryStore.getState().setGames(games);
       useLibraryStore.getState().setSidebar(sidebar);
       setScanRoots(roots);
-      toast.success("已清除所有数据");
+      toast.success(t("toast.data_cleared"));
     } catch (e: unknown) {
-      toast.error(`清除失败 — ${String(e)}`);
+      toast.error(t("toast.clear_failed", { err: String(e) }));
     }
   }
 
   async function onScan() {
     if (scanRoots.length === 0) {
-      toast.error("请先添加至少一个扫描根目录");
+      toast.error(t("toast.need_root_first"));
       return;
     }
     try {
       await startScan("full");
-      toast.info("扫描已启动");
+      toast.info(t("toast.scan_started_info"));
       navigate("/");
     } catch (e: unknown) {
-      toast.error(`启动扫描失败 — ${String(e)}`);
+      toast.error(t("toast.start_scan_failed", { err: String(e) }));
     }
   }
 
@@ -269,13 +276,13 @@ export function Settings() {
     store.setMetaRefreshActive(true);
     try {
       await refreshMetadataSmart();
-      toast.info("刷新元数据已启动");
+      toast.info(t("toast.refresh_started"));
       navigate("/");
     } catch (e: unknown) {
       // IPC failed to even spawn the task — no terminal event will arrive,
       // so reset the flag here to avoid a stuck library-wide pulse.
       store.setMetaRefreshActive(false);
-      toast.error(`启动失败 — ${String(e)}`);
+      toast.error(t("toast.launch_failed", { err: String(e) }));
     }
   }
 
@@ -290,7 +297,7 @@ export function Settings() {
         {/* ── Left nav ────────────────────────────────────────────── */}
         <nav className="sticky top-10 self-start border-r border-line pl-6 pr-6">
           <div className="mb-3 font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-3">
-            设置
+            {t("settings.nav_header")}
           </div>
           {SECTIONS.map((s) => {
             const on = activeSection === s.id;
@@ -307,7 +314,7 @@ export function Settings() {
                 )}
                 style={{ borderRadius: "var(--r-sm)" }}
               >
-                <span>{s.label}</span>
+                <span>{t(s.i18nKey)}</span>
               </button>
             );
           })}
@@ -334,36 +341,45 @@ export function Settings() {
             </div>
             <div className="min-w-0">
               <div className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-3">
-                设置 / Preferences
+                {t("settings.nav_header")} / Preferences
               </div>
               <h1 className="mt-0.5 font-serif text-[26px] font-medium text-ink-0">
-                偏好与配置
+                {t("settings.page_title")}
               </h1>
               <div className="mt-1 font-mono text-[11px] text-ink-2">
-                所有数据存储在 portable `data/` 目录 · 共 {totalRoots} 个扫描根
+                {t("settings.page_sub", { count: totalRoots })}
               </div>
             </div>
           </header>
 
           <Section
             id="appearance"
-            title="外观"
-            lede="主题 / 强调色 / 圆角 / 侧栏宽度 / 封面密度"
+            title={t("settings.section.appearance")}
+            lede={t("settings.section.appearance_lede")}
             sectionRefs={sectionRefs}
           >
             <p className="font-sans text-[12.5px] leading-[1.7] text-ink-1">
-              通过屏幕右下浮动 <span className="font-serif text-brand">Tweaks</span> 面板调整
-              5 个外观维度，所有偏好实时生效并保存到 localStorage。
+              {(() => {
+                const body = t("settings.section.appearance_body");
+                const parts = body.split(/<0>|<\/0>/);
+                return (
+                  <>
+                    {parts[0]}
+                    <span className="font-serif text-brand">{parts[1] ?? "Tweaks"}</span>
+                    {parts[2]}
+                  </>
+                );
+              })()}
             </p>
             <p className="mt-2 font-mono text-[11px] text-ink-3">
-              提示：滑块/分段控件就在面板里，不需要在这里复制一份开关。
+              {t("settings.section.appearance_hint")}
             </p>
           </Section>
 
           <Section
             id="scan-roots"
-            title="扫描根目录"
-            lede="gal-lib 会扫描这些目录下的游戏"
+            title={t("settings.section.scan_roots")}
+            lede={t("settings.section.scan_roots_lede")}
             sectionRefs={sectionRefs}
           >
             <div className="space-y-2">
@@ -372,7 +388,7 @@ export function Settings() {
                   className="border border-dashed border-line bg-bg-1 p-8 text-center font-mono text-[11px] text-ink-3"
                   style={{ borderRadius: "var(--r-md)" }}
                 >
-                  还没有根目录 — 点下方按钮添加
+                  {t("settings.scan_roots.empty")}
                 </div>
               ) : (
                 scanRoots.map((r) => (
@@ -400,16 +416,16 @@ export function Settings() {
                         <SelectValue />
                       </SelectTrigger>
                       <SelectContent>
-                        <SelectItem value="1">第 1 层</SelectItem>
-                        <SelectItem value="2">第 2 层</SelectItem>
-                        <SelectItem value="3">第 3 层</SelectItem>
+                        <SelectItem value="1">{t("settings.scan_roots.depth", { n: 1 })}</SelectItem>
+                        <SelectItem value="2">{t("settings.scan_roots.depth", { n: 2 })}</SelectItem>
+                        <SelectItem value="3">{t("settings.scan_roots.depth", { n: 3 })}</SelectItem>
                       </SelectContent>
                     </Select>
                     <AlertDialog>
                       <AlertDialogTrigger asChild>
                         <button
                           type="button"
-                          aria-label="移除"
+                          aria-label={t("common.remove")}
                           className="grid h-7 w-7 place-items-center text-ink-3 transition-colors hover:bg-bg-2 hover:text-destructive"
                           style={{ borderRadius: "var(--r-sm)" }}
                         >
@@ -418,15 +434,15 @@ export function Settings() {
                       </AlertDialogTrigger>
                       <AlertDialogContent>
                         <AlertDialogHeader>
-                          <AlertDialogTitle>确定移除该根目录？</AlertDialogTitle>
+                          <AlertDialogTitle>{t("settings.scan_roots.remove_confirm_title")}</AlertDialogTitle>
                           <AlertDialogDescription>
-                            已扫描的游戏不会被删除
+                            {t("settings.scan_roots.remove_confirm_desc")}
                           </AlertDialogDescription>
                         </AlertDialogHeader>
                         <AlertDialogFooter>
-                          <AlertDialogCancel>取消</AlertDialogCancel>
+                          <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                           <AlertDialogAction onClick={() => void onRemove(r.id)}>
-                            移除
+                            {t("common.remove")}
                           </AlertDialogAction>
                         </AlertDialogFooter>
                       </AlertDialogContent>
@@ -436,33 +452,32 @@ export function Settings() {
               )}
             </div>
             <SettingButton onClick={() => void onAdd()} className="mt-3.5">
-              + 添加根目录
+              {t("settings.scan_roots.add")}
             </SettingButton>
           </Section>
 
           <Section
             id="single-add"
-            title="添加单个游戏"
-            lede="跳过扫描，直接选择某个游戏目录加入库"
+            title={t("settings.section.single_add")}
+            lede={t("settings.section.single_add_lede")}
             sectionRefs={sectionRefs}
           >
             <SettingButton
               onClick={() => void onAddSingleGame()}
               disabled={isAddingGame}
             >
-              {isAddingGame ? "正在添加..." : "选择游戏目录"}
+              {isAddingGame ? t("settings.single_add.adding") : t("settings.single_add.pick")}
             </SettingButton>
           </Section>
 
           <Section
             id="le"
-            title="Locale Emulator"
-            lede="日区转区启动器 — 已内置 LE，老 galgame 可一键 Shift-JIS 启动"
+            title={t("settings.section.le")}
+            lede={t("settings.section.le_lede")}
             sectionRefs={sectionRefs}
           >
             <p className="font-sans text-[12.5px] leading-[1.7] text-ink-1">
-              在游戏卡片右键选「用日区启动器」即可启动；首次启动会弹一次 UAC 同意框（LE 自身需要管理员权限）。
-              想换成 ntleas / LEx / 自定义批处理，在下面填入它的 exe 路径作为覆盖。
+              {t("settings.section.le_body")}
             </p>
             <div
               className="mt-3.5 grid items-center gap-2.5 border border-line bg-bg-1 px-3.5 py-2.5"
@@ -473,20 +488,20 @@ export function Settings() {
             >
               <code
                 className="truncate font-mono text-[11px] text-ink-0"
-                title={lePath ?? "默认使用内置 LE"}
+                title={lePath ?? t("settings.section.le_default_hint")}
               >
-                {lePath ?? <span className="text-ink-3">默认使用内置 LE（无需配置）</span>}
+                {lePath ?? <span className="text-ink-3">{t("settings.section.le_default_hint")}</span>}
               </code>
               <SettingButton onClick={() => void onPickLePath()}>
-                覆盖：选择启动器 .exe
+                {t("settings.section.le_override_pick")}
               </SettingButton>
             </div>
           </Section>
 
           <Section
             id="tags"
-            title="标签管理"
-            lede="自定义标签 · 颜色 · 关联游戏"
+            title={t("settings.section.tags")}
+            lede={t("settings.section.tags_lede")}
             sectionRefs={sectionRefs}
           >
             <TagManager />
@@ -494,24 +509,24 @@ export function Settings() {
 
           <Section
             id="scan-ops"
-            title="扫描操作"
-            lede="扫描发现并匹配新游戏；刷新元数据对已收录游戏重抓元数据（已绑定的按 ID 直拉、未绑定的走模糊匹配）"
+            title={t("settings.section.scan_ops")}
+            lede={t("settings.section.scan_ops_lede")}
             sectionRefs={sectionRefs}
           >
             <div className="flex flex-wrap gap-2.5">
               <SettingButton primary onClick={() => void onScan()}>
-                扫描
+                {t("settings.section.scan_ops_btn_scan")}
               </SettingButton>
               <SettingButton onClick={() => void onRefreshMetadata()}>
-                刷新元数据
+                {t("settings.section.scan_ops_btn_refresh")}
               </SettingButton>
             </div>
           </Section>
 
           <Section
             id="ui"
-            title="UI 偏好"
-            lede="默认排序 · 主题（占位）"
+            title={t("settings.section.ui")}
+            lede={t("settings.section.ui_lede")}
             sectionRefs={sectionRefs}
           >
             <UIPreferences />
@@ -519,8 +534,8 @@ export function Settings() {
 
           <Section
             id="debug"
-            title="调试"
-            lede="清除所有游戏 · 扫描根 · 会话与封面/截图/存档备份（保留标签与 LE 路径）"
+            title={t("settings.section.debug")}
+            lede={t("settings.section.debug_lede")}
             sectionRefs={sectionRefs}
           >
             <AlertDialog>
@@ -530,20 +545,20 @@ export function Settings() {
                   className="inline-flex h-8 items-center border border-destructive/40 bg-destructive/10 px-4 text-[12.5px] text-destructive transition-colors hover:bg-destructive/20"
                   style={{ borderRadius: "var(--r-md)" }}
                 >
-                  清除所有数据
+                  {t("settings.section.debug_clear")}
                 </button>
               </AlertDialogTrigger>
               <AlertDialogContent>
                 <AlertDialogHeader>
-                  <AlertDialogTitle>确定清除所有数据？</AlertDialogTitle>
+                  <AlertDialogTitle>{t("settings.section.debug_clear_confirm_title")}</AlertDialogTitle>
                   <AlertDialogDescription>
-                    此操作不可撤销，将删除全部游戏、扫描根、会话历史与缓存文件
+                    {t("settings.section.debug_clear_confirm_desc")}
                   </AlertDialogDescription>
                 </AlertDialogHeader>
                 <AlertDialogFooter>
-                  <AlertDialogCancel>取消</AlertDialogCancel>
+                  <AlertDialogCancel>{t("common.cancel")}</AlertDialogCancel>
                   <AlertDialogAction onClick={() => void onClearAllData()}>
-                    清除
+                    {t("settings.section.debug_clear_action")}
                   </AlertDialogAction>
                 </AlertDialogFooter>
               </AlertDialogContent>
@@ -552,8 +567,8 @@ export function Settings() {
 
           <Section
             id="about"
-            title="关于"
-            lede="版本 · 检查更新 · 致谢"
+            title={t("settings.section.about")}
+            lede={t("settings.section.about_lede")}
             sectionRefs={sectionRefs}
           >
             <AboutSection />

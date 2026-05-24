@@ -11,6 +11,11 @@ export type Radius = "sharp" | "soft";
 export type SidebarWidth = "icon" | "narrow" | "regular" | "wide";
 export type ViewMode = "grid" | "list";
 export type Density = "small" | "medium" | "large";
+/**
+ * Quick 260524-olt — UI 语言（i18next 用同名 lng）。
+ * 注意：preferences.ts 不能 import i18n.ts(单向依赖)，因此此处独立定义类型。
+ */
+export type SupportedLng = "zh-CN" | "ja-JP" | "en-US";
 
 export interface Preferences {
   theme: Theme;
@@ -24,6 +29,12 @@ export interface Preferences {
    * `updater.check()` 5 s after launch. Errors swallowed.
    */
   autoCheckUpdate: boolean;
+  /**
+   * Quick 260524-olt — 界面语言，与 i18n.ts 的 lng 同步。
+   * 默认 "zh-CN"；首次启动若 localStorage 为空，i18n.ts 的 detectInitialLng
+   * 会进一步根据 navigator.language 选择更合适的语言（不写回 prefs）。
+   */
+  language: SupportedLng;
 }
 
 export const DEFAULT_PREFS: Preferences = {
@@ -34,6 +45,7 @@ export const DEFAULT_PREFS: Preferences = {
   density: "medium",
   viewMode: "grid",
   autoCheckUpdate: true,
+  language: "zh-CN",
 };
 
 export const THEMES: Theme[] = ["midnight", "papyrus", "ink"];
@@ -47,6 +59,7 @@ export const SIDEBAR_WIDTHS: SidebarWidth[] = [
 ];
 export const DENSITIES: Density[] = ["small", "medium", "large"];
 export const VIEW_MODES: ViewMode[] = ["grid", "list"];
+export const SUPPORTED_LNGS: SupportedLng[] = ["zh-CN", "ja-JP", "en-US"];
 
 const STORAGE_KEY = "gal-lib:prefs";
 
@@ -63,6 +76,8 @@ const isDensity = (v: unknown): v is Density =>
 const isViewMode = (v: unknown): v is ViewMode =>
   typeof v === "string" && (VIEW_MODES as string[]).includes(v);
 const isBool = (v: unknown): v is boolean => typeof v === "boolean";
+const isLanguage = (v: unknown): v is SupportedLng =>
+  typeof v === "string" && (SUPPORTED_LNGS as string[]).includes(v);
 
 /** Read preferences from localStorage, validating each axis against its enum. */
 export function loadPreferences(): Preferences {
@@ -87,6 +102,9 @@ export function loadPreferences(): Preferences {
       autoCheckUpdate: isBool(parsed.autoCheckUpdate)
         ? parsed.autoCheckUpdate
         : DEFAULT_PREFS.autoCheckUpdate,
+      language: isLanguage(parsed.language)
+        ? parsed.language
+        : DEFAULT_PREFS.language,
     };
   } catch (e: unknown) {
     // WR-04 fix: log the parse failure so a corrupted localStorage key

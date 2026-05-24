@@ -1,6 +1,7 @@
 import { useEffect } from "react";
 import { Outlet } from "react-router-dom";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { TitlebarSlot } from "@/components/layout/TitlebarSlot";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TweaksPanel } from "@/components/tweaks/TweaksPanel";
@@ -29,6 +30,7 @@ import { usePreferencesStore } from "@/store/preferences";
  * the effect only runs once in practice.
  */
 export default function App() {
+  const { t } = useTranslation();
   const setDataDir = useAppStore((s) => s.setDataDir);
   const autoCheckUpdate = usePreferencesStore((s) => s.autoCheckUpdate);
 
@@ -61,11 +63,11 @@ export default function App() {
       void checkForUpdates({ silent: true }).then((state) => {
         if (cancelled) return;
         if (state.phase === "ready") {
-          toast.success(`更新已就绪 v${state.version}`, {
-            description: "下次启动生效，或立即重启应用",
+          toast.success(t("toast.update_ready", { version: state.version }), {
+            description: t("toast.update_ready_desc"),
             duration: Infinity,
             action: {
-              label: "立即重启",
+              label: t("toast.restart_now"),
               onClick: () => {
                 void relaunchApp();
               },
@@ -78,7 +80,7 @@ export default function App() {
       cancelled = true;
       clearTimeout(handle);
     };
-  }, [autoCheckUpdate]);
+  }, [autoCheckUpdate, t]);
 
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">

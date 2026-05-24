@@ -1,9 +1,13 @@
 import "./index.css";
+// Quick 260524-olt — 触发 i18next.init() 同步完成；之后任何 useTranslation()
+// 都能拿到已就绪 instance，无需 <Suspense> 等待。必须排在所有 React 入口前。
+import "./i18n";
 import { createRoot } from "react-dom/client";
 import { RouterProvider } from "react-router-dom";
 import { router } from "./router";
 import { Toaster } from "@/components/ui/sonner";
 import { toast } from "sonner";
+import i18n from "@/i18n";
 import { applyPreferences, loadPreferences } from "@/lib/preferences";
 
 // v1.1 — apply persisted theme/accent/radius/sidebar/density to <html>
@@ -183,11 +187,11 @@ const TRAY_TOAST_DISMISSED_KEY = "gal-lib:tray-toast-dismissed";
 registerOnce("close-to-tray", () =>
   onCloseToTray(() => {
     if (localStorage.getItem(TRAY_TOAST_DISMISSED_KEY) === "1") return;
-    toast.info("已最小化到系统托盘", {
-      description: "应用仍在后台运行；右键托盘图标可恢复或退出",
+    toast.info(i18n.t("toast.tray_minimized_title"), {
+      description: i18n.t("toast.tray_minimized_desc"),
       duration: 6000,
       action: {
-        label: "不再提示",
+        label: i18n.t("toast.tray_dismiss"),
         onClick: () => {
           localStorage.setItem(TRAY_TOAST_DISMISSED_KEY, "1");
         },
