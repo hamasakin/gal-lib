@@ -74,17 +74,23 @@ export function isAdvFilterActive(f: AdvancedFilter): boolean {
   );
 }
 
-/** Number of independent slices currently constraining the result. */
+/**
+ * 累计「已选条目」总数（不是活跃维度数）—— 多选维度按 Set.size 计入，
+ * 单值维度（rating range / reviewOnly）作为 1 计入。
+ *
+ * Quick 260524-dlr：用户期望搜索栏选了 3 个品牌 + 2 个声优时，筛选按钮
+ * 角标显示 5。旧实现按「活跃维度数」算只显示 2，与直觉不符。
+ */
 export function countActiveSlices(f: AdvancedFilter): number {
   let n = 0;
-  if (f.statuses.size > 0) n++;
-  if (f.ratingMin != null || f.ratingMax != null) n++;
-  if (f.years.size > 0) n++;
-  if (f.durations.size > 0) n++;
-  if (f.reviewOnly) n++;
-  if (f.brands.size > 0) n++;
-  if (f.staffIds.size > 0) n++;
-  if (f.officialTags.size > 0) n++;
+  n += f.statuses.size;
+  if (f.ratingMin != null || f.ratingMax != null) n += 1;
+  n += f.years.size;
+  n += f.durations.size;
+  if (f.reviewOnly) n += 1;
+  n += f.brands.size;
+  n += f.staffIds.size;
+  n += f.officialTags.size;
   return n;
 }
 
