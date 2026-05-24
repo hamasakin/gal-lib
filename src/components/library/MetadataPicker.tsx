@@ -50,6 +50,11 @@ import { type Game } from "@/lib/games";
 import { useLibraryStore } from "@/store/library";
 import { getSidebarCategories, searchGames } from "@/lib/search";
 import { displayGameName } from "@/lib/display";
+import {
+  bangumiSubjectUrl,
+  openExternalUrl,
+  vndbVnUrl,
+} from "@/lib/persons";
 
 interface MetadataPickerProps {
   /** When non-null the dialog is open; null closes. */
@@ -297,9 +302,24 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                     c.title,
                     c.alias.length > 0 ? `别名：${c.alias.join(" · ")}` : null,
                     c.summary && c.summary.trim().length > 0 ? c.summary : null,
+                    "(双击打开源数据页)",
                   ]
                     .filter(Boolean)
                     .join("\n\n");
+                  // Quick 260524-dlr — 双击直接外开 Bangumi / VNDB 源页面。
+                  // openExternalUrl 后端只放行 http(s)，已经把不合法 source
+                  // 兜底成 bangumi，所以这里再做一次窄化保险。
+                  function openSourcePage() {
+                    const src: "bangumi" | "vndb" =
+                      c.source === "vndb" ? "vndb" : "bangumi";
+                    const url =
+                      src === "vndb"
+                        ? vndbVnUrl(c.source_id)
+                        : bangumiSubjectUrl(c.source_id);
+                    void openExternalUrl(url).catch((e: unknown) => {
+                      toast.error(`打开失败 — ${String(e)}`);
+                    });
+                  }
                   return (
                     <li key={`${c.source}-${c.source_id}`} className="w-full min-w-0 max-w-full">
                       <button
@@ -311,6 +331,7 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                             sourceId: c.source_id,
                           })
                         }
+                        onDoubleClick={openSourcePage}
                         className={`flex w-full min-w-0 max-w-full items-start gap-3 overflow-hidden border p-3 text-left transition ${
                           isSelected
                             ? "border-brand bg-brand-soft border-l-[3px]"
