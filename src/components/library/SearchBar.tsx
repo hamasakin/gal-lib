@@ -111,27 +111,49 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
     return () => clearTimeout(t);
   }, [value, storeQuery, setSearchQuery, kind]);
 
-  // 切换 kind 时清 input；name → 其他时把 store.searchQuery 也清掉。
+  // Ctrl+K（Win 项目）/ ⌘+K（Mac 兼容）→ 聚焦搜索框；input 已聚焦则一并选中
+  // 内容便于直接覆盖输入。捕获 input/textarea 内按下，便于无论焦点在哪都生效。
+  useEffect(() => {
+    function onKey(e: KeyboardEvent) {
+      const isK = e.key === "k" || e.key === "K";
+      if (!isK) return;
+      if (!(e.ctrlKey || e.metaKey)) return;
+      if (e.altKey || e.shiftKey) return;
+      e.preventDefault();
+      const el = inputRef.current;
+      if (!el) return;
+      el.focus();
+      el.select();
+    }
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, []);
+
+  // 切换 kind 时清 input；name → 其他时把 store.searchQuery 也清掉；切到
+  // 非 name 时自动开下拉显示该类型全部候选（前 N 项），便于无需输入即点选。
   function onKindChange(next: SearchKind) {
     if (next === kind) return;
     setKind(next);
     setValue("");
-    setDropdownOpen(false);
     if (kind === "name" && storeQuery !== "") setSearchQuery("");
-    // 切完聚焦回输入框
+    setDropdownOpen(next !== "name");
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
-  // 候选列表 —— 仅在非 name 且有 query 时计算。
+  // 候选列表 —— 非 name 模式下持续返回前 CANDIDATE_CAP 项（已选项排除），
+  // 有 query 则在已过滤集合上再做 fuzzy 包含匹配。input 清空仍展示「全部
+  // 候选」，便于用户连续多选而不需要再次输入关键词。
   const candidates = useMemo<Candidate[]>(() => {
     if (kind === "name") return [];
-    const q = value.trim().toLowerCase();
-    if (q === "") return [];
     if (!filterOptions) return [];
+    const q = value.trim().toLowerCase();
     if (kind === "brand") {
       const selected = advFilter.brands;
       return filterOptions.brands
-        .filter((b) => !selected.has(b.name) && b.name.toLowerCase().includes(q))
+        .filter((b) => {
+          if (selected.has(b.name)) return false;
+          return q === "" || b.name.toLowerCase().includes(q);
+        })
         .slice(0, CANDIDATE_CAP)
         .map<BrandCandidate>((b) => ({
           kind: "brand",
@@ -145,6 +167,7 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
       return filterOptions.voices
         .filter((p: PersonOption) => {
           if (selected.has(p.id)) return false;
+          if (q === "") return true;
           const cn = (p.name_cn ?? "").toLowerCase();
           return p.name.toLowerCase().includes(q) || cn.includes(q);
         })
@@ -161,7 +184,10 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
     // tag
     const selected = advFilter.officialTags;
     return filterOptions.official_tags
-      .filter((t) => !selected.has(t.name) && t.name.toLowerCase().includes(q))
+      .filter((t) => {
+        if (selected.has(t.name)) return false;
+        return q === "" || t.name.toLowerCase().includes(q);
+      })
       .slice(0, CANDIDATE_CAP)
       .map<TagCandidate>((t) => ({
         kind: "tag",
@@ -171,14 +197,11 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
       }));
   }, [kind, value, filterOptions, advFilter]);
 
-  // value / kind 改变时根据是否有候选自动开下拉。
+  // 切到 name 模式强制关下拉；其他模式由用户主动操作（focus / Esc / X /
+  // 容器外点击）控制开关，pickCandidate 后保持打开以支持连续多选。
   useEffect(() => {
-    if (kind === "name") {
-      setDropdownOpen(false);
-      return;
-    }
-    setDropdownOpen(value.trim() !== "");
-  }, [kind, value]);
+    if (kind === "name") setDropdownOpen(false);
+  }, [kind]);
 
   // 点击容器外关闭下拉（避免和 input 失焦逻辑打架）。
   useEffect(() => {
@@ -208,7 +231,9 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
       setAdvFilter({ ...advFilter, officialTags: next });
     }
     setValue("");
-    // 保留 focus，便于继续追加
+    // 多选：保留下拉打开 + 焦点，便于连续追加；已选项会立刻在 candidates
+    // useMemo 里被排除，列表自然刷新。
+    setDropdownOpen(true);
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
@@ -283,10 +308,13 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
             ref={inputRef}
             type="text"
             value={value}
-            onChange={(e) => setValue(e.currentTarget.value)}
+            onChange={(e) => {
+              setValue(e.currentTarget.value);
+              if (kind !== "name") setDropdownOpen(true);
+            }}
             onKeyDown={onInputKeyDown}
             onFocus={() => {
-              if (kind !== "name" && value.trim() !== "") setDropdownOpen(true);
+              if (kind !== "name") setDropdownOpen(true);
             }}
             placeholder={KIND_PLACEHOLDER[kind]}
             aria-label={`按${KIND_LABEL_MAP[kind]}搜索`}
