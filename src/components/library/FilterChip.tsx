@@ -5,17 +5,20 @@
  */
 
 import { X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useLibraryStore } from "@/store/library";
 import { cn } from "@/lib/utils";
 
-const STATUS_LABELS: Record<
+// module-level 仅放 i18n key 配对，render 时通过 t() 解析，避免 i18n 未 ready
+// 时被冻成中文。复用 detail.status.* namespace。
+const STATUS_LABEL_KEY: Record<
   "unplayed" | "playing" | "cleared" | "dropped",
   string
 > = {
-  unplayed: "未游玩",
-  playing: "游玩中",
-  cleared: "已通关",
-  dropped: "已弃",
+  unplayed: "detail.status.unplayed",
+  playing: "detail.status.playing",
+  cleared: "detail.status.cleared",
+  dropped: "detail.status.dropped",
 };
 
 interface ChipDescriptor {
@@ -24,6 +27,7 @@ interface ChipDescriptor {
 }
 
 export function FilterChip() {
+  const { t } = useTranslation();
   const filter = useLibraryStore((s) => s.filter);
   const setFilter = useLibraryStore((s) => s.setFilter);
   const tags = useLibraryStore((s) => s.tags);
@@ -31,27 +35,34 @@ export function FilterChip() {
   const chips: ChipDescriptor[] = [];
 
   if (filter.tag_id != null) {
-    const tag = tags.find((t) => t.id === filter.tag_id);
+    const tag = tags.find((tt) => tt.id === filter.tag_id);
     chips.push({
       slice: "tag_id",
-      label: `标签 · ${tag?.name ?? `#${filter.tag_id}`}`,
+      label: t("filter_chip.tag", {
+        name: tag?.name ?? `#${filter.tag_id}`,
+      }),
     });
   }
   if (filter.status != null) {
     chips.push({
       slice: "status",
-      label: `状态 · ${STATUS_LABELS[filter.status]}`,
+      label: t("filter_chip.status", {
+        label: t(STATUS_LABEL_KEY[filter.status]),
+      }),
     });
   }
   // 收藏 chip omitted here — StatusFilterChips already exposes it as a
   // top-level toggle. Showing it twice would be redundant.
   if (filter.brand != null && filter.brand !== "") {
-    chips.push({ slice: "brand", label: `品牌 · ${filter.brand}` });
+    chips.push({
+      slice: "brand",
+      label: t("filter_chip.brand", { name: filter.brand }),
+    });
   }
   if (filter.year_decade != null) {
     chips.push({
       slice: "year_decade",
-      label: `年代 · ${filter.year_decade}s`,
+      label: t("filter_chip.decade", { decade: filter.year_decade }),
     });
   }
 
@@ -77,7 +88,7 @@ export function FilterChip() {
           <button
             type="button"
             onClick={() => clearSlice(chip.slice)}
-            aria-label={`清除筛选 — ${chip.label}`}
+            aria-label={t("filter_chip.clear_aria", { label: chip.label })}
             className="grid h-4 w-4 place-items-center rounded-sm text-ink-2 hover:text-ink-0"
           >
             <X size={11} aria-hidden />

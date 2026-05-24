@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Search, X, ChevronDown } from "lucide-react";
 import { useLibraryStore } from "@/store/library";
 import {
@@ -36,28 +37,30 @@ const CANDIDATE_CAP = 12;
 type SearchKind = "name" | "brand" | "artist" | "voice" | "tag";
 type FacetKind = Exclude<SearchKind, "name">;
 
-const KIND_OPTIONS: Array<{ value: SearchKind; label: string }> = [
-  { value: "name", label: "游戏名" },
-  { value: "brand", label: "品牌" },
-  { value: "artist", label: "画师" },
-  { value: "voice", label: "声优" },
-  { value: "tag", label: "标签" },
+// module-level 常量改 i18nKey 配对（render 时用 t() 解析），避免 i18n 未 ready
+// 时被冻成中文。
+const KIND_OPTIONS: Array<{ value: SearchKind; i18nKey: string }> = [
+  { value: "name", i18nKey: "search_bar.kind.name" },
+  { value: "brand", i18nKey: "search_bar.kind.brand" },
+  { value: "artist", i18nKey: "search_bar.kind.artist" },
+  { value: "voice", i18nKey: "search_bar.kind.voice" },
+  { value: "tag", i18nKey: "search_bar.kind.tag" },
 ];
 
-const KIND_LABEL_MAP: Record<SearchKind, string> = {
-  name: "游戏名",
-  brand: "品牌",
-  artist: "画师",
-  voice: "声优",
-  tag: "标签",
+const KIND_LABEL_KEY: Record<SearchKind, string> = {
+  name: "search_bar.kind.name",
+  brand: "search_bar.kind.brand",
+  artist: "search_bar.kind.artist",
+  voice: "search_bar.kind.voice",
+  tag: "search_bar.kind.tag",
 };
 
-const KIND_PLACEHOLDER: Record<SearchKind, string> = {
-  name: "搜索游戏 / 标签 / 品牌…",
-  brand: "输入品牌关键字…",
-  artist: "输入画师关键字…",
-  voice: "输入声优关键字…",
-  tag: "输入标签关键字…",
+const KIND_PLACEHOLDER_KEY: Record<SearchKind, string> = {
+  name: "search_bar.placeholder.name",
+  brand: "search_bar.placeholder.brand",
+  artist: "search_bar.placeholder.artist",
+  voice: "search_bar.placeholder.voice",
+  tag: "search_bar.placeholder.tag",
 };
 
 interface SearchBarProps {
@@ -99,6 +102,7 @@ function emptyDraft(): DraftSets {
 }
 
 export function SearchBar({ filterOptions }: SearchBarProps) {
+  const { t } = useTranslation();
   const storeQuery = useLibraryStore((s) => s.searchQuery);
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
   const advFilter = useLibraryStore((s) => s.advFilter);
@@ -353,10 +357,10 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
               type="button"
               className="inline-flex items-center gap-1 border-r border-line px-2.5 font-mono text-[11px] text-ink-1 transition-colors hover:bg-bg-1 hover:text-ink-0"
               style={{ borderTopLeftRadius: "var(--r-md)", borderBottomLeftRadius: "var(--r-md)" }}
-              title="搜索类型"
-              aria-label={`搜索类型：${KIND_LABEL_MAP[kind]}`}
+              title={t("search_bar.kind_select")}
+              aria-label={t("search_bar.kind_select_aria", { kind: t(KIND_LABEL_KEY[kind]) })}
             >
-              <span>{KIND_LABEL_MAP[kind]}</span>
+              <span>{t(KIND_LABEL_KEY[kind])}</span>
               <ChevronDown size={11} strokeWidth={1.8} className="opacity-70" />
             </button>
           </DropdownMenuTrigger>
@@ -370,7 +374,7 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
                   kind === opt.value && "text-brand",
                 )}
               >
-                {opt.label}
+                {t(opt.i18nKey)}
               </DropdownMenuItem>
             ))}
           </DropdownMenuContent>
@@ -396,16 +400,16 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
             onFocus={() => {
               if (kind !== "name") setDropdownOpen(true);
             }}
-            placeholder={KIND_PLACEHOLDER[kind]}
-            aria-label={`按${KIND_LABEL_MAP[kind]}搜索`}
+            placeholder={t(KIND_PLACEHOLDER_KEY[kind])}
+            aria-label={t("search_bar.input_aria", { kind: t(KIND_LABEL_KEY[kind]) })}
             className="h-full w-full bg-transparent pl-8 pr-16 text-[12.5px] text-ink-0 outline-none placeholder:text-ink-3"
           />
           {hasValue ? (
             <button
               type="button"
               onClick={onClear}
-              aria-label="清空搜索"
-              title="清空"
+              aria-label={t("search_bar.clear_aria")}
+              title={t("search_bar.clear")}
               className="absolute right-2 top-1/2 grid h-5 w-5 -translate-y-1/2 place-items-center text-ink-3 transition-colors hover:bg-bg-1 hover:text-ink-0"
               style={{ borderRadius: "var(--r-sm)" }}
             >
@@ -415,7 +419,7 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
             <span
               className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 border border-line px-1 font-mono text-[9.5px] text-ink-3"
               style={{ borderRadius: "var(--r-sm)" }}
-              title="Ctrl+K 聚焦搜索框"
+              title={t("search_bar.shortcut_hint")}
             >
               Ctrl+K
             </span>
@@ -433,7 +437,9 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
           <div className="flex-1 overflow-y-auto">
             {candidates.length === 0 ? (
               <div className="px-3 py-2.5 font-mono text-[10.5px] text-ink-3">
-                {filterOptions == null ? "加载候选中…" : "无匹配候选"}
+                {filterOptions == null
+                  ? t("search_bar.candidates_loading")
+                  : t("search_bar.no_candidates")}
               </div>
             ) : (
               <ul className="flex flex-col py-1">
@@ -450,7 +456,23 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
                           "flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-ink-1 transition-colors hover:bg-bg-2 hover:text-ink-0",
                           on && "text-ink-0",
                         )}
-                        title={candidateTooltip(c)}
+                        title={
+                          c.kind === "voice" || c.kind === "artist"
+                            ? c.nameCn && c.nameCn !== c.name
+                              ? t("filter_panel.tooltip.person_cn", {
+                                  cn: c.nameCn,
+                                  name: c.name,
+                                  count: c.count,
+                                })
+                              : t("filter_panel.tooltip.person", {
+                                  name: c.nameCn ?? c.name,
+                                  count: c.count,
+                                })
+                            : t("filter_panel.tooltip.works", {
+                                name: c.name,
+                                count: c.count,
+                              })
+                        }
                       >
                         <CheckBox on={on} />
                         <span className="min-w-0 flex-1 truncate">
@@ -466,7 +488,7 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
                             )}
                         </span>
                         <span className="shrink-0 font-mono text-[10px] text-ink-3">
-                          {c.count} 部
+                          {t("search_bar.candidate_count", { count: c.count })}
                         </span>
                       </button>
                     </li>
@@ -476,12 +498,12 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
             )}
           </div>
           <div className="flex items-center justify-between border-t border-line bg-bg-0 px-3 py-2">
-            <span className="font-mono text-[10.5px] text-ink-3">
-              已选 <span className={cn(draftSize > 0 && "text-ink-0")}>{draftSize}</span> 项
+            <span className={cn("font-mono text-[10.5px] text-ink-3", draftSize > 0 && "text-ink-0")}>
+              {t("search_bar.selected", { count: draftSize })}
               {appliedSize > 0 && !dirty && (
-                <span className="ml-1.5 text-ink-3">·已应用</span>
+                <span className="ml-1.5 text-ink-3">{t("search_bar.applied")}</span>
               )}
-              {dirty && <span className="ml-1.5 text-[#ffd166]">·未应用</span>}
+              {dirty && <span className="ml-1.5 text-[#ffd166]">{t("search_bar.pending")}</span>}
             </span>
             <div className="flex items-center gap-1.5">
               <button
@@ -490,7 +512,7 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
                 className="inline-flex h-7 items-center px-3 font-mono text-[11px] text-ink-2 transition-colors hover:bg-bg-2 hover:text-ink-0"
                 style={{ borderRadius: "var(--r-sm)" }}
               >
-                取消
+                {t("common.cancel")}
               </button>
               <button
                 type="button"
@@ -498,7 +520,7 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
                 className="inline-flex h-7 items-center px-3 text-[11px] font-medium text-[var(--accent-on)]"
                 style={{ background: "var(--accent)", borderRadius: "var(--r-sm)" }}
               >
-                确定
+                {t("common.confirm")}
               </button>
             </div>
           </div>
@@ -605,13 +627,4 @@ function setsEqual(a: Set<string | number>, b: Set<string | number>): boolean {
   if (a.size !== b.size) return false;
   for (const x of a) if (!b.has(x)) return false;
   return true;
-}
-
-function candidateTooltip(c: Candidate): string {
-  if (c.kind === "voice" || c.kind === "artist") {
-    const cn = c.nameCn ?? c.name;
-    if (c.nameCn && c.nameCn !== c.name) return `${cn}（${c.name}）— ${c.count} 部`;
-    return `${cn} — ${c.count} 部`;
-  }
-  return `${c.name} — ${c.count} 部作品`;
 }

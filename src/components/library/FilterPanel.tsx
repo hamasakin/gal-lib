@@ -18,6 +18,7 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ListFilter, X } from "lucide-react";
 import {
   Popover,
@@ -53,19 +54,21 @@ interface FilterPanelProps {
  */
 const CHIP_CAP = 60;
 
-const STATUS_OPTIONS: Array<{ value: Game["status"]; label: string }> = [
-  { value: "playing", label: "游玩中" },
-  { value: "cleared", label: "已通关" },
-  { value: "unplayed", label: "未开始" },
-  { value: "dropped", label: "弃坑" },
+// module-level 常量改 i18nKey 配对（render 时用 t() 解析），避免 i18n 未 ready
+// 时被冻成中文。
+const STATUS_OPTIONS: Array<{ value: Game["status"]; i18nKey: string }> = [
+  { value: "playing", i18nKey: "chips.playing" },
+  { value: "cleared", i18nKey: "chips.cleared" },
+  { value: "unplayed", i18nKey: "chips.unplayed" },
+  { value: "dropped", i18nKey: "chips.dropped" },
 ];
 
-const DURATION_OPTIONS: Array<{ value: DurationBucket; label: string }> = [
-  { value: "none", label: "未游玩" },
-  { value: "lt1h", label: "< 1 h" },
-  { value: "h1to10", label: "1–10 h" },
-  { value: "h10to50", label: "10–50 h" },
-  { value: "h50plus", label: "50 h+" },
+const DURATION_OPTIONS: Array<{ value: DurationBucket; i18nKey: string }> = [
+  { value: "none", i18nKey: "filter_panel.duration.none" },
+  { value: "lt1h", i18nKey: "filter_panel.duration.lt1h" },
+  { value: "h1to10", i18nKey: "filter_panel.duration.h1to10" },
+  { value: "h10to50", i18nKey: "filter_panel.duration.h10to50" },
+  { value: "h50plus", i18nKey: "filter_panel.duration.h50plus" },
 ];
 
 function cloneFilter(f: AdvancedFilter): AdvancedFilter {
@@ -83,6 +86,7 @@ function cloneFilter(f: AdvancedFilter): AdvancedFilter {
 }
 
 export function FilterPanel({ games, filter, onChange, options }: FilterPanelProps) {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const [draft, setDraft] = useState<AdvancedFilter>(() => cloneFilter(filter));
 
@@ -175,11 +179,11 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
           <button
             type="button"
             className="inline-flex items-center gap-1.5 bg-transparent px-3 font-mono text-[11px]"
-            aria-label="高级筛选"
-            title="高级筛选"
+            aria-label={t("filter_panel.trigger_label")}
+            title={t("filter_panel.trigger_label")}
           >
             <ListFilter size={12} strokeWidth={1.7} />
-            <span>筛选</span>
+            <span>{t("filter_panel.title")}</span>
             {activeCount > 0 && (
               <span
                 className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center bg-brand px-1 text-[9.5px] text-[var(--accent-on)]"
@@ -194,8 +198,8 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
           <button
             type="button"
             onClick={quickClear}
-            aria-label="清除全部筛选"
-            title="清除全部筛选"
+            aria-label={t("filter_panel.quick_clear")}
+            title={t("filter_panel.quick_clear")}
             className="grid w-7 place-items-center border-l border-brand/40 text-ink-1 transition-colors hover:bg-brand hover:text-[var(--accent-on)]"
           >
             <X size={11} strokeWidth={2} />
@@ -212,15 +216,15 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
       >
         <header className="flex items-center justify-between border-b border-line px-4 py-3">
           <div>
-            <div className="font-serif text-[14px] text-ink-0">筛选</div>
+            <div className="font-serif text-[14px] text-ink-0">{t("filter_panel.title")}</div>
             <div className="font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">
-              客户端二次过滤 · {games.length} 部
+              {t("filter_panel.subtitle", { count: games.length })}
             </div>
           </div>
           <button
             type="button"
             onClick={() => setOpen(false)}
-            aria-label="关闭"
+            aria-label={t("common.close")}
             className="grid h-6 w-6 place-items-center rounded-sm text-ink-3 hover:bg-bg-2 hover:text-ink-0"
           >
             <X size={12} />
@@ -229,12 +233,12 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
 
         <div className="flex flex-col divide-y divide-line overflow-y-auto px-4 max-h-[480px]">
           {/* 状态 */}
-          <Section label="状态">
+          <Section label={t("filter_panel.section.status")}>
             <div className="flex flex-col gap-1.5">
-              {STATUS_OPTIONS.map(({ value, label }) => (
+              {STATUS_OPTIONS.map(({ value, i18nKey }) => (
                 <CheckRow
                   key={value}
-                  label={label}
+                  label={t(i18nKey)}
                   on={draft.statuses.has(value)}
                   onClick={() =>
                     setDraft({
@@ -245,7 +249,7 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
                 />
               ))}
               <CheckRow
-                label="只看待复核"
+                label={t("filter_panel.review_only")}
                 accent
                 on={draft.reviewOnly}
                 onClick={() =>
@@ -256,7 +260,7 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
           </Section>
 
           {/* 评分范围 */}
-          <Section label="评分范围">
+          <Section label={t("filter_panel.section.rating")}>
             <div className="flex items-center gap-2">
               <RatingInput
                 value={draft.ratingMin}
@@ -275,7 +279,7 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
 
           {/* 发行年份 */}
           {yearOptions.length > 0 && (
-            <Section label="发行年份">
+            <Section label={t("filter_panel.section.year")}>
               <div className="flex flex-wrap gap-1.5">
                 {yearOptions.map((y) => {
                   const on = draft.years.has(y);
@@ -303,12 +307,12 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
           )}
 
           {/* 累计时长 */}
-          <Section label="累计时长">
+          <Section label={t("filter_panel.section.duration")}>
             <div className="flex flex-col gap-1.5">
-              {DURATION_OPTIONS.map(({ value, label }) => (
+              {DURATION_OPTIONS.map(({ value, i18nKey }) => (
                 <CheckRow
                   key={value}
-                  label={label}
+                  label={t(i18nKey)}
                   on={draft.durations.has(value)}
                   onClick={() =>
                     setDraft({
@@ -323,16 +327,16 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
 
           {/* ── Phase 11 multi-dim facets ── */}
           {options === null && (
-            <Section label="更多筛选">
-              <div className="font-mono text-[10.5px] text-ink-3">加载中…</div>
+            <Section label={t("filter_panel.section.more")}>
+              <div className="font-mono text-[10.5px] text-ink-3">{t("common.loading")}</div>
             </Section>
           )}
 
           {options !== null && options.brands.length > 0 && (
-            <Section label="品牌">
+            <Section label={t("filter_panel.section.brand")}>
               <FacetSearchInput
                 value={brandQuery}
-                placeholder="搜索品牌…"
+                placeholder={t("filter_panel.search.brand")}
                 onChange={setBrandQuery}
               />
               <BrandChipList
@@ -349,10 +353,10 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
           )}
 
           {options !== null && options.scenarios.length > 0 && (
-            <Section label="编剧">
+            <Section label={t("filter_panel.section.scenario")}>
               <FacetSearchInput
                 value={scenarioQuery}
-                placeholder="搜索编剧…"
+                placeholder={t("filter_panel.search.scenario")}
                 onChange={setScenarioQuery}
               />
               <PersonChipList
@@ -369,10 +373,10 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
           )}
 
           {options !== null && options.artists.length > 0 && (
-            <Section label="画师">
+            <Section label={t("filter_panel.section.artist")}>
               <FacetSearchInput
                 value={artistQuery}
-                placeholder="搜索画师…"
+                placeholder={t("filter_panel.search.artist")}
                 onChange={setArtistQuery}
               />
               <PersonChipList
@@ -389,10 +393,10 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
           )}
 
           {options !== null && options.voices.length > 0 && (
-            <Section label="声优">
+            <Section label={t("filter_panel.section.voice")}>
               <FacetSearchInput
                 value={voiceQuery}
-                placeholder="搜索声优…"
+                placeholder={t("filter_panel.search.voice")}
                 onChange={setVoiceQuery}
               />
               <PersonChipList
@@ -409,10 +413,10 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
           )}
 
           {options !== null && options.official_tags.length > 0 && (
-            <Section label="官方标签">
+            <Section label={t("filter_panel.section.official_tags")}>
               <FacetSearchInput
                 value={tagQuery}
-                placeholder="搜索标签…"
+                placeholder={t("filter_panel.search.tag")}
                 onChange={setTagQuery}
               />
               <TagChipList
@@ -438,7 +442,7 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
             onClick={reset}
             className="font-mono text-[10.5px] text-ink-3 hover:text-ink-0"
           >
-            重置
+            {t("filter_panel.reset")}
           </button>
           <button
             type="button"
@@ -449,7 +453,7 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
               borderRadius: "var(--r-md)",
             }}
           >
-            应用筛选
+            {t("filter_panel.apply")}
           </button>
         </footer>
       </PopoverContent>
@@ -633,6 +637,7 @@ function MoreChip({
   expanded: boolean;
   onClick: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <button
       type="button"
@@ -643,7 +648,7 @@ function MoreChip({
         border: "1px dashed var(--line)",
       }}
     >
-      {expanded ? "收起" : `更多 ${hidden} >`}
+      {expanded ? t("filter_panel.collapse") : t("filter_panel.more", { count: hidden })}
     </button>
   );
 }
@@ -663,6 +668,7 @@ function BrandChipList({
   onToggleExpand: () => void;
   onToggle: (name: string) => void;
 }) {
+  const { t } = useTranslation();
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q === "") return items;
@@ -673,7 +679,7 @@ function BrandChipList({
 
   if (filtered.length === 0) {
     return (
-      <div className="font-mono text-[10.5px] text-ink-3">无匹配</div>
+      <div className="font-mono text-[10.5px] text-ink-3">{t("filter_panel.no_match")}</div>
     );
   }
   return (
@@ -684,7 +690,7 @@ function BrandChipList({
           label={`${it.name} · ${it.count}`}
           mono
           on={selected.has(it.name)}
-          title={`${it.name} — ${it.count} 部作品`}
+          title={t("filter_panel.tooltip.works", { name: it.name, count: it.count })}
           onClick={() => onToggle(it.name)}
         />
       ))}
@@ -714,6 +720,7 @@ function PersonChipList({
   onToggleExpand: () => void;
   onToggle: (id: number) => void;
 }) {
+  const { t } = useTranslation();
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q === "") return items;
@@ -727,7 +734,7 @@ function PersonChipList({
 
   if (filtered.length === 0) {
     return (
-      <div className="font-mono text-[10.5px] text-ink-3">无匹配</div>
+      <div className="font-mono text-[10.5px] text-ink-3">{t("filter_panel.no_match")}</div>
     );
   }
   return (
@@ -736,8 +743,12 @@ function PersonChipList({
         const display = it.name_cn ?? it.name;
         const tooltip =
           it.name_cn != null
-            ? `${it.name_cn}（${it.name}）— ${it.count} 部`
-            : `${it.name} — ${it.count} 部`;
+            ? t("filter_panel.tooltip.person_cn", {
+                cn: it.name_cn,
+                name: it.name,
+                count: it.count,
+              })
+            : t("filter_panel.tooltip.person", { name: it.name, count: it.count });
         return (
           <Chip
             key={it.id}
@@ -774,6 +785,7 @@ function TagChipList({
   onToggleExpand: () => void;
   onToggle: (name: string) => void;
 }) {
+  const { t } = useTranslation();
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
     if (q === "") return items;
@@ -784,7 +796,7 @@ function TagChipList({
 
   if (filtered.length === 0) {
     return (
-      <div className="font-mono text-[10.5px] text-ink-3">无匹配</div>
+      <div className="font-mono text-[10.5px] text-ink-3">{t("filter_panel.no_match")}</div>
     );
   }
   return (
@@ -795,7 +807,7 @@ function TagChipList({
           label={`${it.name} · ${it.count}`}
           mono
           on={selected.has(it.name)}
-          title={`${it.name} — ${it.count} 部作品`}
+          title={t("filter_panel.tooltip.works", { name: it.name, count: it.count })}
           onClick={() => onToggle(it.name)}
         />
       ))}
