@@ -61,7 +61,6 @@ import { DensityToggle } from "@/components/library/DensityToggle";
 import { PageHeader } from "@/components/library/PageHeader";
 import { usePreferencesStore } from "@/store/preferences";
 import {
-  type AdvancedFilter,
   applyAdvancedFilter,
   EMPTY_ADV_FILTER,
   isAdvFilterActive,
@@ -136,7 +135,10 @@ export function Library() {
   // Quick 260517-qnn —「删除条目」确认对话框的待删游戏。GameCard 右键菜单的
   // 删除项通过 onRequestDelete 把游戏写入这里，确认后才真正删库。
   const [deleteCandidate, setDeleteCandidate] = useState<Game | null>(null);
-  const [advFilter, setAdvFilter] = useState<AdvancedFilter>(EMPTY_ADV_FILTER);
+  // Quick 260524-dlr — advFilter lives in the store now so the Detail route
+  // can set facet selections via setAdvFilter + navigate('/').
+  const advFilter = useLibraryStore((s) => s.advFilter);
+  const setAdvFilter = useLibraryStore((s) => s.setAdvFilter);
   const [filterOptions, setFilterOptions] = useState<FilterOptions | null>(null);
   const navigate = useNavigate();
   const viewMode = usePreferencesStore((s) => s.viewMode);
@@ -652,7 +654,7 @@ export function Library() {
               <span>{selectMode ? `选择中 ${selectedIds.size}` : "批量选择"}</span>
             </button>
           )}
-          <SearchBar />
+          <SearchBar filterOptions={filterOptions} />
           <ViewToggle />
           {viewMode === "grid" && <DensityToggle />}
           <SortSelect />

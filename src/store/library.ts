@@ -31,6 +31,7 @@ import type { ScanProgress, ScanRoot } from "@/lib/scan";
 import type { Game } from "@/lib/games";
 import type { ActiveSession, SessionRow } from "@/lib/launch";
 import type { SearchFilter, SidebarCategories, SortBy } from "@/lib/search";
+import { type AdvancedFilter, EMPTY_ADV_FILTER } from "@/lib/advancedFilter";
 import type { Tag } from "@/lib/tags";
 import type { TopGame, TrendPoint } from "@/lib/stats";
 import type { Screenshot } from "@/lib/screenshots";
@@ -170,6 +171,17 @@ interface LibraryState {
    */
   filter: SearchFilter;
   /**
+   * Quick 260524-dlr — multi-dim advanced filter (brands / staffIds /
+   * officialTags / statuses / years / rating / duration / reviewOnly).
+   *
+   * Lifted from Library.tsx local useState to the store so other routes
+   * (Detail tag chips, future sidebar entries, SearchBar prefix-typed
+   * autocomplete) can set facet selections and `navigate('/')` and have
+   * Library pick them up on mount. Library subscribes for re-fetch;
+   * FilterPanel clones into a local draft on open.
+   */
+  advFilter: AdvancedFilter;
+  /**
    * Cached tag list (read-through of `listTags()`). Refreshed after every
    * tag CRUD mutation AND on app boot. Sorted by name (matches backend
    * ORDER BY in `list_tags`).
@@ -254,6 +266,7 @@ interface LibraryState {
   setSearchQuery: (q: string) => void;
   setSortBy: (s: SortBy) => void;
   setFilter: (f: SearchFilter) => void;
+  setAdvFilter: (f: AdvancedFilter) => void;
   setTags: (ts: Tag[]) => void;
   setSidebar: (s: SidebarCategories | null) => void;
   setTrend: (t: TrendPoint[]) => void;
@@ -275,6 +288,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   searchQuery: "",
   sortBy: DEFAULT_SORT_BY,
   filter: EMPTY_FILTER,
+  advFilter: EMPTY_ADV_FILTER,
   tags: [],
   sidebar: null,
   trend: [],
@@ -352,6 +366,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   setSearchQuery: (q) => set({ searchQuery: q }),
   setSortBy: (s) => set({ sortBy: s }),
   setFilter: (f) => set({ filter: f }),
+  setAdvFilter: (f) => set({ advFilter: f }),
   setTags: (ts) => set({ tags: ts }),
   setSidebar: (s) => set({ sidebar: s }),
   setTrend: (t) => set({ trend: t }),
