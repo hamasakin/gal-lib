@@ -1,21 +1,20 @@
 /**
  * SearchBar — top-of-Library 搜索栏 / 多维筛选入口。
  *
- * Quick 260524-dlr 新增：
- *   - 左前缀类型下拉：游戏名(默认) / 品牌 / 声优 / 标签
- *     · 「游戏名」：与 v1.0 相同 —— 本地 mirror state，200ms 防抖 commit 到
- *       store.searchQuery，触发后端 LIKE。
- *     · 其余三类：input 仅作本地 fuzzy 关键词，不写 store.searchQuery；候选
- *       从 props.filterOptions 派生（brands / voices / official_tags），下拉
- *       展示前 N 项；点击 / 回车选中 → setAdvFilter 把该项加入对应多选 Set，
- *       清空 input、保留焦点便于继续选择。已选项立刻在外层 FilterPanel
- *       的「筛选 N」徽章里显示。
- *   - 右尾部：有内容时显示 X 清空按钮（清 input + 必要时清 store.searchQuery）；
- *     无内容时回退到 ⌘K 键提示。
- *
- * 多选筛选数据流：本组件与 FilterPanel 共用 useLibraryStore.advFilter；这里
- * 只「加 chip」（搜索 → 选条目 → 入库），删 / 重置走 FilterPanel 弹窗或
- * 现有「重置」入口。
+ * Quick 260524-dlr 当前形态：
+ *   - 左前缀类型下拉：游戏名(默认) / 品牌 / 画师 / 声优 / 标签
+ *     · 「游戏名」：本地 mirror state，200ms 防抖 commit 到 store.searchQuery，
+ *       触发后端 LIKE。
+ *     · 其余四类：input 仅作本地 fuzzy 关键词，不写 store.searchQuery；候选
+ *       从 props.filterOptions 派生（brands / artists / voices / official_tags），
+ *       下拉展示前 N 项 + checkbox。**多选走 draft 模式**：点击候选只切换
+ *       本地 draft，底部「确定」才把 draft 写入 advFilter；「取消」/Esc/容
+ *       器外点击丢弃 draft。Enter 等价确定。
+ *     · 画师 / 声优 共用 advFilter.staffIds（后端 SearchFilter.staff_ids 不
+ *       按 role 区分）。apply 时按当前 kind 的「人物池」做差集 + 并集，避免
+ *       一个 facet 的提交吞掉另一个 facet 已选项。
+ *   - 右尾部：有内容时显示 X 清空按钮；无内容时回退到 ⌘K 键提示。
+ *   - Ctrl+K / ⌘+K 全局快捷键聚焦输入框。
  */
 
 import { useEffect, useMemo, useRef, useState } from "react";
@@ -28,16 +27,19 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { FilterOptions, PersonOption } from "@/lib/persons";
+import type { AdvancedFilter } from "@/lib/advancedFilter";
 import { cn } from "@/lib/utils";
 
 const DEBOUNCE_MS = 200;
 const CANDIDATE_CAP = 12;
 
-type SearchKind = "name" | "brand" | "voice" | "tag";
+type SearchKind = "name" | "brand" | "artist" | "voice" | "tag";
+type FacetKind = Exclude<SearchKind, "name">;
 
 const KIND_OPTIONS: Array<{ value: SearchKind; label: string }> = [
   { value: "name", label: "游戏名" },
   { value: "brand", label: "品牌" },
+  { value: "artist", label: "画师" },
   { value: "voice", label: "声优" },
   { value: "tag", label: "标签" },
 ];
@@ -45,6 +47,7 @@ const KIND_OPTIONS: Array<{ value: SearchKind; label: string }> = [
 const KIND_LABEL_MAP: Record<SearchKind, string> = {
   name: "游戏名",
   brand: "品牌",
+  artist: "画师",
   voice: "声优",
   tag: "标签",
 };
@@ -52,6 +55,7 @@ const KIND_LABEL_MAP: Record<SearchKind, string> = {
 const KIND_PLACEHOLDER: Record<SearchKind, string> = {
   name: "搜索游戏 / 标签 / 品牌…",
   brand: "输入品牌关键字…",
+  artist: "输入画师关键字…",
   voice: "输入声优关键字…",
   tag: "输入标签关键字…",
 };
@@ -67,8 +71,8 @@ interface BrandCandidate {
   name: string;
   count: number;
 }
-interface VoiceCandidate {
-  kind: "voice";
+interface PersonCandidate {
+  kind: "artist" | "voice";
   key: string;
   id: number;
   name: string;
@@ -81,7 +85,18 @@ interface TagCandidate {
   name: string;
   count: number;
 }
-type Candidate = BrandCandidate | VoiceCandidate | TagCandidate;
+type Candidate = BrandCandidate | PersonCandidate | TagCandidate;
+
+interface DraftSets {
+  brand: Set<string>;
+  artist: Set<number>;
+  voice: Set<number>;
+  tag: Set<string>;
+}
+
+function emptyDraft(): DraftSets {
+  return { brand: new Set(), artist: new Set(), voice: new Set(), tag: new Set() };
+}
 
 export function SearchBar({ filterOptions }: SearchBarProps) {
   const storeQuery = useLibraryStore((s) => s.searchQuery);
@@ -92,14 +107,25 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
   const [kind, setKind] = useState<SearchKind>("name");
   const [value, setValue] = useState(storeQuery);
   const [dropdownOpen, setDropdownOpen] = useState(false);
+  const [draft, setDraft] = useState<DraftSets>(emptyDraft);
   const inputRef = useRef<HTMLInputElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+
+  // 人物池 id 集合 —— 用于「voice / artist 共用 staffIds 但 draft 互不污染」
+  // 的差集合并 (见 applyDraft / draft 初始化)。
+  const voicePoolIds = useMemo<Set<number>>(() => {
+    if (!filterOptions) return new Set();
+    return new Set(filterOptions.voices.map((p) => p.id));
+  }, [filterOptions]);
+  const artistPoolIds = useMemo<Set<number>>(() => {
+    if (!filterOptions) return new Set();
+    return new Set(filterOptions.artists.map((p) => p.id));
+  }, [filterOptions]);
 
   // 外部把 store.searchQuery 改了（清除全部筛选等）时，name 模式下同步 input。
   useEffect(() => {
     if (kind !== "name") return;
     if (storeQuery !== value) setValue(storeQuery);
-    // 故意忽略 value 依赖：只在 storeQuery 变化时同步。
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [storeQuery, kind]);
 
@@ -111,8 +137,7 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
     return () => clearTimeout(t);
   }, [value, storeQuery, setSearchQuery, kind]);
 
-  // Ctrl+K（Win 项目）/ ⌘+K（Mac 兼容）→ 聚焦搜索框；input 已聚焦则一并选中
-  // 内容便于直接覆盖输入。捕获 input/textarea 内按下，便于无论焦点在哪都生效。
+  // Ctrl+K / ⌘+K 聚焦 + 全选输入框内容，便于直接覆盖。
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const isK = e.key === "k" || e.key === "K";
@@ -129,31 +154,46 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
     return () => window.removeEventListener("keydown", onKey);
   }, []);
 
-  // 切换 kind 时清 input；name → 其他时把 store.searchQuery 也清掉；切到
-  // 非 name 时自动开下拉显示该类型全部候选（前 N 项），便于无需输入即点选。
+  // 下拉打开 / kind 切换 → 从 advFilter 重新克隆当前 kind 的 draft Set。
+  // 故意不依赖 advFilter：用户编辑期间外部 setAdvFilter（详情页跳转等）不
+  // 应当覆盖编辑中的 draft；下一次打开下拉时再同步。
+  useEffect(() => {
+    if (!dropdownOpen) return;
+    if (kind === "brand") {
+      setDraft((d) => ({ ...d, brand: new Set(advFilter.brands) }));
+    } else if (kind === "tag") {
+      setDraft((d) => ({ ...d, tag: new Set(advFilter.officialTags) }));
+    } else if (kind === "voice") {
+      const subset = new Set<number>();
+      for (const id of advFilter.staffIds) if (voicePoolIds.has(id)) subset.add(id);
+      setDraft((d) => ({ ...d, voice: subset }));
+    } else if (kind === "artist") {
+      const subset = new Set<number>();
+      for (const id of advFilter.staffIds) if (artistPoolIds.has(id)) subset.add(id);
+      setDraft((d) => ({ ...d, artist: subset }));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [dropdownOpen, kind, voicePoolIds, artistPoolIds]);
+
   function onKindChange(next: SearchKind) {
     if (next === kind) return;
+    const wasName = kind === "name";
     setKind(next);
     setValue("");
-    if (kind === "name" && storeQuery !== "") setSearchQuery("");
+    if (wasName && storeQuery !== "") setSearchQuery("");
     setDropdownOpen(next !== "name");
     requestAnimationFrame(() => inputRef.current?.focus());
   }
 
-  // 候选列表 —— 非 name 模式下持续返回前 CANDIDATE_CAP 项（已选项排除），
-  // 有 query 则在已过滤集合上再做 fuzzy 包含匹配。input 清空仍展示「全部
-  // 候选」，便于用户连续多选而不需要再次输入关键词。
+  // 候选 —— 非 name 模式持续返回前 CANDIDATE_CAP 项；draft 多选模式下已选
+  // 项要显示为已勾选（不排除），便于用户取消。
   const candidates = useMemo<Candidate[]>(() => {
     if (kind === "name") return [];
     if (!filterOptions) return [];
     const q = value.trim().toLowerCase();
     if (kind === "brand") {
-      const selected = advFilter.brands;
       return filterOptions.brands
-        .filter((b) => {
-          if (selected.has(b.name)) return false;
-          return q === "" || b.name.toLowerCase().includes(q);
-        })
+        .filter((b) => q === "" || b.name.toLowerCase().includes(q))
         .slice(0, CANDIDATE_CAP)
         .map<BrandCandidate>((b) => ({
           kind: "brand",
@@ -162,32 +202,26 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
           count: b.count,
         }));
     }
-    if (kind === "voice") {
-      const selected = advFilter.staffIds;
-      return filterOptions.voices
+    if (kind === "voice" || kind === "artist") {
+      const pool = kind === "voice" ? filterOptions.voices : filterOptions.artists;
+      return pool
         .filter((p: PersonOption) => {
-          if (selected.has(p.id)) return false;
           if (q === "") return true;
           const cn = (p.name_cn ?? "").toLowerCase();
           return p.name.toLowerCase().includes(q) || cn.includes(q);
         })
         .slice(0, CANDIDATE_CAP)
-        .map<VoiceCandidate>((p) => ({
-          kind: "voice",
-          key: `voice:${p.id}`,
+        .map<PersonCandidate>((p) => ({
+          kind,
+          key: `${kind}:${p.id}`,
           id: p.id,
           name: p.name,
           nameCn: p.name_cn,
           count: p.count,
         }));
     }
-    // tag
-    const selected = advFilter.officialTags;
     return filterOptions.official_tags
-      .filter((t) => {
-        if (selected.has(t.name)) return false;
-        return q === "" || t.name.toLowerCase().includes(q);
-      })
+      .filter((t) => q === "" || t.name.toLowerCase().includes(q))
       .slice(0, CANDIDATE_CAP)
       .map<TagCandidate>((t) => ({
         kind: "tag",
@@ -195,15 +229,14 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
         name: t.name,
         count: t.count,
       }));
-  }, [kind, value, filterOptions, advFilter]);
+  }, [kind, value, filterOptions]);
 
-  // 切到 name 模式强制关下拉；其他模式由用户主动操作（focus / Esc / X /
-  // 容器外点击）控制开关，pickCandidate 后保持打开以支持连续多选。
+  // 切到 name 强制关下拉。
   useEffect(() => {
     if (kind === "name") setDropdownOpen(false);
   }, [kind]);
 
-  // 点击容器外关闭下拉（避免和 input 失焦逻辑打架）。
+  // 点击容器外 = 取消（关下拉丢弃 draft）。
   useEffect(() => {
     if (!dropdownOpen) return;
     function onDoc(e: MouseEvent) {
@@ -216,41 +249,75 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
     return () => document.removeEventListener("mousedown", onDoc);
   }, [dropdownOpen]);
 
-  function pickCandidate(c: Candidate) {
+  function isDraftSelected(c: Candidate): boolean {
+    if (c.kind === "brand") return draft.brand.has(c.name);
+    if (c.kind === "voice") return draft.voice.has(c.id);
+    if (c.kind === "artist") return draft.artist.has(c.id);
+    return draft.tag.has(c.name);
+  }
+
+  function toggleDraft(c: Candidate) {
     if (c.kind === "brand") {
-      const next = new Set(advFilter.brands);
-      next.add(c.name);
-      setAdvFilter({ ...advFilter, brands: next });
+      const next = new Set(draft.brand);
+      if (next.has(c.name)) next.delete(c.name);
+      else next.add(c.name);
+      setDraft({ ...draft, brand: next });
     } else if (c.kind === "voice") {
-      const next = new Set(advFilter.staffIds);
-      next.add(c.id);
-      setAdvFilter({ ...advFilter, staffIds: next });
+      const next = new Set(draft.voice);
+      if (next.has(c.id)) next.delete(c.id);
+      else next.add(c.id);
+      setDraft({ ...draft, voice: next });
+    } else if (c.kind === "artist") {
+      const next = new Set(draft.artist);
+      if (next.has(c.id)) next.delete(c.id);
+      else next.add(c.id);
+      setDraft({ ...draft, artist: next });
     } else {
-      const next = new Set(advFilter.officialTags);
-      next.add(c.name);
-      setAdvFilter({ ...advFilter, officialTags: next });
+      const next = new Set(draft.tag);
+      if (next.has(c.name)) next.delete(c.name);
+      else next.add(c.name);
+      setDraft({ ...draft, tag: next });
+    }
+  }
+
+  function applyDraft() {
+    if (kind === "name") return;
+    if (kind === "brand") {
+      setAdvFilter({ ...advFilter, brands: new Set(draft.brand) });
+    } else if (kind === "tag") {
+      setAdvFilter({ ...advFilter, officialTags: new Set(draft.tag) });
+    } else if (kind === "voice") {
+      const next = mergeStaffIds(advFilter.staffIds, voicePoolIds, draft.voice);
+      setAdvFilter({ ...advFilter, staffIds: next });
+    } else if (kind === "artist") {
+      const next = mergeStaffIds(advFilter.staffIds, artistPoolIds, draft.artist);
+      setAdvFilter({ ...advFilter, staffIds: next });
     }
     setValue("");
-    // 多选：保留下拉打开 + 焦点，便于连续追加；已选项会立刻在 candidates
-    // useMemo 里被排除，列表自然刷新。
-    setDropdownOpen(true);
-    requestAnimationFrame(() => inputRef.current?.focus());
+    setDropdownOpen(false);
+  }
+
+  function cancelDraft() {
+    setValue("");
+    setDropdownOpen(false);
   }
 
   function onInputKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === "Escape") {
       if (dropdownOpen) {
         e.stopPropagation();
-        setDropdownOpen(false);
+        cancelDraft();
       } else if (value !== "") {
         e.stopPropagation();
         onClear();
       }
       return;
     }
-    if (e.key === "Enter" && kind !== "name" && candidates.length > 0) {
-      e.preventDefault();
-      pickCandidate(candidates[0]);
+    if (e.key === "Enter") {
+      if (kind !== "name" && dropdownOpen) {
+        e.preventDefault();
+        applyDraft();
+      }
     }
   }
 
@@ -262,6 +329,14 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
   }
 
   const hasValue = value !== "";
+  const draftSize = currentDraftSize(draft, kind);
+  const appliedSize = currentAppliedSize(advFilter, kind, voicePoolIds, artistPoolIds);
+  const dirty =
+    kind !== "name" &&
+    !setsEqual(
+      draftOf(draft, kind as FacetKind),
+      appliedSubsetOf(advFilter, kind as FacetKind, voicePoolIds, artistPoolIds),
+    );
 
   return (
     <div ref={containerRef} className="relative w-[360px]">
@@ -320,7 +395,6 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
             aria-label={`按${KIND_LABEL_MAP[kind]}搜索`}
             className="h-full w-full bg-transparent pl-8 pr-16 text-[12.5px] text-ink-0 outline-none placeholder:text-ink-3"
           />
-          {/* 右尾部：X 清空 / ⌘K 键提示 */}
           {hasValue ? (
             <button
               type="button"
@@ -346,54 +420,189 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
       {/* 候选下拉（非 name 模式） */}
       {dropdownOpen && kind !== "name" && (
         <div
-          className="absolute left-0 right-0 top-full z-50 mt-1 max-h-72 overflow-y-auto border border-line-strong bg-bg-1 shadow-lift"
+          className="absolute left-0 right-0 top-full z-50 mt-1 flex max-h-[420px] flex-col border border-line-strong bg-bg-1 shadow-lift"
           style={{ borderRadius: "var(--r-md)" }}
-          // 阻止鼠标按下使 input 失焦后立刻关闭下拉
           onMouseDown={(e) => e.preventDefault()}
         >
-          {candidates.length === 0 ? (
-            <div className="px-3 py-2.5 font-mono text-[10.5px] text-ink-3">
-              {filterOptions == null ? "加载候选中…" : "无匹配候选"}
-            </div>
-          ) : (
-            <ul className="flex flex-col py-1">
-              {candidates.map((c, i) => (
-                <li key={c.key}>
-                  <button
-                    type="button"
-                    onClick={() => pickCandidate(c)}
-                    className={cn(
-                      "flex w-full items-center justify-between gap-3 px-3 py-1.5 text-left text-[12px] text-ink-1 transition-colors hover:bg-bg-2 hover:text-ink-0",
-                      i === 0 && "bg-bg-2/40",
-                    )}
-                    title={candidateTooltip(c)}
-                  >
-                    <span className="min-w-0 flex-1 truncate">
-                      {c.kind === "voice"
-                        ? c.nameCn ?? c.name
-                        : c.name}
-                      {c.kind === "voice" && c.nameCn && c.nameCn !== c.name && (
-                        <span className="ml-1.5 text-ink-3 text-[10.5px]">
-                          ({c.name})
+          <div className="flex-1 overflow-y-auto">
+            {candidates.length === 0 ? (
+              <div className="px-3 py-2.5 font-mono text-[10.5px] text-ink-3">
+                {filterOptions == null ? "加载候选中…" : "无匹配候选"}
+              </div>
+            ) : (
+              <ul className="flex flex-col py-1">
+                {candidates.map((c) => {
+                  const on = isDraftSelected(c);
+                  return (
+                    <li key={c.key}>
+                      <button
+                        type="button"
+                        onClick={() => toggleDraft(c)}
+                        role="checkbox"
+                        aria-checked={on}
+                        className={cn(
+                          "flex w-full items-center gap-2.5 px-3 py-1.5 text-left text-[12px] text-ink-1 transition-colors hover:bg-bg-2 hover:text-ink-0",
+                          on && "text-ink-0",
+                        )}
+                        title={candidateTooltip(c)}
+                      >
+                        <CheckBox on={on} />
+                        <span className="min-w-0 flex-1 truncate">
+                          {c.kind === "voice" || c.kind === "artist"
+                            ? c.nameCn ?? c.name
+                            : c.name}
+                          {(c.kind === "voice" || c.kind === "artist") &&
+                            c.nameCn &&
+                            c.nameCn !== c.name && (
+                              <span className="ml-1.5 text-ink-3 text-[10.5px]">
+                                ({c.name})
+                              </span>
+                            )}
                         </span>
-                      )}
-                    </span>
-                    <span className="shrink-0 font-mono text-[10px] text-ink-3">
-                      {c.count} 部
-                    </span>
-                  </button>
-                </li>
-              ))}
-            </ul>
-          )}
+                        <span className="shrink-0 font-mono text-[10px] text-ink-3">
+                          {c.count} 部
+                        </span>
+                      </button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+          </div>
+          <div className="flex items-center justify-between border-t border-line bg-bg-0 px-3 py-2">
+            <span className="font-mono text-[10.5px] text-ink-3">
+              已选 <span className={cn(draftSize > 0 && "text-ink-0")}>{draftSize}</span> 项
+              {appliedSize > 0 && !dirty && (
+                <span className="ml-1.5 text-ink-3">·已应用</span>
+              )}
+              {dirty && <span className="ml-1.5 text-[#ffd166]">·未应用</span>}
+            </span>
+            <div className="flex items-center gap-1.5">
+              <button
+                type="button"
+                onClick={cancelDraft}
+                className="inline-flex h-7 items-center px-3 font-mono text-[11px] text-ink-2 transition-colors hover:bg-bg-2 hover:text-ink-0"
+                style={{ borderRadius: "var(--r-sm)" }}
+              >
+                取消
+              </button>
+              <button
+                type="button"
+                onClick={applyDraft}
+                className="inline-flex h-7 items-center px-3 text-[11px] font-medium text-[var(--accent-on)]"
+                style={{ background: "var(--accent)", borderRadius: "var(--r-sm)" }}
+              >
+                确定
+              </button>
+            </div>
+          </div>
         </div>
       )}
     </div>
   );
 }
 
+function CheckBox({ on }: { on: boolean }) {
+  return (
+    <span
+      aria-hidden
+      className="grid h-[14px] w-[14px] shrink-0 place-items-center"
+      style={{
+        borderRadius: 3,
+        border: on ? "1px solid var(--accent)" : "1px solid var(--line-strong)",
+        background: on ? "var(--accent)" : "transparent",
+        color: "var(--accent-on)",
+      }}
+    >
+      {on && (
+        <svg width="9" height="9" viewBox="0 0 12 12" aria-hidden>
+          <path
+            d="M2.5 6.4 L5 9 L9.5 3.5"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          />
+        </svg>
+      )}
+    </span>
+  );
+}
+
+// ── helpers ─────────────────────────────────────────────────────────────────
+
+function mergeStaffIds(
+  existing: Set<number>,
+  pool: Set<number>,
+  draftSet: Set<number>,
+): Set<number> {
+  // 应用某 facet（voice 或 artist）draft 时：从 advFilter.staffIds 移除「当
+  // 前池里的所有 id」，再并入 draft；保留池外的（其他 facet 已选）id。
+  const next = new Set<number>();
+  for (const id of existing) if (!pool.has(id)) next.add(id);
+  for (const id of draftSet) next.add(id);
+  return next;
+}
+
+function draftOf(d: DraftSets, kind: FacetKind): Set<string | number> {
+  if (kind === "brand") return d.brand;
+  if (kind === "voice") return d.voice;
+  if (kind === "artist") return d.artist;
+  return d.tag;
+}
+
+function appliedSubsetOf(
+  adv: AdvancedFilter,
+  kind: FacetKind,
+  voicePool: Set<number>,
+  artistPool: Set<number>,
+): Set<string | number> {
+  if (kind === "brand") return adv.brands;
+  if (kind === "tag") return adv.officialTags;
+  const pool = kind === "voice" ? voicePool : artistPool;
+  const out = new Set<number>();
+  for (const id of adv.staffIds) if (pool.has(id)) out.add(id);
+  return out;
+}
+
+function currentDraftSize(d: DraftSets, kind: SearchKind): number {
+  if (kind === "brand") return d.brand.size;
+  if (kind === "voice") return d.voice.size;
+  if (kind === "artist") return d.artist.size;
+  if (kind === "tag") return d.tag.size;
+  return 0;
+}
+
+function currentAppliedSize(
+  adv: AdvancedFilter,
+  kind: SearchKind,
+  voicePool: Set<number>,
+  artistPool: Set<number>,
+): number {
+  if (kind === "brand") return adv.brands.size;
+  if (kind === "tag") return adv.officialTags.size;
+  if (kind === "voice") {
+    let n = 0;
+    for (const id of adv.staffIds) if (voicePool.has(id)) n++;
+    return n;
+  }
+  if (kind === "artist") {
+    let n = 0;
+    for (const id of adv.staffIds) if (artistPool.has(id)) n++;
+    return n;
+  }
+  return 0;
+}
+
+function setsEqual(a: Set<string | number>, b: Set<string | number>): boolean {
+  if (a.size !== b.size) return false;
+  for (const x of a) if (!b.has(x)) return false;
+  return true;
+}
+
 function candidateTooltip(c: Candidate): string {
-  if (c.kind === "voice") {
+  if (c.kind === "voice" || c.kind === "artist") {
     const cn = c.nameCn ?? c.name;
     if (c.nameCn && c.nameCn !== c.name) return `${cn}（${c.name}）— ${c.count} 部`;
     return `${cn} — ${c.count} 部`;
