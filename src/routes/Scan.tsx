@@ -20,8 +20,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "sonner";
+import { useTauriListen } from "@/hooks/useTauriListen";
 import { ListRestart, Search, X } from "lucide-react";
 import { PageHeader } from "@/components/library/PageHeader";
 import { ScanProgressBar } from "@/components/library/ScanProgressBar";
@@ -66,22 +66,21 @@ export default function Scan() {
 
   useEffect(() => {
     void refreshKpis();
-    let unlisten: UnlistenFn | null = null;
-    listen<ScanProgress>("scan-progress", (e) => {
-      if (
-        e.payload.status === "completed" ||
-        e.payload.status === "cancelled" ||
-        e.payload.status === "failed"
-      ) {
-        void refreshKpis();
-      }
-    }).then((fn) => {
-      unlisten = fn;
-    });
-    return () => {
-      unlisten?.();
-    };
   }, [refreshKpis]);
+
+  // WR-01 (routes report) + CR-01 (components report) co-fix: use the
+  // race-safe useTauriListen hook and let the StrictMode/HMR-aware impl
+  // handle subscribe/unsubscribe. The previous .then() pattern leaked the
+  // listener if cleanup fired before the listen() Promise resolved.
+  useTauriListen<ScanProgress>("scan-progress", (e) => {
+    if (
+      e.payload.status === "completed" ||
+      e.payload.status === "cancelled" ||
+      e.payload.status === "failed"
+    ) {
+      void refreshKpis();
+    }
+  });
 
   const onScan = useCallback(async () => {
     try {

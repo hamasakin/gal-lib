@@ -86,6 +86,18 @@ function buildHeatmap(
   return cells;
 }
 
+/**
+ * Parse `YYYY-MM-DD` as a LOCAL midnight date.
+ * WR-08 fix: previous code used `new Date(yyyyMmDd)` which the spec parses
+ * as UTC midnight; then differencing against local-time dates produced by
+ * `isoDay` (which uses `getFullYear/getMonth/getDate`, local-time) drifted
+ * by up to 24h on DST transition days and broke streak detection.
+ */
+function parseLocalDay(yyyyMmDd: string): Date {
+  const [y, m, d] = yyyyMmDd.split("-").map(Number);
+  return new Date(y, (m ?? 1) - 1, d ?? 1);
+}
+
 /** Compute consecutive-days streak ending today from the daily trend. */
 function computeStreak(
   trend: { bucket: string; hours: number }[],
@@ -109,7 +121,7 @@ function computeStreak(
   let prev: Date | null = null;
   for (const k of sortedKeys) {
     if ((map.get(k) ?? 0) <= 0) continue;
-    const cur = new Date(k);
+    const cur = parseLocalDay(k);
     if (prev) {
       const diff = (cur.getTime() - prev.getTime()) / 86400000;
       if (Math.abs(diff - 1) < 0.001) {

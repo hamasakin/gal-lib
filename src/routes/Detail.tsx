@@ -549,6 +549,11 @@ export default function Detail() {
       notesHydratedRef.current = false;
       return;
     }
+    // WR-11 guard: until refreshGame has loaded the cached game record for
+    // the current gameId, the in-state `notes` still belongs to the previous
+    // game; saving it now would overwrite the new game's notes with the
+    // previous game's text (the closure captures the new gameId via deps).
+    if (game?.id !== gameId) return;
     const timer = setTimeout(() => {
       setSavingNotes(true);
       updateGameNotes(gameId, notes)
@@ -561,7 +566,7 @@ export default function Detail() {
         .finally(() => setSavingNotes(false));
     }, 800);
     return () => clearTimeout(timer);
-  }, [notes, gameId]);
+  }, [notes, gameId, game?.id]);
 
   // 1Hz tick for "已保存 N 秒前"
   useEffect(() => {

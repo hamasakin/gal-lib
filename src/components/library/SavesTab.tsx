@@ -101,6 +101,12 @@ export function SavesTab({ game, dataDir: _dataDir }: SavesTabProps) {
   const [pendingBackup, setPendingBackup] = useState(false);
   const [pendingRestoreId, setPendingRestoreId] = useState<number | null>(null);
   const [pendingDeleteId, setPendingDeleteId] = useState<number | null>(null);
+  // WR (component report): in-flight guards stop double-clicks from
+  // re-issuing the same restore/delete IPC while the first is in flight.
+  // AlertDialog default-closes on confirm but the close itself races the
+  // async — without these flags a fast double-tap fires both.
+  const [restoring, setRestoring] = useState(false);
+  const [deleting, setDeleting] = useState(false);
 
   async function refetchBackups() {
     try {
@@ -165,8 +171,9 @@ export function SavesTab({ game, dataDir: _dataDir }: SavesTabProps) {
   }
 
   async function onRestoreConfirmed() {
-    if (pendingRestoreId == null) return;
+    if (pendingRestoreId == null || restoring) return;
     const id = pendingRestoreId;
+    setRestoring(true);
     try {
       await restoreSaveBackup(id);
       toast.success("已恢复存档");
@@ -176,12 +183,14 @@ export function SavesTab({ game, dataDir: _dataDir }: SavesTabProps) {
       toast.error(`恢复失败 — ${String(err)}`);
     } finally {
       setPendingRestoreId(null);
+      setRestoring(false);
     }
   }
 
   async function onDeleteConfirmed() {
-    if (pendingDeleteId == null) return;
+    if (pendingDeleteId == null || deleting) return;
     const id = pendingDeleteId;
+    setDeleting(true);
     try {
       await deleteSaveBackup(id);
       toast.success("已删除备份");
@@ -192,6 +201,7 @@ export function SavesTab({ game, dataDir: _dataDir }: SavesTabProps) {
       toast.error(`删除失败 — ${String(err)}`);
     } finally {
       setPendingDeleteId(null);
+      setDeleting(false);
     }
   }
 
