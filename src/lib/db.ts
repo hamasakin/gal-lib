@@ -18,14 +18,29 @@ export async function getDataDir(): Promise<string> {
  * First call: invokes `get_data_dir`, builds `sqlite:<abs>/app.db` URL,
  * and triggers tauri-plugin-sql to open the connection (which also runs
  * pending migrations on first open).
+ *
+ * WR-02 fix: previous version cached the rejected Promise forever — once
+ * `Database.load` failed (e.g. transient permission glitch, plugin not
+ * ready yet at very early app start), every subsequent `getDb()` returned
+ * the cached rejection without retrying. Now we attach a `.catch` that
+ * clears `dbPromise` so the next caller gets a fresh attempt.
  */
 export function getDb(): Promise<Database> {
   if (!dbPromise) {
-    dbPromise = (async () => {
+    const pending = (async () => {
       const dataDir = await getDataDir();
       const url = `sqlite:${dataDir.replace(/\\/g, "/")}/app.db`;
       return Database.load(url);
     })();
+    // Side-channel error handler — does NOT replace the consumer's rejection.
+    // The next get() after a failed init sees `dbPromise === null` and
+    // re-attempts the load.
+    pending.catch(() => {
+      if (dbPromise === pending) {
+        dbPromise = null;
+      }
+    });
+    dbPromise = pending;
   }
   return dbPromise;
 }

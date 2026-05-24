@@ -121,8 +121,22 @@ export function useSmoothWheel(
       // RAF 已停时把 target 重新对齐到真实 scrollTop —— 避免空闲期间
       // 用户用滚动条/键盘改了位置导致 target 失同步。RAF 未停时不重对齐，
       // 连续快速滚动 target 持续叠加 deltaY，多 tick 自然累加。
+      // WR-03 fix: normalize deltaMode to pixels. WheelEvent.deltaMode is
+      // 0 (pixel) by default in Chromium, but Firefox + some shells / a11y
+      // tools fire line-mode (1) or page-mode (2). Without normalization
+      // those modes deliver deltaY = 1..3 (line) or 1 (page), and the lerp
+      // accumulator barely moves — scrolling feels frozen.
+      let deltaPx = e.deltaY;
+      if (e.deltaMode === 1) {
+        // Line: 16px matches Chromium's own fallback line-height.
+        deltaPx *= 16;
+      } else if (e.deltaMode === 2) {
+        // Page: one viewport-height.
+        deltaPx *= el.clientHeight;
+      }
+
       if (raf == null) target = el.scrollTop;
-      target += e.deltaY * step;
+      target += deltaPx * step;
       const max = el.scrollHeight - el.clientHeight;
       target = Math.max(0, Math.min(max, target));
 

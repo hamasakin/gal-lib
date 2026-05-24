@@ -356,12 +356,28 @@ export const useLibraryStore = create<LibraryState>((set) => ({
     }),
   removeFetchingMetaId: (id) =>
     set((st) => {
-      // Skip the spread when the id wasn't tracked (avoids a no-op object
-      // identity bump that would invalidate every fetchingMetaIds-subscriber).
-      if (st.fetchingMetaIds[id] == null) return st;
-      const next = { ...st.fetchingMetaIds };
-      delete next[id];
-      return { fetchingMetaIds: next };
+      // WR-05 fix: clean metaTouchedIds alongside fetchingMetaIds so a
+      // forced-stop (game gets removed mid-flight, scan cancelled per-id)
+      // doesn't leave a "touched but not in-flight" entry that pollutes
+      // the next run's "queued vs. processed" visual state.
+      const wasInFlight = st.fetchingMetaIds[id] != null;
+      const wasTouched = st.metaTouchedIds[id] != null;
+      if (!wasInFlight && !wasTouched) return st;
+      const nextFetching = wasInFlight
+        ? (() => {
+            const c = { ...st.fetchingMetaIds };
+            delete c[id];
+            return c;
+          })()
+        : st.fetchingMetaIds;
+      const nextTouched = wasTouched
+        ? (() => {
+            const c = { ...st.metaTouchedIds };
+            delete c[id];
+            return c;
+          })()
+        : st.metaTouchedIds;
+      return { fetchingMetaIds: nextFetching, metaTouchedIds: nextTouched };
     }),
   clearFetchingMetaIds: () =>
     set((st) =>

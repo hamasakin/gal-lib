@@ -88,7 +88,14 @@ export function loadPreferences(): Preferences {
         ? parsed.autoCheckUpdate
         : DEFAULT_PREFS.autoCheckUpdate,
     };
-  } catch {
+  } catch (e: unknown) {
+    // WR-04 fix: log the parse failure so a corrupted localStorage key
+    // surfaces in the devtools console instead of silently reverting to
+    // defaults. Still returns DEFAULT_PREFS — we don't want to crash on
+    // bad persisted JSON, just make the failure visible to anyone tailing
+    // logs.
+    // eslint-disable-next-line no-console
+    console.warn("[preferences] failed to parse persisted prefs:", e);
     return DEFAULT_PREFS;
   }
 }
@@ -97,8 +104,13 @@ export function savePreferences(prefs: Preferences): void {
   if (typeof window === "undefined") return;
   try {
     localStorage.setItem(STORAGE_KEY, JSON.stringify(prefs));
-  } catch {
-    /* quota exceeded / private mode — silently degrade */
+  } catch (e: unknown) {
+    // WR-04 fix: log quota / private-mode failures (was previously a
+    // silent /* … */ swallow). The next app-launch still re-applies
+    // DEFAULT_PREFS so the user isn't locked out, but the warn lets us
+    // diagnose disappearing settings.
+    // eslint-disable-next-line no-console
+    console.warn("[preferences] savePreferences failed:", e);
   }
 }
 

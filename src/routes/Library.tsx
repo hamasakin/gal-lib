@@ -66,7 +66,11 @@ import {
   isAdvFilterActive,
 } from "@/lib/advancedFilter";
 import { getFilterOptions, type FilterOptions } from "@/lib/persons";
-import { addGamesToView, createCustomView } from "@/lib/customViews";
+import {
+  addGamesToView,
+  createCustomView,
+  deleteCustomView,
+} from "@/lib/customViews";
 import {
   ViewNameDialog,
   type ViewNameDialogMode,
@@ -201,13 +205,25 @@ export function Library() {
     // 提交时再快照一次 selectedIds，防止开 dialog 期间用户改动选择。
     const ids = Array.from(selectedIds);
     if (ids.length === 0) return;
+    let newId: number | null = null;
     try {
-      const newId = await createCustomView(name);
+      newId = await createCustomView(name);
       const inserted = await addGamesToView(newId, ids);
       toast.success(`已创建视图「${name}」并加入 ${inserted} 部`);
       await refreshSidebar();
       exitSelectMode();
     } catch (e: unknown) {
+      // WR-06 fix: if createCustomView succeeded but addGamesToView failed,
+      // we'd otherwise leave an empty orphan view sitting in the sidebar.
+      // Best-effort rollback so the user retries cleanly.
+      if (newId != null) {
+        try {
+          await deleteCustomView(newId);
+        } catch (rollbackErr: unknown) {
+          // eslint-disable-next-line no-console
+          console.error("[Library] view rollback failed:", rollbackErr);
+        }
+      }
       toast.error(`创建视图失败 — ${String(e)}`);
     }
   }
@@ -285,7 +301,14 @@ export function Library() {
     };
   }, []);
 
+  // WR-01 fix: stale-request guard via a monotonically-incrementing seq.
+  // Without this, two `refetchGrid` invocations in quick succession (user
+  // types fast; scan-throttle + user input race) can resolve out of order
+  // and the older payload overwrites the newer one.
+  const refetchSeqRef = useRef(0);
+
   const refetchGrid = useCallback(async () => {
+    const seq = ++refetchSeqRef.current;
     const trimmedQuery = searchQuery.trim();
     const queryArg = trimmedQuery === "" ? null : trimmedQuery;
     // Multi-dim facets that MUST go server-side: staff & official tags don't
@@ -307,6 +330,8 @@ export function Library() {
     const filterArg = isFilterEmpty(merged) ? null : merged;
     try {
       const rows = await searchGames(queryArg, sortBy, filterArg);
+      // Stale response — a newer call already (or will) supersede us.
+      if (seq !== refetchSeqRef.current) return;
       setGames(rows);
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
