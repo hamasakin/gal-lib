@@ -78,6 +78,7 @@ import {
   TabsTrigger,
 } from "@/components/ui/tabs";
 import { StarRating } from "@/components/library/StarRating";
+import { SafeImage } from "@/components/common/SafeImage";
 import { TagPicker } from "@/components/library/TagPicker";
 import { ScreenshotsTab } from "@/components/library/ScreenshotsTab";
 import { SavesTab } from "@/components/library/SavesTab";
@@ -1031,21 +1032,17 @@ export default function Detail() {
                 "0 30px 60px -20px rgba(0,0,0,.7), 0 0 0 1px rgba(255,255,255,.05) inset",
             }}
           >
-            {coverSrc ? (
-              <img
-                src={coverSrc}
-                alt={displayName}
-                draggable={false}
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-ink-3">
-                <ImageOff className="size-10" aria-hidden />
-              </div>
-            )}
+            <SafeImage
+              src={coverSrc}
+              alt={displayName}
+              draggable={false}
+              className="h-full w-full object-cover"
+              fallback={
+                <div className="flex h-full w-full items-center justify-center text-ink-3">
+                  <ImageOff className="size-10" aria-hidden />
+                </div>
+              }
+            />
           </div>
 
           {/* Info column */}

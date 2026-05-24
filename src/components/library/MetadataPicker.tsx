@@ -37,6 +37,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { SafeImage } from "@/components/common/SafeImage";
 import {
   ToggleGroup,
   ToggleGroupItem,
@@ -343,17 +344,11 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                           className="flex-shrink-0 overflow-hidden rounded bg-secondary"
                           style={{ width: 60, height: 80 }}
                         >
-                          {c.cover_url ? (
-                            // eslint-disable-next-line @next/next/no-img-element
-                            <img
-                              src={c.cover_url}
-                              alt={c.title}
-                              className="h-full w-full object-cover"
-                              onError={(e) => {
-                                (e.currentTarget as HTMLImageElement).style.display = "none";
-                              }}
-                            />
-                          ) : null}
+                          <SafeImage
+                            src={c.cover_url}
+                            alt={c.title}
+                            className="h-full w-full object-cover"
+                          />
                         </div>
                         <div className="flex min-w-0 max-w-full flex-1 flex-col gap-1 overflow-hidden">
                           <div className="flex min-w-0 max-w-full items-start gap-2">

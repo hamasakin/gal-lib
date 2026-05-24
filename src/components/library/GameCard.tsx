@@ -37,6 +37,7 @@ import { openGameDir, updateGameFavorite, updateGameStatus } from "@/lib/games";
 import { endActiveSession, launchGame } from "@/lib/launch";
 import { useLibraryStore } from "@/store/library";
 import { cn } from "@/lib/utils";
+import { SafeImage } from "@/components/common/SafeImage";
 import { displayGameName } from "@/lib/display";
 
 interface GameCardProps {
@@ -305,23 +306,19 @@ function GameCardImpl({
             )}
             style={{ borderRadius: "var(--r-md)" }}
           >
-            {coverDataUrl ? (
-              <img
-                src={coverDataUrl}
-                alt=""
-                draggable={false}
-                decoding="async"
-                loading="lazy"
-                className="h-full w-full object-cover"
-                onError={(e) => {
-                  (e.currentTarget as HTMLImageElement).style.display = "none";
-                }}
-              />
-            ) : (
-              <div className="flex h-full w-full items-center justify-center text-ink-3">
-                <ImageOff className="size-8" aria-hidden />
-              </div>
-            )}
+            <SafeImage
+              src={coverDataUrl}
+              alt=""
+              draggable={false}
+              decoding="async"
+              loading="lazy"
+              className="h-full w-full object-cover"
+              fallback={
+                <div className="flex h-full w-full items-center justify-center text-ink-3">
+                  <ImageOff className="size-8" aria-hidden />
+                </div>
+              }
+            />
 
             {/* 「藏书章」status stamp — top-left.
                 Quick 20260510b — hidden in select mode so the checkbox owns

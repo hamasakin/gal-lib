@@ -29,6 +29,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { endActiveSession } from "@/lib/launch";
 import { useLibraryStore } from "@/store/library";
+import { SafeImage } from "@/components/common/SafeImage";
 
 function fmtSessionTimer(sec: number): string {
   const h = Math.floor(sec / 3600);
@@ -110,21 +111,17 @@ export function ActiveSessionBar() {
         className="aspect-[3/4] w-16 overflow-hidden bg-bg-2"
         style={{ borderRadius: "var(--r-sm)" }}
       >
-        {coverSrc ? (
-          <img
-            src={coverSrc}
-            alt=""
-            draggable={false}
-            className="h-full w-full object-cover"
-            onError={(e) => {
-              (e.currentTarget as HTMLImageElement).style.display = "none";
-            }}
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-ink-3">
-            <ImageOff className="size-4" aria-hidden />
-          </div>
-        )}
+        <SafeImage
+          src={coverSrc}
+          alt=""
+          draggable={false}
+          className="h-full w-full object-cover"
+          fallback={
+            <div className="flex h-full w-full items-center justify-center text-ink-3">
+              <ImageOff className="size-4" aria-hidden />
+            </div>
+          }
+        />
       </div>
 
       {/* Info */}

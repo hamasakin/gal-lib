@@ -22,6 +22,7 @@ import {
   onCloseToTray,
 } from "@/lib/launch";
 import { useLibraryStore } from "@/store/library";
+import { ErrorBoundary } from "@/components/common/ErrorBoundary";
 
 void getDb().catch((e) => {
   // eslint-disable-next-line no-console
@@ -201,7 +202,9 @@ if (!rootEl) {
 }
 createRoot(rootEl).render(
   <>
-    <RouterProvider router={router} />
+    <ErrorBoundary>
+      <RouterProvider router={router} />
+    </ErrorBoundary>
     <Toaster richColors position="top-right" />
   </>
 );

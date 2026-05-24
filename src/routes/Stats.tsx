@@ -35,6 +35,7 @@ import { searchGames } from "@/lib/search";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { ImageOff } from "lucide-react";
 import { PageHeader } from "@/components/library/PageHeader";
+import { SafeImage } from "@/components/common/SafeImage";
 import { cn } from "@/lib/utils";
 import type { Game } from "@/lib/games";
 
@@ -734,21 +735,17 @@ function TopRow({
         className="aspect-[3/4] w-9 overflow-hidden bg-bg-2"
         style={{ borderRadius: 2 }}
       >
-        {coverSrc ? (
-          <img
-            src={coverSrc}
-            alt=""
-            className="h-full w-full object-cover"
-            draggable={false}
-            onError={(e) =>
-              ((e.currentTarget as HTMLImageElement).style.display = "none")
-            }
-          />
-        ) : (
-          <div className="flex h-full w-full items-center justify-center text-ink-3">
-            <ImageOff size={10} />
-          </div>
-        )}
+        <SafeImage
+          src={coverSrc}
+          alt=""
+          className="h-full w-full object-cover"
+          draggable={false}
+          fallback={
+            <div className="flex h-full w-full items-center justify-center text-ink-3">
+              <ImageOff size={10} />
+            </div>
+          }
+        />
       </div>
       <div className="min-w-0">
         <div className="truncate font-serif text-[13px] text-ink-0">
