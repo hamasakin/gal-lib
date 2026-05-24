@@ -108,7 +108,10 @@ export function ScreenshotsTab({ gameId, dataDir }: ScreenshotsTabProps) {
   }
 
   // ── Export handler ───────────────────────────────────────────────────────
-  async function onExport(shot: Screenshot, e: React.MouseEvent) {
+  async function onExport(
+    shot: Screenshot,
+    e: React.SyntheticEvent,
+  ) {
     e.stopPropagation();
     try {
       // Default file name = the original PNG basename so the user doesn't
@@ -158,13 +161,25 @@ export function ScreenshotsTab({ gameId, dataDir }: ScreenshotsTabProps) {
       <div className="grid grid-cols-3 gap-3">
         {screenshots.map((shot) => {
           const src = resolveSrc(shot.path);
+          // CR-03 fix: HTML forbids interactive elements (button / [role=button]
+          // / [tabindex]) being nested inside another button. Outer container
+          // is now a div carrying the role/keyboard contract; inner action
+          // controls are real <button>s with stopPropagation so they don't
+          // bubble up into the lightbox-open click.
           return (
-            <button
-              type="button"
+            <div
               key={shot.id}
+              role="button"
+              tabIndex={0}
               onClick={() => setLightboxShot(shot)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter" || e.key === " ") {
+                  e.preventDefault();
+                  setLightboxShot(shot);
+                }
+              }}
               className={cn(
-                "group relative aspect-square overflow-hidden rounded-md border border-border bg-secondary",
+                "group relative aspect-square cursor-pointer overflow-hidden rounded-md border border-border bg-secondary",
                 "transition-colors hover:border-ring focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
               )}
               aria-label={`截图 ${shot.captured_at}`}
@@ -192,44 +207,29 @@ export function ScreenshotsTab({ gameId, dataDir }: ScreenshotsTabProps) {
                   "transition-opacity group-hover:opacity-100 group-focus-visible:opacity-100",
                 )}
               >
-                <span
-                  role="button"
-                  tabIndex={0}
+                <button
+                  type="button"
                   onClick={(e) => void onExport(shot, e)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      void onExport(shot, e as unknown as React.MouseEvent);
-                    }
-                  }}
                   className="inline-flex size-7 items-center justify-center rounded-md bg-background/80 text-foreground hover:bg-background"
                   aria-label="导出"
                   title="导出"
                 >
                   <Download className="size-3.5" aria-hidden />
-                </span>
-                <span
-                  role="button"
-                  tabIndex={0}
+                </button>
+                <button
+                  type="button"
                   onClick={(e) => {
                     e.stopPropagation();
                     setPendingDelete(shot);
-                  }}
-                  onKeyDown={(e) => {
-                    if (e.key === "Enter" || e.key === " ") {
-                      e.preventDefault();
-                      e.stopPropagation();
-                      setPendingDelete(shot);
-                    }
                   }}
                   className="inline-flex size-7 items-center justify-center rounded-md bg-background/80 text-rose-400 hover:bg-background"
                   aria-label="删除"
                   title="删除"
                 >
                   <Trash2 className="size-3.5" aria-hidden />
-                </span>
+                </button>
               </div>
-            </button>
+            </div>
           );
         })}
       </div>

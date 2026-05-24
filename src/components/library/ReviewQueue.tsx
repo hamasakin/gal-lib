@@ -438,7 +438,7 @@ function CandidateCard({
 
       <div className="mt-2 flex gap-3">
         <div
-          className="h-20 w-[60px] flex-shrink-0 overflow-hidden border border-line bg-bg-2"
+          className="relative h-20 w-[60px] flex-shrink-0 overflow-hidden border border-line bg-bg-2"
           style={{ borderRadius: "var(--r-sm)" }}
         >
           {candidate.cover_url ? (
@@ -450,7 +450,14 @@ function CandidateCard({
               referrerPolicy="no-referrer"
             />
           ) : (
-            <ImageOff size={14} className="absolute -translate-x-1/2 -translate-y-1/2 text-ink-3" />
+            // CR-04 fix: parent needs `relative` and the icon needs an
+            // anchor (`left-1/2 top-1/2`) before the translate-centring
+            // works. Without this the icon was positioned against some
+            // ancestor and rendered off-card.
+            <ImageOff
+              size={14}
+              className="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 text-ink-3"
+            />
           )}
         </div>
         <div className="min-w-0 flex-1">

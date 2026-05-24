@@ -62,7 +62,11 @@ export function ScanProgressBar() {
   // Pass 1 (discovering) shows "扫描目录中"; Pass 2 (enriching) shows
   // "获取元数据"; terminal events fold into a single "扫描完成" copy so the
   // user doesn't see a two-step "目录扫描完成" → "元数据获取完成" flicker.
-  let summary: string;
+  // CR-05 fix: every branch must initialize `summary`, otherwise an
+  // unforeseen `status` value (e.g. a new backend status added in a future
+  // phase) leaves `summary` in the TDZ and triggers a ReferenceError when
+  // the JSX below reads it. Initialise upfront and let each case overwrite.
+  let summary = "";
   switch (status) {
     case "running":
       if (phase === "discovering") {
@@ -80,6 +84,10 @@ export function ScanProgressBar() {
     case "failed":
       summary = "扫描失败";
       break;
+    default:
+      // Future-proof: surface the unknown status verbatim so it's visible
+      // in dev instead of silently swallowed.
+      summary = `扫描状态 — ${String(status)}`;
   }
 
   async function onConfirmCancel() {

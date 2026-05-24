@@ -11,7 +11,7 @@
  * renders nothing.
  */
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Link } from "react-router-dom";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import {
@@ -73,14 +73,24 @@ export function CoStaffStrip({ personId, limit }: CoStaffStripProps) {
   // Portrait fire-and-forget per row. Bangumi 1 req/s + cache-first means
   // first visit drips in, subsequent visits hit disk immediately. We honor
   // the limiter at the Rust layer; here we just issue requests in order.
+  //
+  // CR-07 fix: previous code read `portraits` directly inside the loop's
+  // `if (key in portraits) continue` check — but `portraits` is the effect
+  // closure's snapshot (always `{}` on a fresh effect run because the
+  // effect doesn't depend on `portraits`), so the skip never triggered.
+  // Tracking the in-flight / fetched set on a ref instead means we
+  // correctly de-dupe across effect re-runs (rows changing) without
+  // adding `portraits` to deps, which would tear down + restart the
+  // fetch loop on every successful setPortraits.
+  const fetchedKeysRef = useRef<Set<string>>(new Set());
   useEffect(() => {
     if (!rows || !dataDir) return;
     let cancelled = false;
     (async () => {
       for (const row of rows) {
         const key = `${row.source}-${row.source_id}`;
-        // Skip if already resolved (or in-flight from a previous render).
-        if (key in portraits) continue;
+        if (fetchedKeysRef.current.has(key)) continue;
+        fetchedKeysRef.current.add(key);
         try {
           const rel = await getOrFetchPortrait(row.source, row.source_id);
           if (cancelled) return;
@@ -93,7 +103,6 @@ export function CoStaffStrip({ personId, limit }: CoStaffStripProps) {
     return () => {
       cancelled = true;
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [rows, dataDir]);
 
   // Suppress error display — co-staff is a non-critical adornment.

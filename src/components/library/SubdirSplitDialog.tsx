@@ -100,6 +100,14 @@ export function SubdirSplitDialog({
         if (cancelled) return;
         setEntries(list);
         setSelected((prev) => {
+          // CR-06 defence-in-depth: re-check `cancelled` inside the
+          // functional updater. React 18+ batches state updates and may
+          // invoke the updater on a later microtask, by which time
+          // another `drillInto` could have flipped the effect's cleanup
+          // flag. Without this guard the default-prefill of exe paths
+          // from the just-aborted directory would be merged into the
+          // new directory's selected set.
+          if (cancelled) return prev;
           const next = new Set(prev);
           for (const e of list) {
             if (e.exe != null && !next.has(e.path)) {

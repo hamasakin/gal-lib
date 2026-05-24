@@ -140,15 +140,24 @@ export function TagPicker({
     setSaving(true);
     try {
       const newId = await createTag(trimmedSearch, null);
+      // CR-02 fix: read the latest staged ids INSIDE the functional
+      // updater so any toggles the user fired while `createTag` was in
+      // flight are included in the persisted set. The previous code read
+      // `stagedIds` from the closure (the render snapshot at function
+      // entry), so any concurrent toggle was lost on the immediate save.
+      // Strict-mode double-invocation is safe here: the updater is
+      // idempotent (re-adding newId to the set yields the same set) and
+      // the snapshot captured on the second call is identical to the first.
+      let snapshot: number[] = [];
       setStagedIds((prev) => {
         const next = new Set(prev);
         next.add(newId);
+        snapshot = Array.from(next);
         return next;
       });
       // Immediately persist so the user sees the new tag in the chip row
       // even if they close the popover via Esc without an explicit save.
-      const ids = Array.from(stagedIds).concat(newId);
-      await setGameTags(gameId, ids);
+      await setGameTags(gameId, snapshot);
       setSearch("");
       onChange?.();
     } catch (err: unknown) {
