@@ -149,33 +149,59 @@ export function FilterPanel({ games, filter, onChange, options }: FilterPanelPro
     setOpen(false);
   }
 
+  // Quick 260524-dlr — 「筛选」按钮加快捷清空：activeCount>0 时按钮右侧追加
+  // 独立 X 按钮，一键 reset 全部 advFilter（与「重置」按钮等价）；点击 X 通过
+  // stopPropagation + 不在 PopoverTrigger 里来避免顺带打开 popover。
+  function quickClear(e: React.MouseEvent) {
+    e.stopPropagation();
+    const empty = cloneFilter(EMPTY_ADV_FILTER);
+    setDraft(empty);
+    onChange(empty);
+    setOpen(false);
+  }
+
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
-        <button
-          type="button"
-          className={cn(
-            "inline-flex h-8 items-center gap-1.5 border px-3 font-mono text-[11px] transition-colors",
-            activeCount > 0
-              ? "border-brand bg-brand-soft text-ink-0"
-              : "border-line bg-bg-1 text-ink-1 hover:border-line-strong hover:bg-bg-2 hover:text-ink-0",
-          )}
-          style={{ borderRadius: "9999px" }}
-          aria-label="高级筛选"
-          title="高级筛选"
-        >
-          <ListFilter size={12} strokeWidth={1.7} />
-          <span>筛选</span>
-          {activeCount > 0 && (
-            <span
-              className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center bg-brand px-1 text-[9.5px] text-[var(--accent-on)]"
-              style={{ borderRadius: 999 }}
-            >
-              {activeCount}
-            </span>
-          )}
-        </button>
-      </PopoverTrigger>
+      <div
+        className={cn(
+          "inline-flex h-8 items-stretch overflow-hidden border transition-colors",
+          activeCount > 0
+            ? "border-brand bg-brand-soft text-ink-0"
+            : "border-line bg-bg-1 text-ink-1 hover:border-line-strong hover:bg-bg-2 hover:text-ink-0",
+        )}
+        style={{ borderRadius: "9999px" }}
+      >
+        <PopoverTrigger asChild>
+          <button
+            type="button"
+            className="inline-flex items-center gap-1.5 bg-transparent px-3 font-mono text-[11px]"
+            aria-label="高级筛选"
+            title="高级筛选"
+          >
+            <ListFilter size={12} strokeWidth={1.7} />
+            <span>筛选</span>
+            {activeCount > 0 && (
+              <span
+                className="ml-0.5 inline-flex h-4 min-w-4 items-center justify-center bg-brand px-1 text-[9.5px] text-[var(--accent-on)]"
+                style={{ borderRadius: 999 }}
+              >
+                {activeCount}
+              </span>
+            )}
+          </button>
+        </PopoverTrigger>
+        {activeCount > 0 && (
+          <button
+            type="button"
+            onClick={quickClear}
+            aria-label="清除全部筛选"
+            title="清除全部筛选"
+            className="grid w-7 place-items-center border-l border-brand/40 text-ink-1 transition-colors hover:bg-brand hover:text-[var(--accent-on)]"
+          >
+            <X size={11} strokeWidth={2} />
+          </button>
+        )}
+      </div>
       <PopoverContent
         align="start"
         sideOffset={6}
