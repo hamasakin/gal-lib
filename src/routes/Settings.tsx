@@ -53,6 +53,7 @@ import {
   listScanRoots,
   refreshMetadataSmart,
   removeScanRoot,
+  updateScanRootDepth,
   startScan,
 } from "@/lib/scan";
 import { getSidebarCategories, searchGames } from "@/lib/search";
@@ -217,8 +218,11 @@ export function Settings() {
     const target = scanRoots.find((r) => r.id === id);
     if (!target) return;
     try {
-      await removeScanRoot(id);
-      await addScanRoot(target.path, depth);
+      // WR-04 fix: single atomic UPDATE replacing the old
+      // removeScanRoot+addScanRoot dance — that pair could leave the row
+      // missing entirely if the second IPC failed (no rollback), and the
+      // user would have to re-add the scan root manually.
+      await updateScanRootDepth(id, depth);
       const rs = await listScanRoots();
       setScanRoots(rs);
     } catch (e: unknown) {

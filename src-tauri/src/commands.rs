@@ -541,6 +541,28 @@ pub async fn remove_scan_root(id: i64, state: State<'_, AppPaths>) -> Result<(),
     Ok(())
 }
 
+/// Atomic depth update — single UPDATE replacing the previous remove+add
+/// dance in Settings (which could lose the row entirely if the add half
+/// failed mid-way; WR-04 in 260524 review).
+#[tauri::command]
+pub async fn update_scan_root_depth(
+    id: i64,
+    depth: u8,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    if !(1..=3).contains(&depth) {
+        return Err(format!("depth must be 1..=3 (got {})", depth));
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    sqlx::query("UPDATE scan_roots SET depth = ? WHERE id = ?")
+        .bind(depth as i64)
+        .bind(id)
+        .execute(&*pool)
+        .await
+        .map_err(err_str)?;
+    Ok(())
+}
+
 #[tauri::command]
 pub async fn list_scan_roots(state: State<'_, AppPaths>) -> Result<Vec<ScanRoot>, String> {
     let pool = state.pool().await.map_err(err_str)?;

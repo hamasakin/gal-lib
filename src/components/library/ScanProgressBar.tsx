@@ -128,11 +128,18 @@ export function ScanProgressBar() {
           >
             {summary}
           </span>
-          {status === "running" && (
-            <span className="font-mono text-[10.5px] text-ink-3">
-              {completed} / {total} · {pct}%
-            </span>
-          )}
+          {status === "running" &&
+            (total > 0 ? (
+              <span className="font-mono text-[10.5px] text-ink-3">
+                {completed} / {total} · {pct}%
+              </span>
+            ) : (
+              // WR-12 fix: total=0 while running means we've started a
+              // pass but haven't enumerated entries yet. Showing
+              // "0 / 0 · 0%" looked stuck; this 准备中 copy makes the
+              // indeterminate state explicit until total lands.
+              <span className="font-mono text-[10.5px] text-ink-3">准备中…</span>
+            ))}
         </div>
         {status === "running" && (
           <AlertDialog>

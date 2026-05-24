@@ -198,6 +198,7 @@ pub fn run() {
             get_data_dir,
             commands::add_scan_root,
             commands::remove_scan_root,
+            commands::update_scan_root_depth,
             commands::list_scan_roots,
             commands::start_scan,
             commands::cancel_scan,

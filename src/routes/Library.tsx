@@ -425,7 +425,10 @@ export function Library() {
   useEffect(() => {
     const prev = prevScanStatus.current;
     const next = scanProgress?.status ?? null;
-    prevScanStatus.current = next;
+    // WR-05 (routes) fix: assign AFTER the edge check. The previous order
+    // wrote `prevScanStatus.current = next` first, so React StrictMode's
+    // double-invoke saw prev === "completed" on the second run and missed
+    // the edge — no toast.
     if (prev !== "completed" && next === "completed") {
       const total = scanProgress?.total ?? 0;
       void (async () => {
@@ -441,6 +444,7 @@ export function Library() {
         toastScanFinished(total, total - pending, pending);
       })();
     }
+    prevScanStatus.current = next;
   }, [
     scanProgress?.status,
     scanProgress?.total,

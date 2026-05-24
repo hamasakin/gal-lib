@@ -67,6 +67,17 @@ export async function removeScanRoot(id: number): Promise<void> {
   await invoke("remove_scan_root", { id });
 }
 
+/**
+ * Atomic UPDATE on `scan_roots.depth`. Use instead of remove+add, which
+ * could leave the row missing entirely if the add half failed (WR-04).
+ */
+export async function updateScanRootDepth(
+  id: number,
+  depth: 1 | 2 | 3,
+): Promise<void> {
+  await invoke("update_scan_root_depth", { id, depth });
+}
+
 export async function listScanRoots(): Promise<ScanRoot[]> {
   return invoke<ScanRoot[]>("list_scan_roots");
 }
