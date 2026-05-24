@@ -30,6 +30,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Trash2, Pencil, Plus, Check, X } from "lucide-react";
 import { toast } from "sonner";
 import { Button } from "@/components/ui/button";
@@ -95,8 +96,9 @@ function ColorSwatchPicker({
   value: string;
   onChange: (hex: string) => void;
 }) {
+  const { t } = useTranslation();
   return (
-    <div className="flex items-center gap-1.5" role="radiogroup" aria-label="标签颜色">
+    <div className="flex items-center gap-1.5" role="radiogroup" aria-label={t("tag_manager.color_aria")}>
       {PRESET_COLORS.map((c) => {
         const active = c.hex.toLowerCase() === value.toLowerCase();
         return (
@@ -121,6 +123,7 @@ function ColorSwatchPicker({
 }
 
 export function TagManager() {
+  const { t } = useTranslation();
   const tags = useLibraryStore((s) => s.tags);
   const setTags = useLibraryStore((s) => s.setTags);
 
@@ -148,7 +151,7 @@ export function TagManager() {
       const fresh = await listTags();
       setTags(fresh);
     } catch (e: unknown) {
-      toast.error(`刷新标签失败 — ${String(e)}`);
+      toast.error(t("toast.tag_refresh_failed", { err: String(e) }));
     }
   }
 
@@ -172,7 +175,7 @@ export function TagManager() {
     if (!editing) return;
     const name = editing.name.trim();
     if (name.length === 0) {
-      toast.error("标签名不能为空");
+      toast.error(t("toast.tag_empty_name"));
       return;
     }
     setBusy(true);
@@ -185,7 +188,7 @@ export function TagManager() {
       await refresh();
       setEditing(null);
     } catch (e: unknown) {
-      toast.error(`保存失败 — ${String(e)}`);
+      toast.error(t("toast.save_failed", { err: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -199,7 +202,7 @@ export function TagManager() {
       await refresh();
       setPendingDelete(null);
     } catch (e: unknown) {
-      toast.error(`删除失败 — ${String(e)}`);
+      toast.error(t("toast.delete_failed", { err: String(e) }));
     } finally {
       setBusy(false);
     }
@@ -208,9 +211,9 @@ export function TagManager() {
   return (
     <section className="space-y-4">
       <div className="space-y-1">
-        <h2 className="text-base font-semibold text-foreground">标签管理</h2>
+        <h2 className="text-base font-semibold text-foreground">{t("tag_manager.title")}</h2>
         <p className="text-body text-muted-foreground">
-          给游戏添加自定义标签便于筛选
+          {t("tag_manager.lede")}
         </p>
       </div>
 
@@ -230,7 +233,7 @@ export function TagManager() {
                     setEditing({ ...editing, name: e.currentTarget.value })
                   }
                   className="w-48"
-                  placeholder="标签名"
+                  placeholder={t("tag_manager.placeholder_name")}
                   disabled={busy}
                 />
                 <ColorSwatchPicker
@@ -244,14 +247,14 @@ export function TagManager() {
                     disabled={busy}
                   >
                     <Check className="size-4" aria-hidden />
-                    保存
+                    {t("tag_manager.save")}
                   </Button>
                   <Button
                     size="sm"
                     variant="ghost"
                     onClick={cancelEdit}
                     disabled={busy}
-                    aria-label="取消"
+                    aria-label={t("common.cancel")}
                   >
                     <X className="size-4" />
                   </Button>
@@ -277,7 +280,7 @@ export function TagManager() {
                 size="icon"
                 onClick={() => startEdit(tag)}
                 disabled={busy || editing !== null}
-                aria-label="编辑"
+                aria-label={t("common.edit")}
               >
                 <Pencil className="size-4" />
               </Button>
@@ -287,7 +290,7 @@ export function TagManager() {
                 className="hover:text-destructive"
                 onClick={() => setPendingDelete(tag)}
                 disabled={busy || editing !== null}
-                aria-label="删除"
+                aria-label={t("common.delete")}
               >
                 <Trash2 className="size-4" />
               </Button>
@@ -336,7 +339,7 @@ export function TagManager() {
 
         {tags.length === 0 && editing === null && (
           <li className="rounded-md border border-dashed border-border p-6 text-center text-body text-muted-foreground">
-            还没有标签 — 点下方按钮添加
+            {t("tag_manager.empty")}
           </li>
         )}
       </ul>
@@ -347,7 +350,7 @@ export function TagManager() {
         disabled={editing !== null || busy}
       >
         <Plus className="size-4" aria-hidden />
-        添加标签
+        {t("tag_manager.add")}
       </Button>
 
       {/* Delete confirmation dialog — open is driven by `pendingDelete`. */}
@@ -361,15 +364,15 @@ export function TagManager() {
           <AlertDialogHeader>
             <AlertDialogTitle>
               {pendingDelete
-                ? `确定删除标签『${pendingDelete.name}』？`
-                : "确定删除标签？"}
+                ? t("tag_manager.delete_title_with_name", { name: pendingDelete.name })
+                : t("tag_manager.delete_title")}
             </AlertDialogTitle>
             <AlertDialogDescription>
-              已打的游戏会保留，但失去此标签关联
+              {t("tag_manager.delete_desc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
-            <AlertDialogCancel disabled={busy}>取消</AlertDialogCancel>
+            <AlertDialogCancel disabled={busy}>{t("common.cancel")}</AlertDialogCancel>
             <AlertDialogAction
               disabled={busy}
               onClick={(e) => {
@@ -377,7 +380,7 @@ export function TagManager() {
                 void commitDelete();
               }}
             >
-              删除
+              {t("common.delete")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

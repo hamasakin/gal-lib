@@ -19,6 +19,7 @@ import { toast } from "sonner";
 import { Clock, Play, AlertTriangle } from "lucide-react";
 import type { ReactNode } from "react";
 import { createElement, Fragment } from "react";
+import i18n from "@/i18n";
 
 // Sonner exposes `toast.custom((id) => ReactNode)`; the helper here is split
 // into per-variant entry points so call sites stay readable. Inline JSX is
@@ -88,15 +89,15 @@ export function toastLaunchSuccess(
   pid?: number | null,
 ): void {
   const metaParts: string[] = [];
-  if (profile) metaParts.push(`LE 转区 · ${profile}`);
-  if (pid != null) metaParts.push(`PID ${pid}`);
-  metaParts.push("计时已开始");
+  if (profile) metaParts.push(i18n.t("toast.shell.le_profile", { profile }));
+  if (pid != null) metaParts.push(i18n.t("toast.shell.pid", { pid }));
+  metaParts.push(i18n.t("toast.shell.timer_started"));
 
   toast.custom(
     () =>
       shell({
         accent: "var(--accent)",
-        header: "启动成功",
+        header: i18n.t("toast.shell.launch_success"),
         headerIcon: el(Play, { size: 13, fill: "currentColor", strokeWidth: 1 }),
         title: gameName,
         meta: metaParts.join(" · "),
@@ -151,7 +152,7 @@ export function toastSessionRecorded(
       {
         className: "font-mono text-[10px] text-ink-3 ml-2",
       },
-      `累计 ${totalHours} h`,
+      i18n.t("toast.shell.total_h", { h: totalHours }),
     ),
   );
 
@@ -159,7 +160,7 @@ export function toastSessionRecorded(
     () =>
       shell({
         accent: "#6fd1c8",
-        header: "本次会话已记",
+        header: i18n.t("toast.shell.session_recorded"),
         headerIcon: el(Clock, { size: 13, strokeWidth: 1.6 }),
         title: gameName,
         meta: big,
@@ -183,8 +184,12 @@ export function toastScanFinished(
 ): void {
   const meta =
     reviewCount > 0
-      ? `新增 ${added} 部 · 自动入库 ${autoBound} · 待复核 ${reviewCount}`
-      : `新增 ${added} 部 · 全部自动入库`;
+      ? i18n.t("toast.shell.added_with_pending", {
+          added,
+          auto: autoBound,
+          pending: reviewCount,
+        })
+      : i18n.t("toast.shell.added_all_auto", { added });
 
   const footer =
     reviewCount > 0 && onReview
@@ -201,7 +206,7 @@ export function toastScanFinished(
               borderRadius: "var(--r-md)",
             },
           },
-          "立即复核 →",
+          i18n.t("toast.shell.review_now"),
         )
       : null;
 
@@ -211,8 +216,8 @@ export function toastScanFinished(
         accent: "#ffd166",
         header:
           reviewCount > 0
-            ? `扫描完成 · ${reviewCount} 项待复核`
-            : "扫描完成",
+            ? i18n.t("toast.shell.scan_done_pending", { count: reviewCount })
+            : i18n.t("toast.shell.scan_done"),
         headerIcon: el(AlertTriangle, { size: 13, strokeWidth: 1.6 }),
         title: meta,
         footer,

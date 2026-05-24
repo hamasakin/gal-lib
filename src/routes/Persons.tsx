@@ -20,6 +20,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { PageHeader } from "@/components/library/PageHeader";
 import { GameCard } from "@/components/library/GameCard";
@@ -40,11 +41,11 @@ import { listGames } from "@/lib/games";
 
 const ROLE_ORDER: StaffRole[] = ["scenario", "artist", "voice", "music"];
 
-const ROLE_LABELS: Record<StaffRole, string> = {
-  scenario: "编剧 / 剧本",
-  artist: "原画 / 画师",
-  voice: "声优",
-  music: "音乐",
+const ROLE_LABEL_KEYS: Record<StaffRole, string> = {
+  scenario: "persons.role.scenario",
+  artist: "persons.role.artist",
+  voice: "persons.role.voice",
+  music: "persons.role.music",
 };
 
 interface PersonIdentity {
@@ -57,6 +58,7 @@ interface PersonIdentity {
 }
 
 export default function Persons() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const personId = Number(id);
 
@@ -141,7 +143,7 @@ export default function Persons() {
               });
             } else {
               setIdentity({
-                name: "未知人物",
+                name: t("persons.unknown_person"),
                 name_cn: null,
                 source: "bangumi",
                 sources: [],
@@ -150,7 +152,7 @@ export default function Persons() {
           } catch {
             if (!cancelled) {
               setIdentity({
-                name: "未知人物",
+                name: t("persons.unknown_person"),
                 name_cn: null,
                 source: "bangumi",
                 sources: [],
@@ -189,7 +191,7 @@ export default function Persons() {
     return () => {
       cancelled = true;
     };
-  }, [personId]);
+  }, [personId, t]);
 
   // PER-04 — fetch the self-portrait once identity is resolved. Prefer the
   // Bangumi attribution from sources[] (VNDB portraits ship in v1.4).
@@ -244,29 +246,29 @@ export default function Persons() {
 
   if (!Number.isFinite(personId)) {
     return (
-      <div className="p-8 font-mono text-[12px] text-ink-2">无效的人物 id</div>
+      <div className="p-8 font-mono text-[12px] text-ink-2">{t("persons.invalid_id")}</div>
     );
   }
 
   const displayName = identity
     ? (identity.name_cn ?? identity.name)
     : loading
-      ? "加载中…"
-      : "未知人物";
+      ? t("persons.loading_name")
+      : t("persons.unknown_person");
 
   const nonEmptyRoles = ROLE_ORDER.filter((r) => byRole[r].length > 0);
 
   return (
     <div className="h-full overflow-auto">
       <PageHeader
-        crumb="图书馆 / 人物"
+        crumb={t("persons.crumb")}
         title={<>{displayName}</>}
         sub={
           identity
-            ? `${sourceLabel(identity)} · 共参与 ${totalCount} 部作品`
+            ? t("persons.sub_with_count", { source: sourceLabel(identity), count: totalCount })
             : loading
-              ? "正在载入…"
-              : "未参与任何作品"
+              ? t("persons.sub_loading")
+              : t("persons.sub_empty")
         }
         actions={
           dataDir && portrait ? (
@@ -285,12 +287,12 @@ export default function Persons() {
 
       <div className="px-8 pb-16 pt-6">
         {loading ? (
-          <p className="font-mono text-[12px] text-ink-3">加载中…</p>
+          <p className="font-mono text-[12px] text-ink-3">{t("persons.loading")}</p>
         ) : nonEmptyRoles.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-24">
-            <p className="font-serif text-[20px] text-ink-1">未参与任何游戏</p>
+            <p className="font-serif text-[20px] text-ink-1">{t("persons.empty_title")}</p>
             <p className="font-mono text-[11px] text-ink-3">
-              该人物暂无关联作品
+              {t("persons.empty_sub")}
             </p>
           </div>
         ) : (
@@ -350,15 +352,16 @@ function RoleSection({
   resolveCover,
   voiceCharByGame,
 }: RoleSectionProps) {
+  const { t } = useTranslation();
   return (
     <section className="mb-12">
       <header className="mb-3.5 flex items-baseline justify-between border-b border-line pb-2">
         <div className="flex items-baseline gap-3.5">
           <span className="font-mono text-[10.5px] uppercase tracking-[0.14em] text-ink-1">
-            {ROLE_LABELS[role]}
+            {t(ROLE_LABEL_KEYS[role])}
           </span>
           <span className="font-mono text-[10.5px] text-ink-3">
-            {games.length} 部
+            {t("persons.role_count", { count: games.length })}
           </span>
         </div>
       </header>
@@ -381,7 +384,7 @@ function RoleSection({
             />
             {voiceCharByGame && voiceCharByGame[g.id] ? (
               <div className="mt-1 font-mono text-[10px] text-ink-3">
-                饰 · {voiceCharByGame[g.id]}
+                {t("persons.voice_label", { name: voiceCharByGame[g.id] })}
               </div>
             ) : null}
           </div>

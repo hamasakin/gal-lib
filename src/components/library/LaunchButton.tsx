@@ -1,21 +1,23 @@
 import { useState, useRef, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Play, Square, ChevronUp } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 // Quick 260517-qnn — 两种启动方式，取代旧的 4 个 LE profile
 // （日 / 简中 / 繁中 / Custom）。le-jp 走 Locale Emulator（默认 ja-JP），
 // direct 不经 LE 直接拉起 exe。
+// Quick 260524-olt — label / note 在组件内 t() 解析。
 const LAUNCH_METHODS = [
   {
     id: "le-jp",
-    label: "日区 LE 启动",
-    note: "转区",
+    labelKey: "detail.launch.le_jp",
+    noteKey: "detail.launch.le_jp_note",
     color: "var(--accent)",
   },
   {
     id: "direct",
-    label: "直接启动",
-    note: "原生",
+    labelKey: "detail.launch.direct",
+    noteKey: "detail.launch.direct_note",
     color: "#6fd1c8",
   },
 ] as const;
@@ -54,6 +56,7 @@ export function LaunchButton({
   disabled,
   disabledTitle,
 }: LaunchButtonProps) {
+  const { t } = useTranslation();
   const [hover, setHover] = useState(false);
   const closeTimer = useRef<number | null>(null);
 
@@ -83,6 +86,7 @@ export function LaunchButton({
   const expanded = hover && !disabled && !isActive;
   const activeProfile =
     LAUNCH_METHODS.find((p) => p.id === profile) ?? LAUNCH_METHODS[0];
+  const activeProfileLabel = t(activeProfile.labelKey);
 
   // Active (game running) state — solid stop button, no popover
   if (isActive) {
@@ -90,8 +94,8 @@ export function LaunchButton({
       <button
         type="button"
         onClick={onClick}
-        title="强制结束"
-        aria-label="强制结束"
+        title={t("detail.launch.force_stop")}
+        aria-label={t("detail.launch.force_stop")}
         className={cn(
           "relative grid h-11 w-11 place-items-center rounded-full text-white",
           "transition-shadow hover:scale-105",
@@ -120,8 +124,8 @@ export function LaunchButton({
         type="button"
         onClick={onClick}
         disabled={disabled}
-        title={disabled ? disabledTitle : `启动 · ${activeProfile.label}`}
-        aria-label={`启动 · ${activeProfile.label}`}
+        title={disabled ? disabledTitle : t("detail.launch.tooltip", { label: activeProfileLabel })}
+        aria-label={t("detail.launch.tooltip", { label: activeProfileLabel })}
         className={cn(
           "relative inline-flex items-center overflow-hidden whitespace-nowrap rounded-full",
           "transition-[width,box-shadow,background] duration-200",
@@ -154,9 +158,9 @@ export function LaunchButton({
           style={{ opacity: expanded ? 1 : 0 }}
         >
           <span className="font-serif font-semibold normal-case mr-2 tracking-normal">
-            启动
+            {t("detail.launch.action")}
           </span>
-          {activeProfile.label}
+          {activeProfileLabel}
           <ChevronUp size={11} strokeWidth={2} className="ml-1 inline" />
         </span>
       </button>
@@ -171,7 +175,7 @@ export function LaunchButton({
         style={{ bottom: "calc(100% + 12px)", borderRadius: "var(--r-md)" }}
       >
         <div className="px-2 pb-2 pt-1.5 font-mono text-[10px] uppercase tracking-[0.14em] text-ink-3">
-          启动方式
+          {t("detail.launch.section")}
         </div>
         {LAUNCH_METHODS.map((p) => {
           const on = p.id === profile;
@@ -193,9 +197,9 @@ export function LaunchButton({
                   className="h-2 w-2 flex-shrink-0"
                   style={{ background: p.color, borderRadius: "var(--r-sm)" }}
                 />
-                <span className="flex-1 truncate">{p.label}</span>
+                <span className="flex-1 truncate">{t(p.labelKey)}</span>
                 <span className="font-mono text-[10px] uppercase tracking-[0.1em] text-ink-3">
-                  {p.note}
+                  {t(p.noteKey)}
                 </span>
               </button>
             </div>

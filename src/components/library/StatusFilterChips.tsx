@@ -1,15 +1,19 @@
+import { useTranslation } from "react-i18next";
 import { useLibraryStore } from "@/store/library";
 import { cn } from "@/lib/utils";
 
+/**
+ * Quick 260524-olt — label 改由 t() 解析,这里只保留 key 列表。
+ */
 const CHIPS: Array<{
   key: "all" | "playing" | "cleared" | "unplayed" | "favorite";
-  label: string;
+  i18nKey: string;
 }> = [
-  { key: "all", label: "全部" },
-  { key: "playing", label: "游玩中" },
-  { key: "cleared", label: "已通关" },
-  { key: "unplayed", label: "未开始" },
-  { key: "favorite", label: "收藏" },
+  { key: "all", i18nKey: "chips.all" },
+  { key: "playing", i18nKey: "chips.playing" },
+  { key: "cleared", i18nKey: "chips.cleared" },
+  { key: "unplayed", i18nKey: "chips.unplayed" },
+  { key: "favorite", i18nKey: "chips.favorite" },
 ];
 
 /**
@@ -18,6 +22,7 @@ const CHIPS: Array<{
  * chip already shows that state).
  */
 export function StatusFilterChips() {
+  const { t } = useTranslation();
   const totalGames = useLibraryStore((s) => s.games.length);
   const sidebar = useLibraryStore((s) => s.sidebar);
   const filter = useLibraryStore((s) => s.filter);
@@ -63,7 +68,7 @@ export function StatusFilterChips() {
 
   return (
     <div className="flex flex-wrap items-center gap-1.5">
-      {CHIPS.map(({ key, label }) => {
+      {CHIPS.map(({ key, i18nKey }) => {
         const active = isActive(key);
         const n = counts(key);
         return (
@@ -79,7 +84,7 @@ export function StatusFilterChips() {
             )}
             style={{ borderRadius: "9999px" }}
           >
-            <span>{label}</span>
+            <span>{t(i18nKey)}</span>
             <span
               className={cn(
                 "font-mono text-[9.5px] tracking-[0.04em]",

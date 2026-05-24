@@ -24,6 +24,8 @@
  */
 
 import { useEffect, useMemo, useState } from "react";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import { useLibraryStore } from "@/store/library";
 import {
   getPlaytimeTrend,
@@ -140,11 +142,12 @@ function computeStreak(
 }
 
 function fmtHours(h: number): string {
-  if (h < 1) return `${Math.round(h * 60)} 分`;
+  if (h < 1) return i18n.t("stats.unit.minutes", { n: Math.round(h * 60) });
   return h % 1 === 0 ? `${h}` : h.toFixed(1);
 }
 
 export default function Stats() {
+  const { t } = useTranslation();
   const trend = useLibraryStore((s) => s.trend);
   const setTrend = useLibraryStore((s) => s.setTrend);
   const topGames = useLibraryStore((s) => s.topGames);
@@ -261,14 +264,14 @@ export default function Stats() {
       .sort((a, b) => b.sec - a.sec);
     const top = all.slice(0, 6);
     const otherSec = all.slice(6).reduce((a, x) => a + x.sec, 0);
-    const items = otherSec > 0 ? [...top, { name: "其他", sec: otherSec }] : top;
+    const items = otherSec > 0 ? [...top, { name: t("stats.breakdown.other"), sec: otherSec }] : top;
     const totalBrandSec = items.reduce((a, x) => a + x.sec, 0) || 1;
     return items.map((b) => ({
       name: b.name,
       hours: b.sec / 3600,
       pct: Math.round((b.sec / totalBrandSec) * 100),
     }));
-  }, [games]);
+  }, [games, t]);
 
   // Year breakdown (count by decade-ish, but keep year resolution)
   const yearBreakdown = useMemo(() => {
@@ -289,58 +292,65 @@ export default function Stats() {
   return (
     <div className="h-full overflow-auto">
       <PageHeader
-        crumb="游玩统计 / Dashboard"
+        crumb={t("stats.crumb")}
         title={
           <>
-            已经在书架前坐了
+            {t("stats.title_prefix")}
             <span className="text-brand italic">
               {" "}
               {Math.round(totalHours)}{" "}
             </span>
-            个钟头
+            {t("stats.title_suffix")}
           </>
         }
-        sub={`数据自 ${games.length > 0 ? new Date(games[games.length - 1]?.created_at ?? Date.now()).toLocaleDateString("zh-CN") : "—"} 起 · 跨 ${games.length} 部作品 · ${sessions} 次会话`}
+        sub={t("stats.sub", {
+          start_date:
+            games.length > 0
+              ? new Date(games[games.length - 1]?.created_at ?? Date.now()).toLocaleDateString(i18n.language)
+              : t("stats.sub_no_data"),
+          works: games.length,
+          sessions,
+        })}
       />
 
       <div className="px-8 pb-16 pt-6">
         <div className="grid grid-cols-12 gap-4">
           {/* KPIs */}
           <KpiCard
-            label="总游玩时长"
+            label={t("stats.kpi.total_hours")}
             value={fmtHours(totalHours)}
-            unit="小时"
-            delta="累计"
+            unit={t("stats.unit.hours")}
+            delta={t("stats.kpi.delta.total")}
           />
           <KpiCard
-            label="本月新增"
+            label={t("stats.kpi.month_added")}
             value={String(thisMonth)}
-            unit="部"
+            unit={t("stats.unit.works")}
             delta={
               thisMonth > 0
-                ? `↑ ${thisMonth} 部，扫描发现`
-                : "本月无新增"
+                ? t("stats.kpi.delta.month_up", { count: thisMonth })
+                : t("stats.kpi.delta.month_zero")
             }
             deltaDown={thisMonth === 0}
           />
           <KpiCard
-            label="通关率"
+            label={t("stats.kpi.completion_rate")}
             value={String(completionPct)}
-            unit="%"
-            delta={`${cleared} / ${games.length} 部`}
+            unit={t("stats.unit.percent")}
+            delta={t("stats.kpi.delta.completion", { cleared, total: games.length })}
           />
           <KpiCard
-            label="当前连击"
+            label={t("stats.kpi.streak")}
             value={String(streak.current)}
-            unit="天"
-            delta={`最长 ${streak.longest} 天`}
+            unit={t("stats.unit.days")}
+            delta={t("stats.kpi.delta.streak_longest", { n: streak.longest })}
           />
 
           {/* Heatmap */}
           <Card span={12} className="overflow-x-auto">
             <CardHeader
-              title="游玩日历 · 最近 6 个月"
-              hint="每方块 = 一天 · 颜色越深，时长越长"
+              title={t("stats.card.calendar_title")}
+              hint={t("stats.card.calendar_hint")}
             />
             <div
               className="mt-3 inline-grid"
@@ -354,20 +364,20 @@ export default function Stats() {
               {heatmap.map((c) => (
                 <span
                   key={c.day}
-                  title={`${c.day} · ${c.hours.toFixed(1)} 小时`}
+                  title={t("stats.heatmap.tooltip", { day: c.day, hours: c.hours.toFixed(1) })}
                   className={cn("h-[11px] w-[11px]", levelClass(c.level))}
                   style={{ borderRadius: 2 }}
                 />
               ))}
             </div>
             <div className="mt-3 flex items-center justify-end gap-1.5 font-mono text-[10px] text-ink-3">
-              <span>少</span>
+              <span>{t("stats.heatmap.less")}</span>
               <span className="h-[10px] w-[10px] bg-bg-2" />
               <span className="h-[10px] w-[10px]" style={{ background: "color-mix(in oklch, var(--accent) 22%, var(--bg-2))" }} />
               <span className="h-[10px] w-[10px]" style={{ background: "color-mix(in oklch, var(--accent) 45%, var(--bg-2))" }} />
               <span className="h-[10px] w-[10px]" style={{ background: "color-mix(in oklch, var(--accent) 70%, var(--bg-2))" }} />
               <span className="h-[10px] w-[10px] bg-brand" />
-              <span>多</span>
+              <span>{t("stats.heatmap.more")}</span>
             </div>
           </Card>
 
@@ -375,14 +385,21 @@ export default function Stats() {
           <Card span={8}>
             <div className="mb-4 flex items-baseline justify-between">
               <h2 className="font-serif text-[16px] font-medium text-ink-0">
-                时长趋势 · 近{period === "daily" ? "30 天" : period === "weekly" ? "12 周" : "12 个月"}
+                {t("stats.card.trend_title", {
+                  window:
+                    period === "daily"
+                      ? t("stats.card.trend_window.daily")
+                      : period === "weekly"
+                        ? t("stats.card.trend_window.weekly")
+                        : t("stats.card.trend_window.monthly"),
+                })}
               </h2>
               <Segmented
                 value={period}
                 options={[
-                  { v: "daily", label: "日" },
-                  { v: "weekly", label: "周" },
-                  { v: "monthly", label: "月" },
+                  { v: "daily", label: t("stats.seg.daily") },
+                  { v: "weekly", label: t("stats.seg.weekly") },
+                  { v: "monthly", label: t("stats.seg.monthly") },
                 ]}
                 onChange={(v) => setPeriod(v)}
               />
@@ -390,23 +407,23 @@ export default function Stats() {
             <div className="flex h-[180px] items-end gap-1.5">
               {trend.length === 0 ? (
                 <div className="flex h-full w-full items-center justify-center font-mono text-[11px] text-ink-3">
-                  还没有游玩记录 — 启动游戏开始记录
+                  {t("stats.timeline.empty")}
                 </div>
               ) : (
-                trend.map((t, i) => {
-                  const pct = trendMax > 0 ? (t.hours / trendMax) * 100 : 0;
+                trend.map((entry, i) => {
+                  const pct = trendMax > 0 ? (entry.hours / trendMax) * 100 : 0;
                   return (
                     <div
-                      key={t.bucket + i}
+                      key={entry.bucket + i}
                       className="flex flex-1 flex-col items-stretch"
-                      title={`${t.bucket} · ${t.hours.toFixed(1)} 小时`}
+                      title={t("stats.trend.tooltip", { bucket: entry.bucket, hours: entry.hours.toFixed(1) })}
                     >
                       <div className="relative flex h-full items-end">
                         <div
                           className="w-full bg-brand transition-opacity hover:opacity-70"
                           style={{
                             height: `${pct}%`,
-                            minHeight: t.hours > 0 ? 2 : 0,
+                            minHeight: entry.hours > 0 ? 2 : 0,
                             borderRadius: "2px 2px 0 0",
                           }}
                         />
@@ -428,35 +445,35 @@ export default function Stats() {
 
           {/* Status ring stack */}
           <Card span={4}>
-            <CardHeader title="通关进度" />
+            <CardHeader title={t("stats.card.progress_title")} />
             <div className="mt-4 flex flex-col gap-2.5">
               <RingRow
-                label="已通关"
+                label={t("stats.status.cleared")}
                 value={cleared}
                 max={Math.max(games.length, 1)}
                 color="#6fd1c8"
               />
               <RingRow
-                label="游玩中"
+                label={t("stats.status.playing")}
                 value={playing}
                 max={Math.max(games.length, 1)}
                 color="var(--accent)"
               />
               <RingRow
-                label="未开始"
+                label={t("stats.status.unplayed")}
                 value={unplayed}
                 max={Math.max(games.length, 1)}
                 color="#ffd166"
               />
               <RingRow
-                label="弃坑"
+                label={t("stats.status.dropped")}
                 value={dropped}
                 max={Math.max(games.length, 1)}
                 color="#d96f5a"
               />
             </div>
             <div className="mt-5 font-mono text-[10.5px] text-ink-3">
-              通关定义：到达任意 ED · 可在设置改为「全 routes」
+              {t("stats.card.progress_hint")}
             </div>
           </Card>
 
@@ -464,15 +481,15 @@ export default function Stats() {
           <Card span={6}>
             <div className="mb-3 flex items-baseline justify-between">
               <h2 className="font-serif text-[16px] font-medium text-ink-0">
-                累计时长 Top 8
+                {t("stats.card.top_title")}
               </h2>
               <span className="font-mono text-[10.5px] text-ink-3">
-                — {topGames.length} 项
+                {t("stats.card.top_count", { count: topGames.length })}
               </span>
             </div>
             {topGames.length === 0 ? (
               <p className="font-mono text-[11.5px] text-ink-3">
-                还没有游戏 — 请到设置页扫描游戏库
+                {t("stats.card.top_empty")}
               </p>
             ) : (
               <div className="flex flex-col">
@@ -498,11 +515,11 @@ export default function Stats() {
           {/* Breakdown */}
           <Card span={6}>
             <h2 className="mb-3 font-serif text-[16px] font-medium text-ink-0">
-              按品牌时长分布
+              {t("stats.card.brand_title")}
             </h2>
             {brandBreakdown.length === 0 ? (
               <p className="font-mono text-[11.5px] text-ink-3">
-                暂无品牌数据
+                {t("stats.card.brand_empty")}
               </p>
             ) : (
               <div className="flex flex-col gap-2.5">
@@ -518,19 +535,19 @@ export default function Stats() {
             )}
 
             <h2 className="mt-6 mb-3 font-serif text-[16px] font-medium text-ink-0">
-              按发行年份
+              {t("stats.card.year_title")}
             </h2>
             {yearBreakdown.length === 0 ? (
               <p className="font-mono text-[11.5px] text-ink-3">
-                暂无年份数据
+                {t("stats.card.year_empty")}
               </p>
             ) : (
               <div className="flex flex-col gap-2.5">
                 {yearBreakdown.map((y) => (
                   <BreakdownRow
                     key={y.year}
-                    label={`${y.year} 年`}
-                    valueLabel={`${y.count} 部`}
+                    label={t("stats.breakdown.year_label", { year: y.year })}
+                    valueLabel={t("stats.breakdown.year_count", { count: y.count })}
                     pct={y.pct}
                     color="#6fd1c8"
                   />
@@ -713,10 +730,10 @@ function TopRow({
         `?v=${encodeURIComponent(game.last_scanned_at ?? "")}`
       : null;
   const statusLabel: Record<Game["status"], string> = {
-    unplayed: "未开始",
-    playing: "游玩中",
-    cleared: "已通关",
-    dropped: "弃坑",
+    unplayed: i18n.t("stats.status.unplayed"),
+    playing: i18n.t("stats.status.playing"),
+    cleared: i18n.t("stats.status.cleared"),
+    dropped: i18n.t("stats.status.dropped"),
   };
   return (
     <div

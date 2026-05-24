@@ -21,6 +21,8 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import { toastScanFinished } from "@/lib/toast";
 import { useLibraryStore } from "@/store/library";
 import {
@@ -116,6 +118,7 @@ const TOOLBAR_BTN =
   "inline-flex h-8 items-center gap-2 border border-line bg-bg-1 px-3.5 text-[12.5px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-ink-0";
 
 export function Library() {
+  const { t } = useTranslation();
   const games = useLibraryStore((s) => s.games);
   const setGames = useLibraryStore((s) => s.setGames);
   const setSidebar = useLibraryStore((s) => s.setSidebar);
@@ -186,13 +189,13 @@ export function Library() {
       const skipped = ids.length - inserted;
       toast.success(
         skipped > 0
-          ? `已加入「${viewName}」(${inserted} 部，${skipped} 部已存在)`
-          : `已加入「${viewName}」(${inserted} 部)`,
+          ? t("toast.view_added_partial", { name: viewName, inserted, skipped })
+          : t("toast.view_added", { name: viewName, inserted }),
       );
       await refreshSidebar();
       exitSelectMode();
     } catch (e: unknown) {
-      toast.error(`添加失败 — ${String(e)}`);
+      toast.error(t("toast.add_failed", { err: String(e) }));
     }
   }
 
@@ -209,7 +212,7 @@ export function Library() {
     try {
       newId = await createCustomView(name);
       const inserted = await addGamesToView(newId, ids);
-      toast.success(`已创建视图「${name}」并加入 ${inserted} 部`);
+      toast.success(t("toast.view_created_with_count", { name, count: inserted }));
       await refreshSidebar();
       exitSelectMode();
     } catch (e: unknown) {
@@ -224,7 +227,7 @@ export function Library() {
           console.error("[Library] view rollback failed:", rollbackErr);
         }
       }
-      toast.error(`创建视图失败 — ${String(e)}`);
+      toast.error(t("toast.view_create_failed", { err: String(e) }));
     }
   }
 
@@ -483,11 +486,11 @@ export function Library() {
       await deleteGame(g.id);
       void refetchGrid();
       void refreshSidebar();
-      toast.success("已删除条目");
+      toast.success(t("toast.deleted"));
     } catch (e: unknown) {
-      toast.error(`删除失败 — ${String(e)}`);
+      toast.error(t("toast.delete_failed", { err: String(e) }));
     }
-  }, [deleteCandidate, refetchGrid, refreshSidebar]);
+  }, [deleteCandidate, refetchGrid, refreshSidebar, t]);
 
   // Server-fetched array (already narrowed by backend SearchFilter +
   // sort + searchQuery). The advanced FilterPanel runs as a client-side
@@ -576,14 +579,14 @@ export function Library() {
     try {
       const roots = await listScanRoots();
       if (roots.length === 0) {
-        toast.error("还没有扫描根目录 — 请先到设置页添加");
+        toast.error(t("toast.no_scan_roots"));
         navigate("/settings");
         return;
       }
       await startScan("incremental");
-      toast.info("已开始扫描");
+      toast.info(t("toast.scan_started"));
     } catch (e: unknown) {
-      toast.error(`扫描失败 — ${String(e)}`);
+      toast.error(t("toast.scan_failed", { err: String(e) }));
     }
   }
 
@@ -595,10 +598,13 @@ export function Library() {
     return acc;
   }, null);
   const subLine = latestScan
-    ? `最近一次扫描 · ${new Date(latestScan).toLocaleString("zh-CN")} · ${games.length} 部作品`
+    ? t("library.sub_with_scan", {
+        datetime: new Date(latestScan).toLocaleString(i18n.language),
+        count: games.length,
+      })
     : games.length > 0
-      ? `共 ${games.length} 部作品`
-      : "尚未扫描";
+      ? t("library.sub_total", { count: games.length })
+      : t("library.sub_no_scan");
 
   return (
     <div className="flex h-full w-full flex-col">
@@ -606,15 +612,16 @@ export function Library() {
 
       <div className="flex min-h-0 flex-1 flex-col">
         <PageHeader
-          crumb="图书馆"
+          crumb={t("library.crumb")}
           badge={
             isAdvFilterActive(advFilter)
-              ? `${visibleGames.length} / ${games.length} 部`
-              : `${games.length} 部作品`
+              ? t("library.count_filtered", { visible: visibleGames.length, total: games.length })
+              : t("library.count_works", { count: games.length })
           }
           title={
             <>
-              本月你的<span className="text-brand italic">箱庭</span>
+              {t("library.title_prefix")}
+              <span className="text-brand italic">{t("library.title_brand")}</span>
             </>
           }
           sub={subLine}
@@ -631,7 +638,7 @@ export function Library() {
                 style={{ borderRadius: "var(--r-md)" }}
               >
                 <RefreshCw size={14} strokeWidth={1.7} />
-                <span>重新扫描</span>
+                <span>{t("library.rescan")}</span>
               </button>
               <button
                 type="button"
@@ -640,7 +647,7 @@ export function Library() {
                 style={{ borderRadius: "var(--r-md)" }}
               >
                 <FolderPlus size={14} strokeWidth={1.7} />
-                <span>添加根目录</span>
+                <span>{t("library.add_root")}</span>
               </button>
             </>
           }
@@ -677,10 +684,14 @@ export function Library() {
                   : "border-line bg-bg-1 text-ink-1 hover:border-line-strong hover:bg-bg-2 hover:text-ink-0",
               )}
               style={{ borderRadius: "9999px" }}
-              title={selectMode ? "退出选择" : "批量选择"}
+              title={selectMode ? t("library.batch.exit_selection") : t("library.batch.batch_select")}
             >
               <CheckSquare size={12} strokeWidth={1.7} />
-              <span>{selectMode ? `选择中 ${selectedIds.size}` : "批量选择"}</span>
+              <span>
+                {selectMode
+                  ? t("library.batch.in_selection", { count: selectedIds.size })
+                  : t("library.batch.batch_select")}
+              </span>
             </button>
           )}
           <SearchBar filterOptions={filterOptions} />
@@ -697,11 +708,11 @@ export function Library() {
         {noScanYet && (
           <EmptyPanel
             icon={LibraryIcon}
-            title="你的箱庭还是空的"
-            sub="添加一个根目录，让箱庭把那一堆乱糟糟的文件夹整理成你的私人书架。"
-            actionLabel="+ 添加根目录"
+            title={t("library.empty_no_scan.title")}
+            sub={t("library.empty_no_scan.sub")}
+            actionLabel={t("library.empty_no_scan.action")}
             onAction={() => navigate("/settings")}
-            hint="也可以稍后从设置页随时新增"
+            hint={t("library.empty_no_scan.hint")}
           />
         )}
 
@@ -709,22 +720,24 @@ export function Library() {
           <EmptyPanel
             icon={AlertCircle}
             accent="#ffd166"
-            title="扫描完成 · 未识别到游戏"
-            sub="该根目录下没有符合深度规则的子文件夹。可能扫描深度不对，或目录里其实没有游戏。"
-            actionLabel="回到设置调整"
+            title={t("library.empty_zero.title")}
+            sub={t("library.empty_zero.sub")}
+            actionLabel={t("library.empty_zero.action")}
             onAction={() => navigate("/settings")}
-            hint="多数情况是把深度从「扁平」改成「按品牌分层」就能找到"
+            hint={t("library.empty_zero.hint")}
           />
         )}
 
         {filterFoundNothing && (
           <EmptyPanel
             icon={SearchX}
-            title="没有匹配的游戏"
-            sub="当前筛选条件一个都没匹配上。要不试试放宽条件，或者直接清除全部筛选。"
-            actionLabel="清除筛选"
+            title={t("library.empty_filter.title")}
+            sub={t("library.empty_filter.sub")}
+            actionLabel={t("library.empty_filter.action")}
             onAction={clearAllFilters}
-            hint={`已扫描 ${searchQuery ? "搜索词" : "筛选条件"}：尝试调整后重试`}
+            hint={t("library.empty_filter.hint", {
+              which: searchQuery ? t("library.which_search") : t("library.which_filter"),
+            })}
           />
         )}
 
@@ -752,7 +765,7 @@ export function Library() {
         <div className="pointer-events-none fixed inset-x-0 bottom-6 z-50 flex justify-center px-4">
           <div className="pointer-events-auto flex items-center gap-3 border border-line-strong bg-bg-1 px-4 py-2.5 shadow-lift">
             <span className="font-mono text-[11px] text-ink-1">
-              已选 <span className="text-ink-0">{selectedIds.size}</span> 部
+              {t("library.batch.selected", { count: selectedIds.size })}
             </span>
             <span className="h-4 w-px bg-line" />
             <button
@@ -760,7 +773,7 @@ export function Library() {
               onClick={selectAllVisible}
               className="font-mono text-[11px] text-ink-2 hover:text-ink-0"
             >
-              全选当前网格
+              {t("library.batch.select_all")}
             </button>
             <button
               type="button"
@@ -773,7 +786,7 @@ export function Library() {
                   : "text-ink-2 hover:text-ink-0",
               )}
             >
-              清空
+              {t("library.batch.clear")}
             </button>
             <span className="h-4 w-px bg-line" />
             <DropdownMenu>
@@ -790,14 +803,14 @@ export function Library() {
                   style={{ borderRadius: "var(--r-md)" }}
                 >
                   <Bookmark size={12} strokeWidth={1.7} />
-                  添加到视图
+                  {t("library.batch.add_to_view")}
                   <ChevronDown size={12} strokeWidth={1.7} />
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-48">
                 {customViews.length === 0 && (
                   <DropdownMenuItem disabled>
-                    <span className="text-ink-3">尚无视图</span>
+                    <span className="text-ink-3">{t("library.batch.no_views")}</span>
                   </DropdownMenuItem>
                 )}
                 {customViews.map((cv) => (
@@ -815,7 +828,7 @@ export function Library() {
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onClick={onCreateAndAdd}>
                   <Plus size={13} className="mr-2" />
-                  新建视图…
+                  {t("library.batch.new_view")}
                 </DropdownMenuItem>
               </DropdownMenuContent>
             </DropdownMenu>
@@ -823,8 +836,8 @@ export function Library() {
               type="button"
               onClick={exitSelectMode}
               className="grid h-8 w-8 place-items-center text-ink-2 hover:bg-bg-2 hover:text-ink-0"
-              title="取消"
-              aria-label="取消"
+              title={t("common.cancel")}
+              aria-label={t("common.cancel")}
               style={{ borderRadius: "var(--r-md)" }}
             >
               <X size={14} strokeWidth={1.7} />
@@ -855,16 +868,14 @@ export function Library() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>拆分会删除原条目</AlertDialogTitle>
+            <AlertDialogTitle>{t("library.split_confirm.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              该条目带有游玩时长 / 笔记 / 评分 / 收藏 / 通关状态等数据。
-              拆分会删除原条目并丢失这些数据，子目录将作为新条目重新匹配元数据。
-              确定继续吗？
+              {t("library.split_confirm.desc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setSplitCandidate(null)}>
-              取消
+              {t("common.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
@@ -873,7 +884,7 @@ export function Library() {
                 if (g) setSplitGame(g);
               }}
             >
-              继续拆分
+              {t("library.split_confirm.action")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -888,18 +899,17 @@ export function Library() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>删除该条目？</AlertDialogTitle>
+            <AlertDialogTitle>{t("library.delete_confirm.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              仅从图书馆移除这条记录（游玩时长 / 笔记 / 评分等数据会一并丢失）。
-              磁盘上的游戏文件不会被删除，重新扫描会再次找到它。
+              {t("library.delete_confirm.desc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setDeleteCandidate(null)}>
-              取消
+              {t("common.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction onClick={() => void onConfirmDelete()}>
-              删除
+              {t("library.delete_confirm.action")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>

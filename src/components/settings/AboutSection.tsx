@@ -12,6 +12,7 @@
  */
 
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   checkForUpdates,
   getCurrentVersion,
@@ -22,6 +23,7 @@ import { usePreferencesStore } from "@/store/preferences";
 import { Toggle } from "@/components/ui/toggle";
 
 export function AboutSection() {
+  const { t } = useTranslation();
   const autoCheckUpdate = usePreferencesStore((s) => s.autoCheckUpdate);
   const setAutoCheckUpdate = usePreferencesStore((s) => s.setAutoCheckUpdate);
   const [version, setVersion] = useState<string>("…");
@@ -56,13 +58,13 @@ export function AboutSection() {
   return (
     <div className="space-y-3 text-[12.5px] text-ink-1">
       <div className="flex items-center justify-between border-b border-ink-7/40 py-1.5">
-        <span className="font-mono text-[11px] text-ink-3">当前版本</span>
+        <span className="font-mono text-[11px] text-ink-3">{t("about.current_version")}</span>
         <span className="font-mono text-ink-0">v{version}</span>
       </div>
 
       <div className="flex items-center justify-between gap-3 border-b border-ink-7/40 py-1.5">
         <div className="flex flex-1 items-center gap-3">
-          <span className="font-mono text-[11px] text-ink-3">检查更新</span>
+          <span className="font-mono text-[11px] text-ink-3">{t("about.check_updates")}</span>
           <UpdateStateLabel state={state} />
         </div>
         <div className="flex items-center gap-2">
@@ -73,7 +75,7 @@ export function AboutSection() {
               className="inline-flex h-8 items-center border border-primary/50 bg-primary/15 px-3 text-[12px] text-primary transition-colors hover:bg-primary/25"
               style={{ borderRadius: "var(--r-md)" }}
             >
-              立即重启
+              {t("about.restart_now")}
             </button>
           ) : (
             <button
@@ -83,7 +85,7 @@ export function AboutSection() {
               className="inline-flex h-8 items-center border border-ink-7 bg-card px-3 text-[12px] text-ink-0 transition-colors hover:bg-muted disabled:cursor-not-allowed disabled:opacity-50"
               style={{ borderRadius: "var(--r-md)" }}
             >
-              {busy ? "检查中…" : "立即检查更新"}
+              {busy ? t("about.checking") : t("about.check_now")}
             </button>
           )}
         </div>
@@ -91,9 +93,9 @@ export function AboutSection() {
 
       <div className="flex items-center justify-between gap-3 border-b border-ink-7/40 py-1.5">
         <div>
-          <div className="font-mono text-[11px] text-ink-3">启动时自动检查</div>
+          <div className="font-mono text-[11px] text-ink-3">{t("about.auto_check")}</div>
           <div className="mt-0.5 text-[10.5px] text-ink-3">
-            启动后 5 秒静默检查 GitHub Releases，发现新版本后台下载
+            {t("about.auto_check_desc")}
           </div>
         </div>
         <Toggle
@@ -101,28 +103,28 @@ export function AboutSection() {
           size="sm"
           pressed={autoCheckUpdate}
           onPressedChange={setAutoCheckUpdate}
-          aria-label="启动时自动检查更新"
+          aria-label={t("about.auto_check_aria")}
         >
-          {autoCheckUpdate ? "已开启" : "已关闭"}
+          {autoCheckUpdate ? t("about.enabled") : t("about.disabled")}
         </Toggle>
       </div>
 
       <div className="pt-2 font-mono text-[10.5px] text-ink-3">
-        元数据来源：Bangumi · VNDB ·
-        转区启动：Locale Emulator
+        {t("about.credits")}
       </div>
     </div>
   );
 }
 
 function UpdateStateLabel({ state }: { state: UpdaterState }) {
+  const { t } = useTranslation();
   switch (state.phase) {
     case "idle":
       return null;
     case "checking":
-      return <span className="text-[11px] text-ink-3">检查中…</span>;
+      return <span className="text-[11px] text-ink-3">{t("about.checking")}</span>;
     case "up-to-date":
-      return <span className="text-[11px] text-ink-3">已是最新版本</span>;
+      return <span className="text-[11px] text-ink-3">{t("about.up_to_date")}</span>;
     case "downloading": {
       const pct =
         state.total && state.downloaded != null
@@ -130,7 +132,7 @@ function UpdateStateLabel({ state }: { state: UpdaterState }) {
           : null;
       return (
         <span className="text-[11px] text-ink-3">
-          下载中 v{state.version}
+          {t("about.downloading", { version: state.version })}
           {pct != null ? ` · ${pct}%` : "…"}
         </span>
       );
@@ -138,13 +140,13 @@ function UpdateStateLabel({ state }: { state: UpdaterState }) {
     case "ready":
       return (
         <span className="text-[11px] text-primary">
-          v{state.version} 已就绪 — 重启后生效
+          {t("about.ready", { version: state.version })}
         </span>
       );
     case "error":
       return (
         <span className="text-[11px] text-destructive">
-          检查失败：{state.message}
+          {t("about.check_failed", { message: state.message })}
         </span>
       );
   }

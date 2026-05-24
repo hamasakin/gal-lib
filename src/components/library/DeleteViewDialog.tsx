@@ -10,6 +10,7 @@
  */
 
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Trash2 } from "lucide-react";
 import {
   AlertDialog,
@@ -38,6 +39,7 @@ export function DeleteViewDialog({
   onClose,
   onConfirm,
 }: DeleteViewDialogProps) {
+  const { t } = useTranslation();
   const [busy, setBusy] = useState(false);
   const open = target !== null;
 
@@ -80,16 +82,16 @@ export function DeleteViewDialog({
             <Trash2 size={15} strokeWidth={1.7} />
           </span>
           <AlertDialogTitle className="font-serif text-[15px] leading-tight text-ink-0">
-            删除视图？
+            {t("views.delete.title")}
           </AlertDialogTitle>
           <p className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-ink-3">
-            Delete collection
+            {t("views.delete.subtitle")}
           </p>
         </AlertDialogHeader>
 
         <div className="px-5 pt-3 pb-5">
           <AlertDialogDescription className="text-[12.5px] leading-[1.65] text-ink-2">
-            将删除以下视图：
+            {t("views.delete.body")}
           </AlertDialogDescription>
           <div
             className="mt-2.5 flex items-center justify-between gap-3 border border-line bg-bg-2 px-3.5 py-2.5"
@@ -99,13 +101,13 @@ export function DeleteViewDialog({
               {target?.name ?? ""}
             </span>
             <span className="shrink-0 font-mono text-[10.5px] text-ink-3 tabular-nums">
-              {target?.count ?? 0} 部作品
+              {t("views.delete.count_works", { count: target?.count ?? 0 })}
             </span>
           </div>
           <p className="mt-3 text-[12px] leading-[1.6] text-ink-2">
-            视图本身被删除，
-            <span className="text-ink-0">但视图里的游戏不会被删除</span>
-            ，仍保留在图书馆里。此操作无法撤销。
+            {t("views.delete.note")}
+            <span className="text-ink-0">{t("views.delete.note_strong")}</span>
+            {t("views.delete.note_tail")}
           </p>
         </div>
 
@@ -121,7 +123,7 @@ export function DeleteViewDialog({
             )}
             style={{ borderRadius: "var(--r-md)" }}
           >
-            取消
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -137,7 +139,7 @@ export function DeleteViewDialog({
               borderRadius: "var(--r-md)",
             }}
           >
-            {busy ? "删除中…" : "删除视图"}
+            {busy ? t("views.delete.deleting") : t("views.delete.confirm")}
           </button>
         </AlertDialogFooter>
       </AlertDialogContent>

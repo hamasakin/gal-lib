@@ -38,6 +38,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useNavigate, useParams, useSearchParams } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import {
   AlertTriangle,
   ArrowLeft,
@@ -166,9 +168,12 @@ import { getSidebarCategories } from "@/lib/search";
 // 始终用默认 ja-JP）：le-jp 存 "Japanese"，direct 存 "direct"。
 type LaunchMethod = "le-jp" | "direct";
 
-const LAUNCH_METHOD_LABEL: Record<LaunchMethod, string> = {
-  "le-jp": "日区 LE 启动",
-  direct: "直接启动",
+/**
+ * Quick 260524-olt — label 由 t() 在使用点解析,这里保留 key 表。
+ */
+const LAUNCH_METHOD_LABEL_KEY: Record<LaunchMethod, string> = {
+  "le-jp": "detail.launch.le_jp",
+  direct: "detail.launch.direct",
 };
 
 /**
@@ -188,52 +193,52 @@ function methodToLeProfile(method: LaunchMethod): string {
   return method === "direct" ? "direct" : "Japanese";
 }
 
-const STATUS_OPTIONS: Array<{ value: Game["status"]; label: string }> = [
-  { value: "unplayed", label: "未游玩" },
-  { value: "playing", label: "游玩中" },
-  { value: "cleared", label: "已通关" },
-  { value: "dropped", label: "已弃" },
+const STATUS_OPTIONS: Array<{ value: Game["status"]; i18nKey: string }> = [
+  { value: "unplayed", i18nKey: "detail.status.unplayed" },
+  { value: "playing", i18nKey: "detail.status.playing" },
+  { value: "cleared", i18nKey: "detail.status.cleared" },
+  { value: "dropped", i18nKey: "detail.status.dropped" },
 ];
 
-const STATUS_LABELS: Record<Game["status"], string> = {
-  unplayed: "未游玩",
-  playing: "游玩中",
-  cleared: "已通关",
-  dropped: "已弃",
+const STATUS_LABEL_KEY: Record<Game["status"], string> = {
+  unplayed: "detail.status.unplayed",
+  playing: "detail.status.playing",
+  cleared: "detail.status.cleared",
+  dropped: "detail.status.dropped",
 };
 
-const SCREENSHOT_INTERVAL_OPTIONS: Array<{ value: number; label: string }> = [
-  { value: 60, label: "60 秒" },
-  { value: 300, label: "5 分钟" },
-  { value: 600, label: "10 分钟" },
-  { value: 1800, label: "30 分钟" },
-  { value: 0, label: "关闭" },
+const SCREENSHOT_INTERVAL_OPTIONS: Array<{ value: number; i18nKey: string }> = [
+  { value: 60, i18nKey: "detail.screenshot.interval.60" },
+  { value: 300, i18nKey: "detail.screenshot.interval.300" },
+  { value: 600, i18nKey: "detail.screenshot.interval.600" },
+  { value: 1800, i18nKey: "detail.screenshot.interval.1800" },
+  { value: 0, i18nKey: "detail.screenshot.interval.0" },
 ];
 
 function formatDuration(seconds: number): string {
   const totalMin = Math.floor(seconds / 60);
   const h = Math.floor(totalMin / 60);
   const m = totalMin % 60;
-  return h > 0 ? `${h} 时 ${m} 分` : `${m} 分`;
+  return h > 0 ? i18n.t("detail.duration.h_m", { h, m }) : i18n.t("detail.duration.m", { m });
 }
 
 function formatSessionDuration(seconds: number): string {
-  if (seconds < 60) return `${seconds} 秒`;
+  if (seconds < 60) return i18n.t("detail.duration.s", { s: seconds });
   return formatDuration(seconds);
 }
 
 function statusBadgeText(status: SessionRow["status"]): string {
   switch (status) {
     case "completed":
-      return "已完成";
+      return i18n.t("detail.session_status.completed");
     case "running":
-      return "进行中";
+      return i18n.t("detail.session_status.running");
     case "starting":
-      return "启动中";
+      return i18n.t("detail.session_status.starting");
     case "cancelled":
-      return "已取消";
+      return i18n.t("detail.session_status.cancelled");
     case "launch_failed":
-      return "启动失败";
+      return i18n.t("detail.session_status.launch_failed");
   }
 }
 
@@ -251,11 +256,11 @@ const STAFF_ROLE_ORDER: StaffRole[] = [
   "music",
 ];
 
-const STAFF_ROLE_LABELS: Record<StaffRole, string> = {
-  scenario: "剧本 / 编剧",
-  artist: "原画 / 画师",
-  voice: "声优",
-  music: "音乐",
+const STAFF_ROLE_LABEL_KEY: Record<StaffRole, string> = {
+  scenario: "detail.role.scenario",
+  artist: "detail.role.artist",
+  voice: "detail.role.voice",
+  music: "detail.role.music",
 };
 
 const STAFF_ROLE_ICONS: Record<
@@ -290,7 +295,7 @@ function useGameStaff(gameId: number): {
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
       console.error("[Detail] listPersonsForGame failed:", e);
-      toast.error(`加载制作团队失败 — ${String(e)}`);
+      toast.error(i18n.t("toast.staff_load_failed", { err: String(e) }));
     } finally {
       setLoading(false);
     }
@@ -324,7 +329,7 @@ function useGameOfficialTags(gameId: number): {
     } catch (e: unknown) {
       // eslint-disable-next-line no-console
       console.error("[Detail] listOfficialTagsForGame failed:", e);
-      toast.error(`加载官方标签失败 — ${String(e)}`);
+      toast.error(i18n.t("toast.official_tag_load_failed", { err: String(e) }));
     } finally {
       setLoading(false);
     }
@@ -378,6 +383,7 @@ function parseTab(raw: string | null): DetailTab {
 }
 
 export default function Detail() {
+  const { t } = useTranslation();
   const { id } = useParams<{ id: string }>();
   const gameId = Number(id);
   const navigate = useNavigate();
@@ -417,25 +423,27 @@ export default function Detail() {
     try {
       const inserted = await addGamesToView(viewId, [game.id]);
       toast.success(
-        inserted > 0 ? `已加入「${viewName}」` : `已在「${viewName}」中`,
+        inserted > 0
+          ? t("detail.menu.added_to_view", { name: viewName })
+          : t("detail.menu.already_in_view", { name: viewName }),
       );
       await refreshSidebarFromDetail();
     } catch (e: unknown) {
-      toast.error(`添加失败 — ${String(e)}`);
+      toast.error(t("toast.add_failed", { err: String(e) }));
     }
   }
 
   async function onCreateAndAddView() {
     if (!game) return;
-    const name = window.prompt("新视图名称")?.trim();
+    const name = window.prompt(t("detail.menu.new_view_prompt"))?.trim();
     if (!name) return;
     try {
       const newId = await createCustomView(name);
       await addGamesToView(newId, [game.id]);
-      toast.success(`已创建视图「${name}」并加入`);
+      toast.success(t("detail.menu.created_view", { name }));
       await refreshSidebarFromDetail();
     } catch (e: unknown) {
-      toast.error(`创建视图失败 — ${String(e)}`);
+      toast.error(t("toast.view_create_failed", { err: String(e) }));
     }
   }
 
@@ -562,12 +570,12 @@ export default function Detail() {
         .catch((e: unknown) => {
           // eslint-disable-next-line no-console
           console.error("[Detail] updateGameNotes failed:", e);
-          toast.error(`保存笔记失败 — ${String(e)}`);
+          toast.error(t("toast.notes_save_failed", { err: String(e) }));
         })
         .finally(() => setSavingNotes(false));
     }, 800);
     return () => clearTimeout(timer);
-  }, [notes, gameId, game?.id]);
+  }, [notes, gameId, game?.id, t]);
 
   // 1Hz tick for "已保存 N 秒前"
   useEffect(() => {
@@ -639,11 +647,11 @@ export default function Detail() {
   }, [navigate]);
 
   if (!Number.isFinite(gameId)) {
-    return <div className="p-8 font-mono text-[12px] text-ink-2">无效的游戏 id</div>;
+    return <div className="p-8 font-mono text-[12px] text-ink-2">{t("detail.invalid_id")}</div>;
   }
   if (!game) {
     return (
-      <div className="p-8 font-mono text-[12px] text-ink-2">加载中…</div>
+      <div className="p-8 font-mono text-[12px] text-ink-2">{t("detail.loading")}</div>
     );
   }
 
@@ -713,7 +721,7 @@ export default function Detail() {
       await updateGameFavorite(game.id, !game.is_favorite);
       await refreshGame();
     } catch (e: unknown) {
-      toast.error(`操作失败 — ${String(e)}`);
+      toast.error(t("toast.op_failed", { err: String(e) }));
     }
   }
 
@@ -723,7 +731,7 @@ export default function Detail() {
       await updateGameStatus(game.id, next);
       await refreshGame();
     } catch (e: unknown) {
-      toast.error(`状态更新失败 — ${String(e)}`);
+      toast.error(t("toast.status_failed", { err: String(e) }));
     }
   }
 
@@ -733,7 +741,7 @@ export default function Detail() {
       await updateGameRating(game.id, next);
       await refreshGame();
     } catch (e: unknown) {
-      toast.error(`评分更新失败 — ${String(e)}`);
+      toast.error(t("toast.rating_failed", { err: String(e) }));
     }
   }
 
@@ -755,14 +763,14 @@ export default function Detail() {
     if (isActive) {
       try {
         await endActiveSession();
-        toast.info("已结束游戏会话");
+        toast.info(t("toast.session_ended"));
       } catch (e: unknown) {
-        toast.error(`结束失败 — ${String(e)}`);
+        toast.error(t("toast.session_end_failed", { err: String(e) }));
       }
       return;
     }
     if (otherActive) {
-      toast.error("已有活动游戏 — 请先结束当前会话");
+      toast.error(t("toast.has_active_game"));
       return;
     }
     if (!game) return;
@@ -777,10 +785,12 @@ export default function Detail() {
       await launchGame(gameId, launchMethod === "le-jp");
       toastLaunchSuccess(
         displayName,
-        launchMethod === "le-jp" ? "日区 LE" : "直接",
+        launchMethod === "le-jp"
+          ? t("detail.launch.le_jp_short")
+          : t("detail.launch.direct_short"),
       );
     } catch (e: unknown) {
-      toast.error(`启动失败 — ${String(e)}`);
+      toast.error(t("toast.launch_failed", { err: String(e) }));
     }
   }
 
@@ -788,9 +798,9 @@ export default function Detail() {
     try {
       await setScreenshotInterval(gameId, next);
       setScreenshotIntervalState(next);
-      toast.success("已设置截图间隔");
+      toast.success(t("toast.screenshot_interval_set"));
     } catch (e: unknown) {
-      toast.error(`设置截图间隔失败 — ${String(e)}`);
+      toast.error(t("toast.screenshot_interval_failed", { err: String(e) }));
     }
   }
 
@@ -800,7 +810,7 @@ export default function Detail() {
       const picked = await openDialog({
         multiple: false,
         directory: false,
-        title: "选择可执行文件",
+        title: t("detail.config.pick_exe_title"),
         defaultPath: exePath.length > 0 ? exePath : game.path,
         filters: [{ name: "Executable", extensions: ["exe"] }],
       });
@@ -808,7 +818,7 @@ export default function Detail() {
         setExePath(picked);
       }
     } catch (e: unknown) {
-      toast.error(`选择失败 — ${String(e)}`);
+      toast.error(t("toast.pick_exe_failed", { err: String(e) }));
     }
   }
 
@@ -821,10 +831,10 @@ export default function Detail() {
         cwd: cwd.length > 0 ? cwd : undefined,
         executable_path: exePath.length > 0 ? exePath : undefined,
       });
-      toast.success("已保存启动配置");
+      toast.success(t("toast.config_saved"));
       await refreshGame();
     } catch (e: unknown) {
-      toast.error(`保存失败 — ${String(e)}`);
+      toast.error(t("toast.save_failed", { err: String(e) }));
     }
   }
 
@@ -836,9 +846,9 @@ export default function Detail() {
       await refreshGame();
       await refreshStaff();
       await refreshOfficialTags();
-      toast.success("已刷新封面");
+      toast.success(t("toast.cover_refreshed"));
     } catch (e: unknown) {
-      toast.error(`刷新封面失败 — ${String(e)}`);
+      toast.error(t("toast.cover_refresh_failed", { err: String(e) }));
     } finally {
       setRefreshingCover(false);
     }
@@ -869,9 +879,9 @@ export default function Detail() {
     if (!game) return;
     try {
       await navigator.clipboard.writeText(game.path);
-      toast.success("已复制路径");
+      toast.success(t("toast.copy_path_ok"));
     } catch (e: unknown) {
-      toast.error(`复制失败 — ${String(e)}`);
+      toast.error(t("toast.copy_failed", { err: String(e) }));
     }
   }
 
@@ -880,7 +890,7 @@ export default function Detail() {
     try {
       await openGameDir(game.path);
     } catch (e: unknown) {
-      toast.error(`打开目录失败 — ${String(e)}`);
+      toast.error(t("toast.open_dir_failed", { err: String(e) }));
     }
   }
 
@@ -895,9 +905,9 @@ export default function Detail() {
     ? Math.max(0, Math.floor((Date.now() - lastSavedAt) / 1000))
     : null;
   const notesStatusLabel = savingNotes
-    ? "保存中..."
+    ? t("detail.notes_saving")
     : lastSavedSeconds != null
-      ? `已保存 ${lastSavedSeconds} 秒前`
+      ? t("detail.notes_saved", { seconds: lastSavedSeconds })
       : "";
 
   return (
@@ -915,7 +925,7 @@ export default function Detail() {
             style={{ borderRadius: "var(--r-md)" }}
           >
             <ArrowLeft size={12} strokeWidth={2} />
-            <span>返回图书馆</span>
+            <span>{t("detail.back")}</span>
             <kbd
               className="ml-1 inline-flex h-[18px] items-center border border-line bg-bg-2 px-1.5 font-mono text-[9.5px] uppercase tracking-[0.06em] text-ink-3"
               style={{ borderRadius: "var(--r-sm)" }}
@@ -933,7 +943,7 @@ export default function Detail() {
               onClick={() => navigate("/")}
               className="text-ink-2 transition-colors hover:text-ink-0"
             >
-              图书馆
+              {t("detail.crumb_library")}
             </button>
             {game.brand ? (
               <>
@@ -963,8 +973,8 @@ export default function Detail() {
             type="button"
             onClick={() => prevId != null && navigate(`/games/${prevId}`)}
             disabled={prevId == null}
-            aria-label="上一部"
-            title="上一部"
+            aria-label={t("detail.prev")}
+            title={t("detail.prev")}
             className="grid h-7 w-7 place-items-center border border-line bg-bg-1 text-ink-2 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-bg-1 disabled:hover:text-ink-2"
             style={{ borderRadius: "var(--r-sm)" }}
           >
@@ -977,8 +987,8 @@ export default function Detail() {
             type="button"
             onClick={() => nextId != null && navigate(`/games/${nextId}`)}
             disabled={nextId == null}
-            aria-label="下一部"
-            title="下一部"
+            aria-label={t("detail.next")}
+            title={t("detail.next")}
             className="grid h-7 w-7 place-items-center border border-line bg-bg-1 text-ink-2 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-bg-1 disabled:hover:text-ink-2"
             style={{ borderRadius: "var(--r-sm)" }}
           >
@@ -1054,7 +1064,7 @@ export default function Detail() {
                     type="button"
                     onClick={onBrandCrumbClick}
                     className="cursor-pointer transition-colors hover:text-brand"
-                    title={`筛选「${game.brand}」`}
+                    title={t("detail.brand_filter_tooltip", { name: game.brand })}
                   >
                     {game.brand}
                   </button>
@@ -1067,7 +1077,7 @@ export default function Detail() {
                     type="button"
                     onClick={onYearCrumbClick}
                     className="cursor-pointer transition-colors hover:text-brand"
-                    title={`筛选 ${Math.floor(game.release_year / 10) * 10}s`}
+                    title={t("detail.year_filter_tooltip", { decade: Math.floor(game.release_year / 10) * 10 })}
                   >
                     {game.release_year}
                   </button>
@@ -1093,7 +1103,7 @@ export default function Detail() {
                   aria-hidden
                   className="h-1.5 w-1.5 rounded-full bg-brand"
                 />
-                {STATUS_LABELS[game.status]}
+                {t(STATUS_LABEL_KEY[game.status])}
               </Pill>
               <Pill>{formatDuration(game.total_playtime_sec)}</Pill>
               {game.rating != null ? (
@@ -1102,21 +1112,21 @@ export default function Detail() {
               {reviewNeeded && (
                 <Pill className="border-[#ffd166]/50 text-[#ffd166]">
                   <AlertTriangle size={11} strokeWidth={2} />
-                  待复核 · 置信度 {game.match_confidence}%
+                  {t("detail.review_needed", { pct: game.match_confidence })}
                 </Pill>
               )}
               {game.bangumi_id ? (
                 <ExtSourcePill
-                  label="在 Bangumi 看"
+                  label={t("detail.pill.see_on_bangumi")}
                   url={bangumiSubjectUrl(game.bangumi_id)}
-                  title={`在 Bangumi 打开此条目 · ${game.bangumi_id}`}
+                  title={t("detail.pill.see_on_bangumi_tooltip", { id: game.bangumi_id })}
                 />
               ) : null}
               {game.vndb_id ? (
                 <ExtSourcePill
-                  label="在 VNDB 看"
+                  label={t("detail.pill.see_on_vndb")}
                   url={vndbVnUrl(game.vndb_id)}
-                  title={`在 VNDB 打开此条目 · ${game.vndb_id}`}
+                  title={t("detail.pill.see_on_vndb_tooltip", { id: game.vndb_id })}
                 />
               ) : null}
               {game.executable_path ? (
@@ -1132,8 +1142,8 @@ export default function Detail() {
             <button
               type="button"
               onClick={() => void onToggleFavorite()}
-              title={game.is_favorite ? "取消收藏" : "收藏"}
-              aria-label="收藏"
+              title={game.is_favorite ? t("detail.unfavorite") : t("detail.favorite")}
+              aria-label={t("detail.favorite")}
               className={cn(
                 "grid h-9 w-9 place-items-center rounded-full border border-line bg-bg-1/80 transition-colors hover:bg-bg-2 backdrop-blur",
                 game.is_favorite ? "text-rose-400" : "text-ink-2",
@@ -1149,8 +1159,8 @@ export default function Detail() {
               <DropdownMenuTrigger asChild>
                 <button
                   type="button"
-                  title="更多"
-                  aria-label="更多"
+                  title={t("detail.more")}
+                  aria-label={t("detail.more")}
                   className="grid h-9 w-9 place-items-center rounded-full border border-line bg-bg-1/80 text-ink-2 transition-colors hover:bg-bg-2 hover:text-ink-0 backdrop-blur"
                 >
                   <MoreHorizontal size={15} strokeWidth={1.7} />
@@ -1166,37 +1176,37 @@ export default function Detail() {
                 */}
                 <DropdownMenuItem onSelect={() => void onOpenDir()}>
                   <FolderOpen size={14} className="mr-2" />
-                  打开本地目录
+                  {t("detail.menu.open_dir")}
                 </DropdownMenuItem>
                 <DropdownMenuItem onSelect={() => void onCopyPath()}>
                   <Copy size={14} className="mr-2" />
-                  复制路径
+                  {t("detail.menu.copy_path")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={() => setPickerOpen(true)}>
                   <RefreshCw size={14} className="mr-2" />
-                  重新匹配元数据
+                  {t("detail.menu.rematch")}
                 </DropdownMenuItem>
                 <DropdownMenuItem
                   disabled={refreshingCover}
                   onSelect={() => void onRefreshCover()}
                 >
                   <ImageDown size={14} className="mr-2" />
-                  重新抓取封面
+                  {t("detail.menu.refresh_cover")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuItem onSelect={onSplitSubdirs}>
                   <FolderTree size={14} className="mr-2" />
-                  整理子目录
+                  {t("detail.menu.split_subdirs")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
                 <DropdownMenuSub>
-                  <DropdownMenuSubTrigger>添加到视图</DropdownMenuSubTrigger>
+                  <DropdownMenuSubTrigger>{t("detail.menu.add_to_view")}</DropdownMenuSubTrigger>
                   <DropdownMenuPortal>
                     <DropdownMenuSubContent>
                       {customViews.length === 0 && (
                         <DropdownMenuItem disabled>
-                          <span className="text-ink-3">尚无视图</span>
+                          <span className="text-ink-3">{t("detail.menu.no_views")}</span>
                         </DropdownMenuItem>
                       )}
                       {customViews.map((cv) => (
@@ -1212,7 +1222,7 @@ export default function Detail() {
                       ))}
                       <DropdownMenuSeparator />
                       <DropdownMenuItem onSelect={() => void onCreateAndAddView()}>
-                        新建视图…
+                        {t("detail.menu.new_view")}
                       </DropdownMenuItem>
                     </DropdownMenuSubContent>
                   </DropdownMenuPortal>
@@ -1226,7 +1236,11 @@ export default function Detail() {
               isActive={isActive}
               disabled={launchDisabled}
               disabledTitle={
-                noExe ? "未识别可执行文件" : otherActive ? "其他游戏运行中" : undefined
+                noExe
+                  ? t("detail.launch.disabled_no_exe")
+                  : otherActive
+                    ? t("detail.launch.disabled_other")
+                    : undefined
               }
             />
           </div>
@@ -1252,18 +1266,18 @@ export default function Detail() {
               variant="line"
               className="mb-5 w-full justify-start gap-0 border-b border-line"
             >
-              <DTab value="overview">总览</DTab>
-              <DTab value="notes">笔记</DTab>
-              <DTab value="sessions">会话历史</DTab>
-              <DTab value="screenshots">截图</DTab>
-              <DTab value="saves">存档</DTab>
-              <DTab value="config">启动配置</DTab>
+              <DTab value="overview">{t("detail.tab.overview")}</DTab>
+              <DTab value="notes">{t("detail.tab.notes")}</DTab>
+              <DTab value="sessions">{t("detail.tab.sessions")}</DTab>
+              <DTab value="screenshots">{t("detail.tab.screenshots")}</DTab>
+              <DTab value="saves">{t("detail.tab.saves")}</DTab>
+              <DTab value="config">{t("detail.tab.config")}</DTab>
             </TabsList>
 
             {/* 总览 */}
             <TabsContent value="overview" className="space-y-6 pt-1">
               {summaryParagraphs.length > 0 ? (
-                <DSection title="故事简介">
+                <DSection title={t("detail.section.summary")}>
                   <div
                     className="max-w-[68ch] font-serif text-[14px] text-ink-1"
                     style={{ lineHeight: 1.7 }}
@@ -1286,7 +1300,7 @@ export default function Detail() {
               ) : null}
 
               {staffGroups.length > 0 ? (
-                <DSection title="制作团队">
+                <DSection title={t("detail.section.staff")}>
                   <div className="flex flex-col gap-4">
                     {staffGroups.map(({ role, items }) => {
                       const Icon = STAFF_ROLE_ICONS[role];
@@ -1294,7 +1308,7 @@ export default function Detail() {
                         <div key={role}>
                           <h3 className="mb-2 inline-flex items-center gap-1.5 font-mono text-[10.5px] uppercase tracking-[0.12em] text-ink-3">
                             <Icon size={11} strokeWidth={2} />
-                            <span>{STAFF_ROLE_LABELS[role]}</span>
+                            <span>{t(STAFF_ROLE_LABEL_KEY[role])}</span>
                             <span className="text-ink-3">·</span>
                             <span>{items.length}</span>
                           </h3>
@@ -1316,7 +1330,7 @@ export default function Detail() {
                 </DSection>
               ) : null}
 
-              <DSection title="常用操作">
+              <DSection title={t("detail.section.common_actions")}>
                 <div className="flex flex-wrap items-center gap-3">
                   <Select
                     value={game.status}
@@ -1328,7 +1342,7 @@ export default function Detail() {
                     <SelectContent>
                       {STATUS_OPTIONS.map((s) => (
                         <SelectItem key={s.value} value={s.value}>
-                          {s.label}
+                          {t(s.i18nKey)}
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -1343,11 +1357,11 @@ export default function Detail() {
 
             {/* 笔记 */}
             <TabsContent value="notes" className="space-y-2 pt-1">
-              <DSection title="我的笔记">
+              <DSection title={t("detail.section.notes")}>
                 <Textarea
                   value={notes}
                   onChange={(e) => setNotes(e.target.value)}
-                  placeholder="写下你对这部游戏的感受、攻略要点、心愿..."
+                  placeholder={t("detail.section.notes_placeholder")}
                   className="min-h-[260px] bg-bg-1 font-sans"
                 />
                 <div
@@ -1362,12 +1376,12 @@ export default function Detail() {
             {/* 会话历史 */}
             <TabsContent value="sessions" className="pt-1">
               <DSection
-                title="会话历史"
-                hint={`最近 ${Math.min(sessions.length, 8)} 次`}
+                title={t("detail.section.sessions")}
+                hint={t("detail.section.sessions_recent", { count: Math.min(sessions.length, 8) })}
               >
                 {sessions.length === 0 ? (
                   <p className="font-mono text-[11.5px] text-ink-3">
-                    还没有游玩记录 — 启动游戏开始记录
+                    {t("detail.section.sessions_empty")}
                   </p>
                 ) : (
                   <SessionsList sessions={sessions.slice(0, 12)} />
@@ -1387,9 +1401,9 @@ export default function Detail() {
 
             {/* 启动配置 */}
             <TabsContent value="config" className="space-y-5 pt-1">
-              <DSection title="启动配置">
+              <DSection title={t("detail.section.config")}>
                 <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
-                  <ConfigField label="启动方式">
+                  <ConfigField label={t("detail.config.method")}>
                     <Select
                       value={launchMethod}
                       onValueChange={(v) => setLaunchMethod(v as LaunchMethod)}
@@ -1399,54 +1413,54 @@ export default function Detail() {
                       </SelectTrigger>
                       <SelectContent>
                         <SelectItem value="le-jp">
-                          {LAUNCH_METHOD_LABEL["le-jp"]}
+                          {t(LAUNCH_METHOD_LABEL_KEY["le-jp"])}
                         </SelectItem>
                         <SelectItem value="direct">
-                          {LAUNCH_METHOD_LABEL.direct}
+                          {t(LAUNCH_METHOD_LABEL_KEY.direct)}
                         </SelectItem>
                       </SelectContent>
                     </Select>
                   </ConfigField>
-                  <ConfigField label="启动参数">
+                  <ConfigField label={t("detail.config.args")}>
                     <Input
                       value={args}
                       onChange={(e) => setArgs(e.target.value)}
-                      placeholder="例如：-windowed"
+                      placeholder={t("detail.config.args_placeholder")}
                       className="font-mono bg-bg-2"
                     />
                   </ConfigField>
-                  <ConfigField label="工作目录 (cwd)" className="md:col-span-2">
+                  <ConfigField label={t("detail.config.cwd")} className="md:col-span-2">
                     <Input
                       value={cwd}
                       onChange={(e) => setCwd(e.target.value)}
-                      placeholder="留空 = exe 同级目录"
+                      placeholder={t("detail.config.cwd_placeholder")}
                       className="font-mono bg-bg-2"
                     />
                   </ConfigField>
                   <ConfigField
-                    label="已识别可执行文件"
+                    label={t("detail.config.exe")}
                     className="md:col-span-2"
                   >
                     <div className="flex items-center gap-2">
                       <Input
                         value={exePath}
                         onChange={(e) => setExePath(e.target.value)}
-                        placeholder="留空 = 自动识别"
+                        placeholder={t("detail.config.exe_placeholder")}
                         className="font-mono bg-bg-2 flex-1"
                       />
                       <button
                         type="button"
                         onClick={() => void onPickExePath()}
-                        title="浏览本地 .exe 文件"
+                        title={t("detail.config.exe_browse_tooltip")}
                         className="inline-flex h-8 flex-shrink-0 items-center gap-1.5 border border-line bg-bg-2 px-3 text-[12px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-3 hover:text-ink-0"
                         style={{ borderRadius: "var(--r-md)" }}
                       >
                         <FolderOpen size={12} />
-                        浏览…
+                        {t("detail.config.exe_browse")}
                       </button>
                     </div>
                   </ConfigField>
-                  <ConfigField label="截图间隔">
+                  <ConfigField label={t("detail.config.screenshot_interval")}>
                     <Select
                       value={String(screenshotIntervalState ?? 300)}
                       onValueChange={(v) =>
@@ -1459,7 +1473,7 @@ export default function Detail() {
                       <SelectContent>
                         {SCREENSHOT_INTERVAL_OPTIONS.map((opt) => (
                           <SelectItem key={opt.value} value={String(opt.value)}>
-                            {opt.label}
+                            {t(opt.i18nKey)}
                           </SelectItem>
                         ))}
                       </SelectContent>
@@ -1473,7 +1487,7 @@ export default function Detail() {
                     className="inline-flex h-8 items-center border border-line bg-bg-2 px-4 text-[12px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-3 hover:text-ink-0"
                     style={{ borderRadius: "var(--r-md)" }}
                   >
-                    保存配置
+                    {t("detail.config.save")}
                   </button>
                 </div>
               </DSection>
@@ -1483,19 +1497,19 @@ export default function Detail() {
 
         {/* Right meta sidebar */}
         <aside className="border-l border-line pl-7">
-          <DSection title="条目信息">
+          <DSection title={t("detail.section.info")}>
             <dl
               className="grid gap-x-3 gap-y-2 text-[12px]"
               style={{ gridTemplateColumns: "84px 1fr" }}
             >
-              <DT>品牌</DT>
+              <DT>{t("detail.info.brand")}</DT>
               <DD>
                 {game.brand ? (
                   <button
                     type="button"
                     onClick={onBrandCrumbClick}
                     className="cursor-pointer text-left transition-colors hover:text-brand"
-                    title={`筛选「${game.brand}」`}
+                    title={t("detail.brand_filter_tooltip", { name: game.brand })}
                   >
                     {game.brand}
                   </button>
@@ -1503,14 +1517,14 @@ export default function Detail() {
                   "—"
                 )}
               </DD>
-              <DT>发行年</DT>
+              <DT>{t("detail.info.year")}</DT>
               <DD>
                 {game.release_year ? (
                   <button
                     type="button"
                     onClick={onYearCrumbClick}
                     className="cursor-pointer text-left transition-colors hover:text-brand"
-                    title={`筛选 ${Math.floor(game.release_year / 10) * 10}s`}
+                    title={t("detail.year_filter_tooltip", { decade: Math.floor(game.release_year / 10) * 10 })}
                   >
                     {game.release_year}
                   </button>
@@ -1518,13 +1532,13 @@ export default function Detail() {
                   "—"
                 )}
               </DD>
-              <DT>状态</DT>
-              <DD>{STATUS_LABELS[game.status]}</DD>
-              <DT>评分</DT>
+              <DT>{t("detail.info.status")}</DT>
+              <DD>{t(STATUS_LABEL_KEY[game.status])}</DD>
+              <DT>{t("detail.info.rating")}</DT>
               <DD>
                 {game.rating != null ? `★ ${game.rating} / 10` : "—"}
               </DD>
-              <DT>BGM</DT>
+              <DT>{t("detail.info.bgm")}</DT>
               <DD className="font-mono">
                 {game.bangumi_id ? (
                   <ExtAnchor href={bangumiPageUrl(game.bangumi_id)}>
@@ -1534,7 +1548,7 @@ export default function Detail() {
                   <span className="text-ink-3">—</span>
                 )}
               </DD>
-              <DT>VNDB</DT>
+              <DT>{t("detail.info.vndb")}</DT>
               <DD className="font-mono">
                 {game.vndb_id ? (
                   <ExtAnchor href={vndbPageUrl(game.vndb_id)}>
@@ -1544,7 +1558,7 @@ export default function Detail() {
                   <span className="text-ink-3">—</span>
                 )}
               </DD>
-              <DT>来源</DT>
+              <DT>{t("detail.info.source")}</DT>
               <DD className="font-mono uppercase tracking-[0.06em]">
                 {game.metadata_source ?? <span className="text-ink-3">none</span>}
               </DD>
@@ -1552,12 +1566,12 @@ export default function Detail() {
           </DSection>
 
           <DSection
-            title="标签"
-            hint={`${gameTags.length} 个`}
+            title={t("detail.section.tags")}
+            hint={t("detail.section.tags_count", { count: gameTags.length })}
             className="mt-6"
           >
             {gameTags.length === 0 ? (
-              <p className="font-mono text-[11px] text-ink-3">还没有标签</p>
+              <p className="font-mono text-[11px] text-ink-3">{t("detail.section.tags_empty")}</p>
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {gameTags.map((tag) => (
@@ -1565,7 +1579,7 @@ export default function Detail() {
                     key={tag.id}
                     type="button"
                     onClick={() => onUserTagJump(tag.id)}
-                    title={`筛选「${tag.name}」`}
+                    title={t("detail.brand_filter_tooltip", { name: tag.name })}
                     className="inline-flex cursor-pointer items-center gap-1 border border-line bg-bg-1 px-2.5 py-[3px] text-[11px] text-ink-1 transition-colors hover:border-brand hover:bg-brand-soft hover:text-ink-0"
                     style={{ borderRadius: "9999px" }}
                   >
@@ -1593,8 +1607,8 @@ export default function Detail() {
 
           {officialTags.length > 0 ? (
             <DSection
-              title="官方标签"
-              hint={`${officialTags.length} 个`}
+              title={t("detail.section.official_tags")}
+              hint={t("detail.section.official_tags_count", { count: officialTags.length })}
               className="mt-6"
             >
               <div className="flex flex-wrap gap-1.5">
@@ -1609,7 +1623,7 @@ export default function Detail() {
             </DSection>
           ) : null}
 
-          <DSection title="路径" className="mt-6">
+          <DSection title={t("detail.section.path")} className="mt-6">
             <div
               className="font-mono text-[11px] leading-[1.7] text-ink-2"
               style={{ wordBreak: "break-all" }}
@@ -1621,35 +1635,35 @@ export default function Detail() {
                 icon={<Copy size={12} />}
                 onClick={() => void onCopyPath()}
               >
-                复制路径
+                {t("detail.path.copy")}
               </SidebarBtn>
               {game.cover_url ? (
                 <SidebarBtn
                   icon={<ExternalLink size={12} />}
                   onClick={() => openExternal(game.cover_url ?? "")}
                 >
-                  封面源
+                  {t("detail.path.cover_source")}
                 </SidebarBtn>
               ) : null}
             </div>
           </DSection>
 
-          <DSection title="搜索源" className="mt-6">
+          <DSection title={t("detail.section.search_sources")} className="mt-6">
             <p className="font-mono text-[10.5px] text-ink-3">
-              用当前游戏名在数据源站内搜索
+              {t("detail.section.search_sources_hint")}
             </p>
             <div className="mt-2 flex flex-wrap gap-1.5">
               <SidebarBtn
                 icon={<Search size={12} />}
                 onClick={() => openExternal(bangumiSearchUrl(game.name))}
               >
-                Bangumi 搜索
+                {t("detail.search.bangumi")}
               </SidebarBtn>
               <SidebarBtn
                 icon={<Search size={12} />}
                 onClick={() => openExternal(vndbSearchUrl(game.name))}
               >
-                VNDB 搜索
+                {t("detail.search.vndb")}
               </SidebarBtn>
             </div>
           </DSection>
@@ -1678,16 +1692,14 @@ export default function Detail() {
       >
         <AlertDialogContent>
           <AlertDialogHeader>
-            <AlertDialogTitle>拆分会删除原条目</AlertDialogTitle>
+            <AlertDialogTitle>{t("library.split_confirm.title")}</AlertDialogTitle>
             <AlertDialogDescription>
-              该条目带有游玩时长 / 笔记 / 评分 / 收藏 / 通关状态等数据。
-              拆分会删除原条目并丢失这些数据，子目录将作为新条目重新匹配元数据。
-              确定继续吗？
+              {t("library.split_confirm.desc")}
             </AlertDialogDescription>
           </AlertDialogHeader>
           <AlertDialogFooter>
             <AlertDialogCancel onClick={() => setSplitConfirmOpen(false)}>
-              取消
+              {t("common.cancel")}
             </AlertDialogCancel>
             <AlertDialogAction
               onClick={() => {
@@ -1695,7 +1707,7 @@ export default function Detail() {
                 setSplitOpen(true);
               }}
             >
-              继续拆分
+              {t("library.split_confirm.action")}
             </AlertDialogAction>
           </AlertDialogFooter>
         </AlertDialogContent>
@@ -1745,7 +1757,7 @@ function ExtSourcePill({
       type="button"
       onClick={() => {
         void openExternalUrl(url).catch((e: unknown) => {
-          toast.error(`打开失败 — ${String(e)}`);
+          toast.error(i18n.t("toast.open_external_failed", { err: String(e) }));
         });
       }}
       title={title}
@@ -1777,7 +1789,7 @@ function PersonChip({
       : personName;
   const altTitle =
     row.role === "voice" && row.character_name
-      ? `${personName} · 饰 ${row.character_name}`
+      ? i18n.t("detail.role.voice_alt", { person: personName, character: row.character_name })
       : row.name_cn && row.name_cn !== row.name
         ? `${personName} · ${row.name}`
         : personName;
@@ -1810,12 +1822,14 @@ function OfficialTagChip({
 }) {
   const sourceLabel = row.source === "bangumi" ? "bangumi" : "vndb";
   const weightLabel =
-    row.source === "bangumi" ? `${row.weight} 用户` : `权重 ${row.weight}`;
+    row.source === "bangumi"
+      ? i18n.t("detail.officialtag.bangumi_weight", { n: row.weight })
+      : i18n.t("detail.officialtag.vndb_weight", { n: row.weight });
   return (
     <button
       type="button"
       onClick={() => onJump(row.tag_name)}
-      title={`${sourceLabel} · ${weightLabel} — 点击筛选`}
+      title={i18n.t("detail.officialtag.tooltip", { source: sourceLabel, weight: weightLabel })}
       className="inline-flex cursor-pointer items-center gap-1 border border-line bg-bg-2 px-2 py-[2px] text-[11px] text-ink-2 transition-colors hover:border-brand hover:bg-brand-soft hover:text-ink-0"
       style={{ borderRadius: "9999px" }}
     >

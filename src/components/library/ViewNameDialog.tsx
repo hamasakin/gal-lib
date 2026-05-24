@@ -15,6 +15,7 @@
  */
 
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Bookmark, Pencil } from "lucide-react";
 import {
   Dialog,
@@ -41,6 +42,7 @@ interface ViewNameDialogProps {
 const MAX_LEN = 60;
 
 export function ViewNameDialog({ mode, onClose, onSubmit }: ViewNameDialogProps) {
+  const { t } = useTranslation();
   const open = mode !== null;
   const isRename = mode?.kind === "rename";
   const [value, setValue] = useState("");
@@ -110,17 +112,17 @@ export function ViewNameDialog({ mode, onClose, onSubmit }: ViewNameDialogProps)
             </span>
             <div className="flex flex-col gap-0.5">
               <DialogTitle className="font-serif text-[15px] leading-tight text-ink-0">
-                {isRename ? "重命名视图" : "新建视图"}
+                {isRename ? t("views.dialog.rename_title") : t("views.dialog.create_title")}
               </DialogTitle>
               <p className="font-mono text-[9.5px] uppercase tracking-[0.16em] text-ink-3">
-                {isRename ? "Rename collection" : "Custom collection"}
+                {isRename ? t("views.dialog.rename_subtitle") : t("views.dialog.create_subtitle")}
               </p>
             </div>
           </div>
           <DialogDescription className="pt-3 text-[12.5px] leading-[1.6] text-ink-2">
             {isRename
-              ? "改名只影响显示，视图里的游戏保持不动。"
-              : "视图是你保存的一组游戏 — 在网格里批量选中后可以加入，或者从详情卡上一键收纳。"}
+              ? t("views.dialog.rename_desc")
+              : t("views.dialog.create_desc")}
           </DialogDescription>
         </DialogHeader>
 
@@ -129,7 +131,7 @@ export function ViewNameDialog({ mode, onClose, onSubmit }: ViewNameDialogProps)
             htmlFor="view-name-input"
             className="mb-1.5 block font-mono text-[9.5px] uppercase tracking-[0.14em] text-ink-3"
           >
-            视图名称
+            {t("views.dialog.name_label")}
           </label>
           <input
             id="view-name-input"
@@ -147,8 +149,8 @@ export function ViewNameDialog({ mode, onClose, onSubmit }: ViewNameDialogProps)
             }}
             placeholder={
               isRename
-                ? "新的视图名称"
-                : "如：本月在玩 / 通关候补 / TOP 10…"
+                ? t("views.dialog.rename_placeholder")
+                : t("views.dialog.create_placeholder")
             }
             className={cn(
               "h-9 w-full border bg-bg-2 px-3 text-[13px] text-ink-0 outline-none transition-colors",
@@ -163,8 +165,8 @@ export function ViewNameDialog({ mode, onClose, onSubmit }: ViewNameDialogProps)
           <div className="mt-1.5 flex items-center justify-between font-mono text-[10px] text-ink-3">
             <span aria-live="polite">
               {tooLong
-                ? `已超出 ${trimmed.length - MAX_LEN} 字`
-                : "回车提交 · Esc 取消"}
+                ? t("views.dialog.too_long", { n: trimmed.length - MAX_LEN })
+                : t("views.dialog.hint")}
             </span>
             <span className={tooLong ? "text-[#d96f5a]" : ""}>
               {trimmed.length}/{MAX_LEN}
@@ -184,7 +186,7 @@ export function ViewNameDialog({ mode, onClose, onSubmit }: ViewNameDialogProps)
             )}
             style={{ borderRadius: "var(--r-md)" }}
           >
-            取消
+            {t("common.cancel")}
           </button>
           <button
             type="button"
@@ -197,7 +199,7 @@ export function ViewNameDialog({ mode, onClose, onSubmit }: ViewNameDialogProps)
             )}
             style={{ borderRadius: "var(--r-md)" }}
           >
-            {busy ? "…" : isRename ? "保存" : "创建视图"}
+            {busy ? "…" : isRename ? t("views.dialog.save") : t("views.dialog.create")}
           </button>
         </DialogFooter>
       </DialogContent>

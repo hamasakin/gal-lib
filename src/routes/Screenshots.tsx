@@ -20,6 +20,8 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { useNavigate } from "react-router-dom";
+import { useTranslation } from "react-i18next";
+import i18n from "@/i18n";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
 import { ImageOff, X, FolderOpen } from "lucide-react";
 import { useLibraryStore } from "@/store/library";
@@ -37,6 +39,7 @@ interface GroupedShots {
 }
 
 export default function Screenshots() {
+  const { t } = useTranslation();
   const games = useLibraryStore((s) => s.games);
   const setGames = useLibraryStore((s) => s.setGames);
   const navigate = useNavigate();
@@ -112,7 +115,7 @@ export default function Screenshots() {
   function fmtTime(iso: string): string {
     const d = new Date(iso);
     if (Number.isNaN(d.getTime())) return "";
-    return d.toLocaleString("zh-CN", {
+    return d.toLocaleString(i18n.language, {
       month: "2-digit",
       day: "2-digit",
       hour: "2-digit",
@@ -123,22 +126,24 @@ export default function Screenshots() {
   return (
     <div className="h-full overflow-auto">
       <PageHeader
-        crumb="截图集 / Capture Roll"
-        badge={`${totalCount} 张`}
+        crumb={t("screenshots.crumb")}
+        badge={t("screenshots.badge", { count: totalCount })}
         title={
           <>
-            把每个夏天<span className="text-brand italic">封</span>进同一卷胶片
+            {t("screenshots.title_prefix")}
+            <span className="text-brand italic">{t("screenshots.title_brand")}</span>
+            {t("screenshots.title_suffix")}
           </>
         }
-        sub={`自动收集运行期间的截图 · 跨 ${groupedByGame.length} 部作品`}
+        sub={t("screenshots.sub", { count: groupedByGame.length })}
       />
 
       <div className="px-8 pb-16 pt-6">
         {groupedByGame.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-3 py-24">
-            <p className="font-serif text-[20px] text-ink-1">还没有截图</p>
+            <p className="font-serif text-[20px] text-ink-1">{t("screenshots.empty_title")}</p>
             <p className="font-mono text-[11px] text-ink-3">
-              启动游戏后会按设置间隔自动收集
+              {t("screenshots.empty_sub")}
             </p>
           </div>
         ) : (
@@ -150,7 +155,10 @@ export default function Screenshots() {
                     {game.name_cn ?? game.name}
                   </span>
                   <span className="font-mono text-[10.5px] text-ink-3">
-                    {shots.length} 张 · 最新 {fmtTime(shots[0]?.captured_at ?? "")}
+                    {t("screenshots.group_count", {
+                      count: shots.length,
+                      datetime: fmtTime(shots[0]?.captured_at ?? ""),
+                    })}
                   </span>
                 </div>
                 <div className="flex items-center gap-3">
@@ -163,21 +171,21 @@ export default function Screenshots() {
                       try {
                         await openGameDir(dir);
                       } catch (e: unknown) {
-                        toast.error(`打开截图目录失败 — ${String(e)}`);
+                        toast.error(t("toast.screenshot_dir_failed", { err: String(e) }));
                       }
                     }}
                     className="inline-flex items-center gap-1.5 font-mono text-[10.5px] text-ink-2 transition-colors hover:text-ink-0 disabled:cursor-not-allowed disabled:opacity-50"
-                    title="在系统资源管理器中打开"
+                    title={t("screenshots.open_dir_tooltip")}
                   >
                     <FolderOpen size={12} strokeWidth={1.7} />
-                    <span>打开目录</span>
+                    <span>{t("screenshots.open_dir")}</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => navigate(`/games/${game.id}`)}
                     className="font-mono text-[10.5px] text-ink-2 transition-colors hover:text-ink-0"
                   >
-                    查看游戏 →
+                    {t("screenshots.view_game")}
                   </button>
                 </div>
               </header>
@@ -238,7 +246,7 @@ export default function Screenshots() {
                   onClick={() => navigate(`/games/${game.id}?tab=screenshots`)}
                   className="mt-2 font-mono text-[10.5px] text-ink-2 hover:text-ink-0"
                 >
-                  + 查看全部 {shots.length} 张 →
+                  {t("screenshots.view_all", { count: shots.length })}
                 </button>
               )}
             </section>
@@ -258,7 +266,7 @@ export default function Screenshots() {
               e.stopPropagation();
               setActive(null);
             }}
-            aria-label="关闭"
+            aria-label={t("screenshots.close")}
             className="absolute right-5 top-5 grid h-9 w-9 place-items-center rounded-full bg-white/10 text-white hover:bg-white/20"
           >
             <X size={18} />

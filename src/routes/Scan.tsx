@@ -21,6 +21,7 @@
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
 import { toast } from "sonner";
+import { useTranslation } from "react-i18next";
 import { useTauriListen } from "@/hooks/useTauriListen";
 import { ListRestart, Search, X } from "lucide-react";
 import { PageHeader } from "@/components/library/PageHeader";
@@ -44,6 +45,7 @@ const TOOLBAR_BTN =
   "inline-flex h-8 items-center gap-2 border border-line bg-bg-1 px-3.5 text-[12.5px] text-ink-1 transition-colors hover:border-line-strong hover:bg-bg-2 hover:text-ink-0";
 
 export default function Scan() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const scanProgress = useLibraryStore((s) => s.scanProgress);
   const scanRunning = scanProgress?.status === "running";
@@ -86,16 +88,16 @@ export default function Scan() {
     try {
       const roots = await listScanRoots();
       if (roots.length === 0) {
-        toast.error("还没有扫描根目录 — 请先到设置页添加");
+        toast.error(t("toast.no_scan_roots"));
         navigate("/settings");
         return;
       }
       await startScan("full");
-      toast.info("已开始扫描");
+      toast.info(t("toast.scan_started"));
     } catch (e: unknown) {
-      toast.error(`扫描失败 — ${String(e)}`);
+      toast.error(t("toast.scan_failed", { err: String(e) }));
     }
-  }, [navigate]);
+  }, [navigate, t]);
 
   const onCancel = useCallback(async () => {
     try {
@@ -108,11 +110,11 @@ export default function Scan() {
         st.setScanProgress({ ...st.scanProgress, status: "cancelled" });
         st.clearFetchingMetaIds();
       }
-      toast.info("已发送取消请求");
+      toast.info(t("toast.cancel_requested"));
     } catch (e: unknown) {
-      toast.error(`取消失败 — ${String(e)}`);
+      toast.error(t("toast.cancel_failed", { err: String(e) }));
     }
-  }, []);
+  }, [t]);
 
   const onReseed = useCallback(async () => {
     setReseeding(true);
@@ -122,15 +124,15 @@ export default function Scan() {
       void refreshKpis();
       toast.success(
         n > 0
-          ? `已把 ${n} 部未匹配/低置信度游戏放入复核队列`
-          : "没有需要复核的游戏（库里都已绑定）",
+          ? t("toast.reseed_success", { count: n })
+          : t("toast.reseed_empty"),
       );
     } catch (e: unknown) {
-      toast.error(`回灌失败 — ${String(e)}`);
+      toast.error(t("toast.reseed_failed", { err: String(e) }));
     } finally {
       setReseeding(false);
     }
-  }, [refreshKpis]);
+  }, [refreshKpis, t]);
 
   const total = kpis?.total ?? 0;
   const bound = kpis?.bound ?? 0;
@@ -143,16 +145,16 @@ export default function Scan() {
       <ScanProgressBar />
 
       <PageHeader
-        crumb="扫描 / SCAN"
+        crumb={t("scan.crumb")}
         title={
           <>
-            <span className="text-brand italic">{reviewPending}</span> 项等待复核
+            <span className="text-brand italic">{reviewPending}</span> {t("scan.title_suffix")}
           </>
         }
         sub={
           total > 0
-            ? `共 ${total} 部作品 · 已绑定 ${bound} 部（${boundPct}%）· 无匹配 ${unmatched} 部`
-            : "尚未扫描 — 先到设置页添加根目录"
+            ? t("scan.sub.with_total", { total, bound, pct: boundPct, unmatched })
+            : t("scan.sub.no_scan")
         }
         actions={
           <>
@@ -164,7 +166,7 @@ export default function Scan() {
               style={{ borderRadius: "var(--r-md)" }}
             >
               <Search size={14} strokeWidth={1.7} />
-              <span>扫描</span>
+              <span>{t("scan.btn.scan")}</span>
             </button>
             <button
               type="button"
@@ -172,10 +174,10 @@ export default function Scan() {
               disabled={reseeding}
               className={cn(TOOLBAR_BTN, reseeding && "cursor-not-allowed opacity-60")}
               style={{ borderRadius: "var(--r-md)" }}
-              title="把所有未匹配 / 低置信度的游戏一次性加入复核队列（包含历史老库 unmatched 项）"
+              title={t("scan.btn.reseed_tooltip")}
             >
               <ListRestart size={14} strokeWidth={1.7} />
-              <span>{reseeding ? "回灌中…" : "重新生成待复核队列"}</span>
+              <span>{reseeding ? t("scan.btn.reseeding") : t("scan.btn.reseed")}</span>
             </button>
             {scanRunning && (
               <button
@@ -185,7 +187,7 @@ export default function Scan() {
                 style={{ borderRadius: "var(--r-md)" }}
               >
                 <X size={14} strokeWidth={1.7} />
-                <span>取消</span>
+                <span>{t("scan.btn.cancel")}</span>
               </button>
             )}
           </>
@@ -195,23 +197,32 @@ export default function Scan() {
       <div className="px-8 pb-10 pt-6">
         {/* KPI strip */}
         <div className="grid grid-cols-12 gap-4">
-          <KpiCard label="已扫游戏" value={total} unit="部" delta="入库总数" />
           <KpiCard
-            label="已绑定"
-            value={bound}
-            unit="部"
-            delta={total > 0 ? `${boundPct}% · 含 manual 绑定` : "暂无绑定"}
+            label={t("scan.kpi.scanned")}
+            value={total}
+            unit={t("scan.unit.works")}
+            delta={t("scan.kpi.delta.total")}
           />
           <KpiCard
-            label="待复核"
+            label={t("scan.kpi.bound")}
+            value={bound}
+            unit={t("scan.unit.works")}
+            delta={
+              total > 0
+                ? t("scan.kpi.delta.bound_pct", { pct: boundPct })
+                : t("scan.kpi.delta.no_bound")
+            }
+          />
+          <KpiCard
+            label={t("scan.kpi.review_pending")}
             value={reviewPending}
-            unit="项"
+            unit={t("scan.unit.items")}
             delta={
               unmatched > 0
-                ? `其中 ${unmatched} 项无匹配 · 需人工确认`
+                ? t("scan.kpi.delta.has_unmatched", { count: unmatched })
                 : reviewPending > 0
-                  ? "需要人工确认"
-                  : "队列已清空"
+                  ? t("scan.kpi.delta.need_review")
+                  : t("scan.kpi.delta.queue_empty")
             }
             highlight={reviewPending > 0}
           />
