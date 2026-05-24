@@ -2,6 +2,7 @@ mod commands;
 mod cover_cache;
 mod data_dir;
 mod db;
+mod http_safe;
 mod ingest;
 mod launch;
 mod metadata;

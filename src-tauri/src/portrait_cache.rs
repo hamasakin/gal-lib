@@ -10,6 +10,7 @@
 
 use std::path::{Path, PathBuf};
 
+use crate::http_safe::{download_capped, validate_remote_image_url, MAX_IMAGE_BYTES};
 use crate::metadata::limiter;
 
 const UA: &str = "gal-lib/0.1.0 (https://github.com/gal-lib/gal-lib)";
@@ -98,12 +99,22 @@ pub async fn get_or_fetch(
         None => return Ok(None),
     };
 
+    // SSRF guard: reject non-http(s), IP-literal hosts, and loopback names.
+    // Bangumi has historically returned only `*.bgm.tv` hosts here, but the
+    // value comes straight from their JSON response and we shouldn't trust
+    // it implicitly (Warning in 260524 review).
+    let safe_url = validate_remote_image_url(&remote).map_err(|e| e.to_string())?;
+
     let client = reqwest::Client::builder()
         .user_agent(UA)
         .timeout(std::time::Duration::from_secs(30))
         .build()
         .map_err(|e| e.to_string())?;
-    let resp = client.get(&remote).send().await.map_err(|e| e.to_string())?;
+    let resp = client
+        .get(safe_url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?;
     let resp = resp.error_for_status().map_err(|e| e.to_string())?;
     let ct = resp
         .headers()
@@ -115,7 +126,11 @@ pub async fn get_or_fetch(
         Some(e) => e,
         None => return Ok(None),
     };
-    let bytes = resp.bytes().await.map_err(|e| e.to_string())?;
+    // Cap response body at MAX_IMAGE_BYTES; the persons API serves ~40 KiB
+    // medium portraits, anything > 10 MiB is almost certainly an error path.
+    let bytes = download_capped(resp, MAX_IMAGE_BYTES)
+        .await
+        .map_err(|e| e.to_string())?;
 
     let dir = data_dir.join("portraits");
     std::fs::create_dir_all(&dir).map_err(|e| e.to_string())?;

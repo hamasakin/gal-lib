@@ -138,12 +138,17 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
   }, [value, storeQuery, setSearchQuery, kind]);
 
   // Ctrl+K / ⌘+K 聚焦 + 全选输入框内容，便于直接覆盖。
+  // WR-03 fix: 跳过 textarea / contentEditable target 以免在 Detail 笔记
+  // 编辑器里按 Ctrl+K 被这里抢焦。input 不跳过——SearchBar 自己就是 input，
+  // 已聚焦时再 select() 是希望的覆盖行为。
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
       const isK = e.key === "k" || e.key === "K";
       if (!isK) return;
       if (!(e.ctrlKey || e.metaKey)) return;
       if (e.altKey || e.shiftKey) return;
+      const t = e.target as HTMLElement | null;
+      if (t && (t.tagName === "TEXTAREA" || t.isContentEditable)) return;
       e.preventDefault();
       const el = inputRef.current;
       if (!el) return;

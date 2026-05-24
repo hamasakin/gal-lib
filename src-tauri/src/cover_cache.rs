@@ -13,6 +13,10 @@
 use std::path::{Path, PathBuf};
 use thiserror::Error;
 
+use crate::http_safe::{
+    download_capped, validate_remote_image_url, HttpSafeError, MAX_IMAGE_BYTES,
+};
+
 #[derive(Error, Debug)]
 pub enum CacheError {
     #[error("http: {0}")]
@@ -23,6 +27,8 @@ pub enum CacheError {
     InvalidUrl(String),
     #[error("unsupported content type: {0}")]
     UnsupportedType(String),
+    #[error("http-safe: {0}")]
+    HttpSafe(#[from] HttpSafeError),
 }
 
 const UA: &str = "gal-lib/0.1.0 (https://github.com/gal-lib/gal-lib)";
@@ -37,15 +43,17 @@ pub async fn cache_cover(
     game_id: i64,
     url: &str,
 ) -> Result<PathBuf, CacheError> {
-    if !(url.starts_with("http://") || url.starts_with("https://")) {
-        return Err(CacheError::InvalidUrl(url.into()));
-    }
+    // SSRF guard: reject non-http(s), IP-literal hosts, and loopback names
+    // before issuing the request. Bangumi/VNDB cover URLs are user-influenced
+    // (a tampered metadata response could inject internal URLs).
+    let safe_url = validate_remote_image_url(url)
+        .map_err(|e| CacheError::InvalidUrl(format!("{}: {}", url, e)))?;
 
     let client = reqwest::Client::builder()
         .user_agent(UA)
         .timeout(std::time::Duration::from_secs(30))
         .build()?;
-    let resp = client.get(url).send().await?.error_for_status()?;
+    let resp = client.get(safe_url).send().await?.error_for_status()?;
 
     // Pick extension from Content-Type; default to jpg if header missing.
     let ct = resp
@@ -64,7 +72,10 @@ pub async fn cache_cover(
         return Err(CacheError::UnsupportedType(ct));
     };
 
-    let bytes = resp.bytes().await?;
+    // Cap response body at MAX_IMAGE_BYTES so a misbehaving CDN can't OOM
+    // the process. The cover JPGs we usually see are ~80 KiB; 10 MiB is
+    // headroom for genuine high-res assets without being open-ended.
+    let bytes = download_capped(resp, MAX_IMAGE_BYTES).await?;
 
     let covers_dir = data_dir.join("covers");
     std::fs::create_dir_all(&covers_dir)?;
