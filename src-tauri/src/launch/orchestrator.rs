@@ -164,16 +164,20 @@ pub async fn prepare_launch(
 ///
 /// - `session_id` / `active`: persisted state ready to put into
 ///   `ActiveSessionState` and emit over `active-session-changed`.
-/// - `game_pid`: captured if `find_game_pid` succeeded inside the spawned
-///   task. **Note:** this is `None` at return time; the spawned task fills
-///   it via the channel-less path used by the command layer wrapper. See
-///   the simpler `(session_id, ActiveSession, JoinHandle)` tuple below.
 /// - `join`: handle for the wait-for-exit task. The command layer can
 ///   `.abort()` it on user-initiated cancel and `.await` it for natural exit.
+/// - `cancel`: shared Notify so the command layer can wake the screenshot
+///   task immediately when the user clicks 强制结束. Without this signal,
+///   abort()ing the wait task drops the `cancel_flag.store(true)` line on
+///   the floor and the screenshot loop keeps capturing until the next tick
+///   (then forever, if the game process is still alive after force-end —
+///   bug CR-01 in 260524 review). Both natural-exit and abort paths now
+///   notify_waiters() so the screenshot task always sees the cancel.
 pub type LaunchHandle = (
     i64,
     ActiveSession,
     tokio::task::JoinHandle<Result<(), OrchError>>,
+    Arc<tokio::sync::Notify>,
 );
 
 /// End-to-end launch + asynchronous wait.
@@ -227,6 +231,12 @@ pub async fn launch_game(inputs: LaunchInputs) -> Result<LaunchHandle, OrchError
     // by the screenshot task. AtomicBool over Mutex<bool>: zero contention,
     // no async surface, suitable for a flag that only flips once.
     let cancel_flag = Arc::new(AtomicBool::new(false));
+    // Companion wake-up signal so the screenshot task can drop out of its
+    // `iv.tick().await` immediately when cancelled, instead of waiting up to
+    // one full interval (≥60s) to observe `cancel_flag`. Both natural-exit
+    // path (inside the wait task) AND user-initiated abort path (inside
+    // `end_active_session` after CR-01 fix) call `notify_waiters()`.
+    let cancel_notify = Arc::new(tokio::sync::Notify::new());
 
     // Spawn synchronously (LE or direct). If spawn fails outright (bad
     // exe path, missing LEProc, OS denied) we mark the session failed and
@@ -255,6 +265,7 @@ pub async fn launch_game(inputs: LaunchInputs) -> Result<LaunchHandle, OrchError
 
     let exe_for_pid = exe_path.clone();
     let cancel_for_wait = cancel_flag.clone();
+    let notify_for_wait = cancel_notify.clone();
     let join: tokio::task::JoinHandle<Result<(), OrchError>> = tokio::spawn(async move {
         let pid_resolved: Result<u32, ()> = match spawned {
             SpawnedPid::Known(pid) => Ok(pid),
@@ -270,10 +281,12 @@ pub async fn launch_game(inputs: LaunchInputs) -> Result<LaunchHandle, OrchError
                 // -1 in that case; lifecycle still finalizes.
                 let exit_code = process_track::wait_for_exit(game_pid).await.unwrap_or(-1);
                 cancel_for_wait.store(true, Ordering::Relaxed);
+                notify_for_wait.notify_waiters();
                 session::end_session(&pool, session_id, exit_code).await?;
             }
             Err(_) => {
                 cancel_for_wait.store(true, Ordering::Relaxed);
+                notify_for_wait.notify_waiters();
                 session::mark_failed(&pool, session_id).await?;
             }
         }
@@ -286,6 +299,7 @@ pub async fn launch_game(inputs: LaunchInputs) -> Result<LaunchHandle, OrchError
         let pool_for_screen = inputs.pool.clone();
         let data_dir = inputs.data_dir.clone();
         let cancel = cancel_flag.clone();
+        let cancel_notify_screen = cancel_notify.clone();
         let game_id = inputs.game_id;
         // Lower-bound clamp at 60s — see CONTEXT § "Claude's Discretion": faster
         // than 1/min would be a disk-fill foot-gun.
@@ -297,30 +311,37 @@ pub async fn launch_game(inputs: LaunchInputs) -> Result<LaunchHandle, OrchError
             // at t=0 when the game splash hasn't even rendered).
             iv.tick().await;
             loop {
-                iv.tick().await;
-                if cancel.load(Ordering::Relaxed) {
-                    break;
+                // Race the next interval against the cancel signal so a
+                // force-end (or natural exit) can drop us out of the loop
+                // immediately rather than waiting up to one full interval.
+                tokio::select! {
+                    _ = iv.tick() => {
+                        if cancel.load(Ordering::Relaxed) {
+                            break;
+                        }
+                        // capture_to_disk is sync (fast — < 100ms); inline
+                        // call is fine on the tokio runtime. spawn_blocking
+                        // would just add overhead for the typical 5-min cadence.
+                        if let Ok(rel) = crate::screenshot::capture_to_disk(&data_dir, game_id) {
+                            let _ = sqlx::query(
+                                "INSERT INTO screenshots (game_id, path) VALUES (?, ?)",
+                            )
+                            .bind(game_id)
+                            .bind(&rel)
+                            .execute(&pool_for_screen)
+                            .await;
+                        }
+                        // Capture errors (NoScreen on RDP, transient GDI fail)
+                        // are intentionally swallowed: the user shouldn't lose
+                        // a play session because one screenshot failed.
+                    }
+                    _ = cancel_notify_screen.notified() => break,
                 }
-                // capture_to_disk is sync (fast — < 100ms); inline call is
-                // fine on the tokio runtime. spawn_blocking would just add
-                // overhead for the typical 5-min cadence.
-                if let Ok(rel) = crate::screenshot::capture_to_disk(&data_dir, game_id) {
-                    let _ = sqlx::query(
-                        "INSERT INTO screenshots (game_id, path) VALUES (?, ?)",
-                    )
-                    .bind(game_id)
-                    .bind(&rel)
-                    .execute(&pool_for_screen)
-                    .await;
-                }
-                // Capture errors (NoScreen on RDP, transient GDI fail) are
-                // intentionally swallowed: the user shouldn't lose a play
-                // session because one screenshot failed. The next tick retries.
             }
         });
     }
 
-    Ok((session_id, active, join))
+    Ok((session_id, active, join, cancel_notify))
 }
 
 #[cfg(test)]

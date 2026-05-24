@@ -23,6 +23,7 @@
 use crate::launch::{le, orchestrator, process_track, session};
 use crate::metadata::types::MetadataSource;
 use crate::{ingest, metadata, scan, AppPaths};
+use once_cell::sync::Lazy;
 use serde::{Deserialize, Serialize};
 use sqlx::{Row, SqlitePool};
 use std::collections::HashSet;
@@ -31,6 +32,19 @@ use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use tauri::{AppHandle, Emitter, Manager, State};
 use tokio::task::JoinSet;
+
+/// Serializes the entire `launch_game` command — eliminates the TOCTOU race
+/// where two concurrent invocations both observed `active_state == None`
+/// between the pre-check lock and the post-spawn lock, then both spawned LE
+/// and the second `*g = Some(entry)` overwrote the first (CR-02 in 260524
+/// review, leaving the first game's wait/screenshot tasks orphaned and
+/// uncontrollable). The full launch path (prepare + spawn + INSERT) takes
+/// ≤1s on a healthy install, so serializing is invisible to the user but
+/// closes the race definitively. tokio::sync::Mutex is required (the lock
+/// is held across `.await`); once_cell::Lazy avoids the const-fn version
+/// bump that `Mutex::const_new` would require.
+static LAUNCH_SERIAL: Lazy<tokio::sync::Mutex<()>> =
+    Lazy::new(|| tokio::sync::Mutex::new(()));
 
 /// 20260509g — cross-game ingest concurrency. Bangumi (1 req/s) and VNDB
 /// (~30/min, burst 1) limiters are process-wide governor token-buckets, so
@@ -2032,9 +2046,18 @@ pub struct ActiveSessionState(pub Mutex<Option<ActiveSessionEntry>>);
 /// what `end_active_session` needs — we only ever cancel, never join here.
 /// The JoinHandle is owned by the secondary watcher spawned in `launch_game`,
 /// which awaits it and then clears this state + emits the `null` event.
+///
+/// `cancel`: shared Notify with the screenshot task. `end_active_session`
+/// fires `notify_waiters()` BEFORE `task.abort()` so the screenshot loop
+/// wakes from its `iv.tick().await` and breaks immediately. Without this,
+/// abort()ing the wait task drops the `cancel_flag.store(true)` line on the
+/// floor (the wait task is killed mid-flight) and the screenshot loop runs
+/// until the next interval tick — or forever, if the game survives the
+/// force-end (CR-01 in 260524 review).
 pub struct ActiveSessionEntry {
     pub session: orchestrator::ActiveSession,
     pub task: tokio::task::AbortHandle,
+    pub cancel: Arc<tokio::sync::Notify>,
 }
 
 /// Tauri event name for active-session lifecycle changes. Payload is
@@ -2056,6 +2079,13 @@ pub async fn launch_game(
     state: State<'_, AppPaths>,
     active_state: State<'_, ActiveSessionState>,
 ) -> Result<orchestrator::ActiveSession, String> {
+    // Serialize concurrent `launch_game` invocations end-to-end (CR-02 in
+    // 260524 review). The original two-lock check-then-spawn pattern raced:
+    // both calls saw `g.is_some() == false`, both spawned LE, and the second
+    // `*g = Some(entry)` overwrote the first. Holding LAUNCH_SERIAL across
+    // the full path makes the check + spawn + insert one atomic step.
+    let _serial = LAUNCH_SERIAL.lock().await;
+
     // Pre-check: refuse if a session is already running. Hold the lock for
     // the minimum span — only to read the Option discriminant.
     {
@@ -2072,15 +2102,16 @@ pub async fn launch_game(
     let data_dir = state.data_dir.clone();
     let bundled_le_proc = state.bundled_le_proc.get().cloned();
 
-    let (_session_id, active, join) = orchestrator::launch_game(orchestrator::LaunchInputs {
-        data_dir,
-        pool: (*pool).clone(),
-        game_id,
-        use_le: use_le.unwrap_or(false),
-        bundled_le_proc,
-    })
-    .await
-    .map_err(err_str)?;
+    let (_session_id, active, join, cancel) =
+        orchestrator::launch_game(orchestrator::LaunchInputs {
+            data_dir,
+            pool: (*pool).clone(),
+            game_id,
+            use_le: use_le.unwrap_or(false),
+            bundled_le_proc,
+        })
+        .await
+        .map_err(err_str)?;
 
     let abort = join.abort_handle();
 
@@ -2095,6 +2126,7 @@ pub async fn launch_game(
         *g = Some(ActiveSessionEntry {
             session: active.clone(),
             task: abort,
+            cancel: cancel.clone(),
         });
     }
 
@@ -2166,9 +2198,17 @@ pub async fn end_active_session(
 
     let session_id = entry.session.session_id;
 
-    // Abort the wait-for-exit task FIRST so it can't race with our
-    // cancel_session UPDATE. AbortHandle::abort returns immediately; the
-    // watcher task will observe `JoinError::is_cancelled` and emit null.
+    // Wake the screenshot task BEFORE aborting the wait task. If we aborted
+    // first, the wait task's `cancel_flag.store(true)` + `notify_waiters()`
+    // would never run (the task is killed mid-flight), and the screenshot
+    // loop would keep capturing until the next interval tick observed the
+    // (never-set) flag — or, if the game survives force-end, forever.
+    // notify_waiters() on an empty Notify is a no-op; safe to call always.
+    entry.cancel.notify_waiters();
+
+    // Abort the wait-for-exit task so it can't race with our cancel_session
+    // UPDATE. AbortHandle::abort returns immediately; the watcher task will
+    // observe `JoinError::is_cancelled` and emit null.
     entry.task.abort();
 
     // Mark cancelled in DB — credits elapsed time to games.total_playtime_sec.
