@@ -410,8 +410,9 @@ export function SearchBar({ filterOptions }: SearchBarProps) {
             <span
               className="pointer-events-none absolute right-2.5 top-1/2 -translate-y-1/2 border border-line px-1 font-mono text-[9.5px] text-ink-3"
               style={{ borderRadius: "var(--r-sm)" }}
+              title="Ctrl+K 聚焦搜索框"
             >
-              ⌘K
+              Ctrl+K
             </span>
           )}
         </div>
