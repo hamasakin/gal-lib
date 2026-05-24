@@ -4,8 +4,8 @@ milestone: v1.3
 milestone_name: Scan Pipeline & Person Polish
 status: shipped
 stopped_at: "v1.3 milestone shipped + archived (2026-05-12). 下一步: `/gsd-cleanup` 归档 phase 目录 → `/gsd-new-milestone` 定义 v1.4 (first task: 12-step walkthrough)。"
-last_updated: "2026-05-19T10:21:39.433Z"
-last_activity: "2026-05-19 — Quick 260519-pi1：新增 npm run release 发版脚本。scripts/release.mjs（纯 Node 标准库 ESM）把手工发版收成一条命令：参数解析 patch/minor/major/X.Y.Z、三项前置检查、四处版本字段精确替换 bump、commit、tag 草稿编辑器定稿、push master+tag 触发 release.yml；package.json scripts 加 release 入口。先于本任务已发布 v0.2.3（Quick 260519-p90，commit c34bdef）。"
+last_updated: "2026-05-24T01:58:00.000Z"
+last_activity: "2026-05-24 — Quick 260524-dlr：搜索栏 + 详情页 + MetadataPicker 四项联动。advFilter 提到 useLibraryStore；SearchBar 加前缀类型下拉（游戏名/品牌/声优/标签）+ 非 name 类型输入触发模糊候选 → setAdvFilter；尾部 X 清空；详情页官方标签 + 用户标签 chip 改 button 点击跳回图书馆并应用筛选；MetadataPicker 候选行宽度链路严格收敛 + span→div+break-words 让 line-clamp 在 CJK 长串上稳定生效，溢出走 title 属性聚合 hover tooltip。零后端改动；npm run build 通过；交互真机验证待确认。"
 progress:
   total_phases: 4
   completed_phases: 4
@@ -104,6 +104,7 @@ None.
 | 260519-lxm | 扫描按钮收敛（纯前端，运行时零变化）—— 后端 start_scan 自 20260516 起 full/incremental 两 mode 已统一为同一行为，前端「增量扫描」「全量重扫」两按钮本就完全等价。① /scan 页删除「增量扫描」按钮，「全量重扫」改名「扫描」，onScan 收敛为无参（内部固定 startScan("full")、toast 改「已开始扫描」），清理 RefreshCw import + 头注释；② /settings「扫描操作」区「全量扫描」按钮改名「扫描」、同步区块 lede 文案 + 头注释，onScan 收敛为无参。后端 src-tauri/ 与 src/lib/scan.ts 的 startScan(mode) 签名保留不动（前端固定传 "full"）；tsc 通过 | 2026-05-19 | 7564e18 · 6976ca5 | [260519-lxm-scan-button-converge](./quick/260519-lxm-scan-button-converge/) |
 | 260519-oh9 | 扫描复核页两项 UI 改进（纯前端）：① ReviewQueue「待复核」列表根 div 加 max-h-[calc(100vh-280px)] —— 内部既有 overflow-y-auto 此前因无高度上限不生效、整页被撑长，加上限后列表超出在块内滚动；② Scan 页 KPI 条把「无匹配」卡合入「待复核」卡：删除独立「无匹配」KpiCard，unmatched 数并入「待复核」卡 delta 副行（>0 显示『其中 N 项无匹配 · 需人工确认』、=0 回退原文案），KpiCard gridColumn span-3 → span-4，4 卡变 3 卡铺满 12 列。KPI 数值口径与后端 get_scan_kpis / ScanKpis 均不变 | 2026-05-19 | 3fe09c6 · f5ee6ba | [260519-oh9-scan-page-ui](./quick/260519-oh9-scan-page-ui/) |
 | 260519-p90 | 发布 v0.2.3 小版本 — package.json / tauri.conf.json / Cargo.toml / Cargo.lock(gal-lib 自身条目) 四处版本号 0.2.2 → 0.2.3 单原子提交；打 tag v0.2.3 并推送触发 release.yml 出包 | 2026-05-19 | c34bdef | [260519-p90-v0-2-3](./quick/260519-p90-v0-2-3/) |
+| 260524-dlr | 搜索栏增强 + 详情页标签点击筛选 + MetadataPicker 溢出修复 —— ① advFilter 提升到 useLibraryStore（让非 Library 路由能直接设 facet 多选）② SearchBar 改造：左前缀类型下拉（游戏名/品牌/声优/标签）；非「游戏名」类型输入触发本地 fuzzy 候选下拉（数据走 getFilterOptions），点击/回车把项加入 advFilter 对应 Set；右尾部 X 一键清空（name 模式同时清 store.searchQuery）；Esc 收下拉/清 input ③ 详情页 OfficialTagChip span→button 点击 setAdvFilter(officialTags+=name)+navigate('/'); 用户「我的标签」chip span→button 点击 setFilter({tag_id})+navigate('/')；PersonChip 跳人物页语义不动 ④ MetadataPicker 候选行宽度链路 w-full·min-w-0·max-w-full·overflow-hidden 收敛，span→div+break-words 让 line-clamp 在 CJK 长串上稳定生效，溢出走 button title 属性聚合 hover tooltip 一次展示原标题+别名+完整简介；零后端改动；npm run build 全绿；交互真机验证待确认 | 2026-05-24 | 177959f · a44bfef · 08711d4 · 5355b89 | [260524-dlr-search-prefix-clear-tagjump](./quick/260524-dlr-search-prefix-clear-tagjump/) |
 | 260519-pi1 | 新增 `npm run release` 发版脚本 —— scripts/release.mjs（纯 Node 标准库 ESM）把手工发版收成一条命令：参数解析（无参 patch / patch / minor / major / 显式 X.Y.Z）+ 三项前置检查（工作区干净 / 分支 master / 目标 tag 本地+远端未占用，全在写文件前）+ 四处版本字段精确正则替换 bump（package.json / tauri.conf.json / Cargo.toml [package] 段 / Cargo.lock 严格锚定 name="gal-lib" 条目，其余依赖不动，每处命中数须为 1）+ git commit `chore: bump version to X.Y.Z` + tag 草稿（预填上个 tag 以来 git log，editor 兜底链 core.editor→GIT_EDITOR→EDITOR→VISUAL→notepad）让用户定稿、空消息中止 + push master 与 tag 触发 release.yml；commit 后任一步失败均打印中文手动收尾指引。package.json scripts 新增 `"release": "node scripts/release.mjs"` | 2026-05-19 | aca2470 | [260519-pi1-npm-run-release](./quick/260519-pi1-npm-run-release/) |
 
 ## Session Continuity
