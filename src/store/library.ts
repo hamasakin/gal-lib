@@ -256,6 +256,18 @@ interface LibraryState {
   setScanRoots: (rs: ScanRoot[]) => void;
   setScanProgress: (p: ScanProgress | null) => void;
   setGames: (gs: Game[]) => void;
+  /**
+   * Merge a single updated game row into the cached `games` array.
+   * - If an entry with the same `id` already exists, replace it in place.
+   * - Otherwise no-op (we don't want Detail's mutation to suddenly inject a
+   *   game the Library list hasn't fetched yet — that breaks the
+   *   single-source-of-truth invariant when filters/searches change the
+   *   visible set).
+   *
+   * Detail's `refreshGame` calls this after each mutation so Library doesn't
+   * see stale rows (BL-02 in 260524 review).
+   */
+  upsertGame: (g: Game) => void;
   addFetchingMetaId: (id: number) => void;
   markFetchingMetaFinished: (id: number) => void;
   removeFetchingMetaId: (id: number) => void;
@@ -299,6 +311,14 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   setScanRoots: (rs) => set({ scanRoots: rs }),
   setScanProgress: (p) => set({ scanProgress: p }),
   setGames: (gs) => set({ games: gs }),
+  upsertGame: (g) =>
+    set((st) => {
+      const idx = st.games.findIndex((x) => x.id === g.id);
+      if (idx < 0) return st;
+      const next = st.games.slice();
+      next[idx] = g;
+      return { games: next };
+    }),
   addFetchingMetaId: (id) =>
     set((st) => {
       // `started` does two things: marks the id in_flight (loading visual)

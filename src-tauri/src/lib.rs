@@ -210,6 +210,7 @@ pub fn run() {
             // refresh_all_metadata + backfill_release_year.
             commands::refresh_metadata_smart,
             commands::list_games,
+            commands::get_game,
             // 03d — launch + sessions + LE path
             commands::launch_game,
             commands::get_active_session,
@@ -255,6 +256,7 @@ pub fn run() {
             // 11c — Phase 11 metadata enrichment IPCs (6 new)
             commands::list_persons_for_game,
             commands::list_games_for_person,
+            commands::list_voice_characters_for_person,
             commands::list_official_tags_for_game,
             commands::get_filter_options,
             commands::open_external_url,

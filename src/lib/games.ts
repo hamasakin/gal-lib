@@ -101,6 +101,20 @@ export async function listGames(): Promise<Game[]> {
   return invoke<Game[]>("list_games");
 }
 
+/**
+ * Fetch a single game by id. Returns `null` when no row matches.
+ *
+ * The Detail page used to call `listGames()` then `.find()`, which pulled the
+ * full library on every mutation (status / rating / favorite / notes / etc.)
+ * — see BL-02 in the 260524 review. `getGame` issues one bound query and
+ * the caller is expected to upsert the result into the library store so
+ * subsequent navigation back to /library reflects the change without a
+ * second round-trip.
+ */
+export async function getGame(gameId: number): Promise<Game | null> {
+  return invoke<Game | null>("get_game", { gameId });
+}
+
 // ── Phase 4 / 04b: per-game property updates ─────────────────────────────────
 //
 // Each helper wraps a dedicated `update_game_*` Tauri command that issues a

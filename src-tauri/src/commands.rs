@@ -2050,6 +2050,35 @@ pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String>
     Ok(out)
 }
 
+/// Single-row variant of `list_games`. Used by the Detail page's
+/// `refreshGame` path — the previous implementation pulled the entire
+/// `games` table and `.find()`d the row, which became O(N * #mutations)
+/// IPC and N table reads per detail-page visit (BL-02 in 260524 review).
+#[tauri::command]
+pub async fn get_game(
+    game_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<Option<Game>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let row_opt = sqlx::query(
+        "SELECT id, path, name, name_cn, executable_path, cover_path, cover_url, \
+                bangumi_id, vndb_id, total_playtime_sec, last_played_at, status, \
+                rating, notes, metadata_source, match_confidence, last_scanned_at, \
+                metadata_fetched_at, \
+                brand, release_year, is_favorite, summary, \
+                created_at, updated_at \
+         FROM games WHERE id = ?",
+    )
+    .bind(game_id)
+    .fetch_optional(&*pool)
+    .await
+    .map_err(err_str)?;
+    match row_opt {
+        Some(row) => Ok(Some(row_to_game(&row)?)),
+        None => Ok(None),
+    }
+}
+
 /// Map a sqlx row to a `Game` struct. Shared by `list_games` and
 /// `search_games` to keep field-by-field column wiring consistent.
 fn row_to_game(row: &sqlx::sqlite::SqliteRow) -> Result<Game, String> {
@@ -3942,6 +3971,50 @@ pub async fn list_games_for_person(
     let mut out = Vec::with_capacity(rows.len());
     for row in rows {
         out.push(row_to_game(&row)?);
+    }
+    Ok(out)
+}
+
+/// Pair returned by `list_voice_characters_for_person`. One row per
+/// `game_staff` voice entry — the frontend folds the pairs into a single
+/// `gameId → characterName` map to label the voice game cards on /persons.
+#[derive(Debug, Serialize)]
+pub struct VoiceCharacterPair {
+    pub game_id: i64,
+    pub character_name: Option<String>,
+}
+
+/// Bulk voice-character lookup. Replaces the per-game `listPersonsForGame`
+/// loop the Persons route used to run for every voice game (BL-03 in 260524
+/// review — 50 voice games = 50 IPCs + 50 full person JOINs just to pluck
+/// 50 `character_name` strings). Single bound SELECT against `game_staff`,
+/// filtered to the requested person + role='voice'.
+#[tauri::command]
+pub async fn list_voice_characters_for_person(
+    person_id: i64,
+    state: State<'_, AppPaths>,
+) -> Result<Vec<VoiceCharacterPair>, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let rows = sqlx::query(
+        "SELECT game_id, character_name \
+         FROM game_staff \
+         WHERE person_id = ? AND role = 'voice'",
+    )
+    .bind(person_id)
+    .fetch_all(&*pool)
+    .await
+    .map_err(err_str)?;
+    let mut out = Vec::with_capacity(rows.len());
+    for row in rows {
+        let game_id: i64 = row.try_get("game_id").map_err(err_str)?;
+        // character_name is NOT NULL DEFAULT '' (migration 0007); map empty
+        // back to None so the wire contract matches the existing
+        // `list_persons_for_game` semantics (null = unknown character).
+        let cn: String = row.try_get("character_name").unwrap_or_default();
+        out.push(VoiceCharacterPair {
+            game_id,
+            character_name: if cn.is_empty() { None } else { Some(cn) },
+        });
     }
     Ok(out)
 }

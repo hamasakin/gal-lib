@@ -29,6 +29,7 @@ import {
   getOrFetchPortrait,
   listGamesForPerson,
   listPersonsForGame,
+  listVoiceCharactersForPerson,
   type GameStaffRow,
   type PersonSourceRef,
   type StaffRole,
@@ -160,32 +161,16 @@ export default function Persons() {
           setIdentity(null);
         }
 
-        // Voice character-name lookup: only if there are voice games. One
-        // listPersonsForGame call per voice game — typically a small list
-        // (the # of games where this seiyuu performed), so the N is small.
+        // Voice character-name lookup. BL-03 fix: was one
+        // `listPersonsForGame` call PER voice game (N IPCs + N full
+        // person JOINs to pluck N strings); now a single bound query.
         if (voice.length > 0) {
           try {
-            const charPairs = await Promise.all(
-              voice.map(async (g) => {
-                try {
-                  const persons = await listPersonsForGame(g.id);
-                  // PER-01: match via merged person_ids so VNDB-id URLs still find their voice row.
-                  const v = persons.find(
-                    (p) =>
-                      (p.person_ids.includes(personId) ||
-                        p.person_id === personId) &&
-                      p.role === "voice",
-                  );
-                  return [g.id, v?.character_name ?? null] as const;
-                } catch {
-                  return [g.id, null] as const;
-                }
-              }),
-            );
+            const pairs = await listVoiceCharactersForPerson(personId);
             if (cancelled) return;
             const map: Record<number, string> = {};
-            for (const [gid, name] of charPairs) {
-              if (name) map[gid] = name;
+            for (const { game_id, character_name } of pairs) {
+              if (character_name) map[game_id] = character_name;
             }
             setVoiceCharByGame(map);
           } catch {

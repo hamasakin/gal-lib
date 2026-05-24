@@ -101,6 +101,24 @@ export async function listGamesForPerson(
   });
 }
 
+export interface VoiceCharacterPair {
+  game_id: number;
+  character_name: string | null;
+}
+
+/**
+ * Bulk voice-character lookup for the /persons route. Backed by a single
+ * `game_staff` SELECT WHERE person_id = ? AND role = 'voice'. Replaces the
+ * old N+1 pattern (one `listPersonsForGame` per voice game) — BL-03 fix.
+ */
+export async function listVoiceCharactersForPerson(
+  personId: number,
+): Promise<VoiceCharacterPair[]> {
+  return invoke<VoiceCharacterPair[]>("list_voice_characters_for_person", {
+    personId,
+  });
+}
+
 export async function listOfficialTagsForGame(
   gameId: number,
 ): Promise<OfficialTagRow[]> {

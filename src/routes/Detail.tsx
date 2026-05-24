@@ -83,7 +83,7 @@ import { ScreenshotsTab } from "@/components/library/ScreenshotsTab";
 import { SavesTab } from "@/components/library/SavesTab";
 import { LaunchButton } from "@/components/library/LaunchButton";
 import {
-  listGames,
+  getGame,
   openGameDir,
   updateGameFavorite,
   updateGameNotes,
@@ -491,10 +491,13 @@ export default function Detail() {
 
   const refreshGame = useCallback(async () => {
     if (!Number.isFinite(gameId)) return;
-    const all = await listGames();
-    const g = all.find((x) => x.id === gameId) ?? null;
+    // Single-row IPC (BL-02 fix): the previous `listGames().find(...)` pulled
+    // the entire library on every mutation. Also upsert into the library
+    // store so /library reflects the change without an extra round-trip.
+    const g = await getGame(gameId);
     setGame(g);
     if (g) {
+      useLibraryStore.getState().upsertGame(g);
       const x = g as Game & LaunchExtras;
       // Quick 260517-qnn — 把持久化的 le_profile 映射回两种启动方式之一。
       // 已废弃 profile（简中 / 繁中 / Custom）一律回落到「日区 LE 启动」。
@@ -594,14 +597,36 @@ export default function Detail() {
     refreshOfficialTags,
   ]);
 
-  // Esc → back. Window-level listener — Radix Dialog primitives (used by
-  // every modal in the app) trap focus and call stopPropagation on their
-  // own Esc handlers, so this only fires when no dialog is open.
+  // Esc → back. Window-level listener with an explicit "any open dialog?"
+  // guard — Radix Dialog primitives stopPropagation while they're OPEN, but
+  // after a dialog closes the focus falls back to <body> and a subsequent
+  // Esc would have been swallowed as an unwanted route navigation
+  // (BL-04 in 260524 review). Querying for `[data-state="open"]` on any
+  // dialog/menu/popover Radix primitive is the supported escape hatch.
+  // Also skip when focus is inside an editable element so Esc-blur in
+  // textareas (notes editor) still works normally.
   useEffect(() => {
     function onKey(e: KeyboardEvent) {
-      if (e.key === "Escape") {
-        navigate(-1);
+      if (e.key !== "Escape") return;
+      // Any open Radix overlay? It will handle Esc itself.
+      if (
+        document.querySelector(
+          '[role="dialog"][data-state="open"], [role="menu"][data-state="open"], [data-state="open"][data-radix-popper-content-wrapper]',
+        )
+      ) {
+        return;
       }
+      // Esc inside text input — let the browser/Radix handle blur.
+      const t = e.target as HTMLElement | null;
+      if (
+        t &&
+        (t.tagName === "INPUT" ||
+          t.tagName === "TEXTAREA" ||
+          t.isContentEditable)
+      ) {
+        return;
+      }
+      navigate(-1);
     }
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
