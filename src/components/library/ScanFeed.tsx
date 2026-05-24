@@ -12,10 +12,10 @@
  * feed stays predictable when 100+ lines stream by during a full rescan.
  */
 
-import { useEffect, useRef, useState } from "react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
+import { useCallback, useEffect, useRef, useState } from "react";
 import type { ScanProgress } from "@/lib/scan";
 import { useLibraryStore } from "@/store/library";
+import { useTauriListen } from "@/hooks/useTauriListen";
 
 const BUFFER_CAP = 200;
 
@@ -54,97 +54,81 @@ export function ScanFeed() {
     idToName.current = m;
   }, [games]);
 
-  useEffect(() => {
-    let unlistenScan: UnlistenFn | null = null;
-    let unlistenMeta: UnlistenFn | null = null;
+  const push = useCallback((line: Omit<FeedLine, "key" | "time">) => {
+    seqRef.current += 1;
+    const key = `${performance.now()}-${seqRef.current}`;
+    const time = fmtTime(new Date());
+    setLines((prev) => {
+      const next = [{ key, time, ...line }, ...prev];
+      return next.length > BUFFER_CAP ? next.slice(0, BUFFER_CAP) : next;
+    });
+  }, []);
 
-    const push = (line: Omit<FeedLine, "key" | "time">) => {
-      seqRef.current += 1;
-      const key = `${performance.now()}-${seqRef.current}`;
-      const time = fmtTime(new Date());
-      setLines((prev) => {
-        const next = [{ key, time, ...line }, ...prev];
-        return next.length > BUFFER_CAP ? next.slice(0, BUFFER_CAP) : next;
-      });
-    };
-
-    listen<ScanProgress>("scan-progress", (e) => {
-      const { current_dir, completed, total, status, phase } = e.payload;
-      // Phase-transition divider — emit once when we cross from
-      // discovering → enriching (or the other direction, e.g. a fresh scan
-      // after an enrich-only refresh just ran).
-      if (status === "running") {
-        const prev = lastPhaseRef.current;
-        if (prev !== phase) {
-          lastPhaseRef.current = phase;
-          if (prev !== null) {
-            push({
-              body:
-                phase === "enriching"
-                  ? `── 目录扫描完成 · 开始抓取元数据（共 ${total} 款）`
-                  : `── 开始扫描目录`,
-              variant: "terminal",
-            });
-          }
-        }
-      } else {
-        // Reset phase tracker after a terminal event so the NEXT scan's
-        // first running event doesn't suppress its own divider.
-        lastPhaseRef.current = null;
-      }
-
-      switch (status) {
-        case "running":
-          // In `enriching` phase the `meta-fetch-progress` listener already
-          // logs per-game start/finish with friendly names — avoid double
-          // logging (would push two lines per game and flood the 200-line
-          // buffer in a large rescan).
-          if (current_dir && phase === "discovering") {
-            push({
-              body: `扫描目录 · ${completed}/${total} · ${current_dir}`,
-              variant: "scan",
-            });
-          }
-          break;
-        case "completed":
+  useTauriListen<ScanProgress>("scan-progress", (e) => {
+    const { current_dir, completed, total, status, phase } = e.payload;
+    // Phase-transition divider — emit once when we cross from
+    // discovering → enriching (or the other direction, e.g. a fresh scan
+    // after an enrich-only refresh just ran).
+    if (status === "running") {
+      const prev = lastPhaseRef.current;
+      if (prev !== phase) {
+        lastPhaseRef.current = phase;
+        if (prev !== null) {
           push({
-            body: `扫描完成 · 共 ${total} 款`,
+            body:
+              phase === "enriching"
+                ? `── 目录扫描完成 · 开始抓取元数据（共 ${total} 款）`
+                : `── 开始扫描目录`,
             variant: "terminal",
           });
-          break;
-        case "cancelled":
-          push({ body: "扫描已取消", variant: "terminal" });
-          break;
-        case "failed":
-          push({ body: "扫描失败", variant: "terminal" });
-          break;
+        }
       }
-    }).then((fn) => {
-      unlistenScan = fn;
-    });
+    } else {
+      // Reset phase tracker after a terminal event so the NEXT scan's
+      // first running event doesn't suppress its own divider.
+      lastPhaseRef.current = null;
+    }
 
-    listen<{ game_id: number; phase: "started" | "finished" }>(
-      "meta-fetch-progress",
-      (e) => {
-        const { game_id, phase } = e.payload;
-        const name = idToName.current.get(game_id) ?? `游戏 #${game_id}`;
+    switch (status) {
+      case "running":
+        // In `enriching` phase the `meta-fetch-progress` listener already
+        // logs per-game start/finish with friendly names — avoid double
+        // logging (would push two lines per game and flood the 200-line
+        // buffer in a large rescan).
+        if (current_dir && phase === "discovering") {
+          push({
+            body: `扫描目录 · ${completed}/${total} · ${current_dir}`,
+            variant: "scan",
+          });
+        }
+        break;
+      case "completed":
         push({
-          body:
-            phase === "started"
-              ? `抓取元数据 · ${name}`
-              : `抓取完成 · ${name}`,
-          variant: "meta",
+          body: `扫描完成 · 共 ${total} 款`,
+          variant: "terminal",
         });
-      },
-    ).then((fn) => {
-      unlistenMeta = fn;
-    });
+        break;
+      case "cancelled":
+        push({ body: "扫描已取消", variant: "terminal" });
+        break;
+      case "failed":
+        push({ body: "扫描失败", variant: "terminal" });
+        break;
+    }
+  });
 
-    return () => {
-      unlistenScan?.();
-      unlistenMeta?.();
-    };
-  }, []);
+  useTauriListen<{ game_id: number; phase: "started" | "finished" }>(
+    "meta-fetch-progress",
+    (e) => {
+      const { game_id, phase } = e.payload;
+      const name = idToName.current.get(game_id) ?? `游戏 #${game_id}`;
+      push({
+        body:
+          phase === "started" ? `抓取元数据 · ${name}` : `抓取完成 · ${name}`,
+        variant: "meta",
+      });
+    },
+  );
 
   return (
     <div className="flex h-full min-h-[420px] flex-col border border-line bg-bg-1" style={{ borderRadius: "var(--r-md)" }}>

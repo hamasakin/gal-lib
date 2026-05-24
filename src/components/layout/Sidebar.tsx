@@ -20,7 +20,7 @@
  * 跨路由点击会先 navigate("/")。
  */
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useLocation, useNavigate } from "react-router-dom";
 import {
   BarChart3,
@@ -35,8 +35,8 @@ import {
   Settings as SettingsIcon,
   Trash2,
 } from "lucide-react";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "sonner";
+import { useTauriListen } from "@/hooks/useTauriListen";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   DropdownMenu,
@@ -91,38 +91,35 @@ export function Sidebar() {
   // mount + after scan-progress terminal events + after meta-fetch-progress
   // finished (debounced 600ms) so the badge tracks actual queue state.
   const [reviewPending, setReviewPending] = useState(0);
-  useEffect(() => {
-    let cancelled = false;
-    let pendingTimer: ReturnType<typeof setTimeout> | null = null;
-    const refresh = () => {
-      getScanKpis()
-        .then((k) => {
-          if (!cancelled) setReviewPending(k.review_pending);
-        })
-        .catch(() => {
-          /* non-fatal */
-        });
-    };
-    refresh();
-    const debounced = () => {
-      if (pendingTimer) clearTimeout(pendingTimer);
-      pendingTimer = setTimeout(refresh, 600);
-    };
-    let unlistenA: UnlistenFn | null = null;
-    let unlistenB: UnlistenFn | null = null;
-    listen("scan-progress", debounced).then((fn) => {
-      unlistenA = fn;
-    });
-    listen("meta-fetch-progress", debounced).then((fn) => {
-      unlistenB = fn;
-    });
-    return () => {
-      cancelled = true;
-      if (pendingTimer) clearTimeout(pendingTimer);
-      unlistenA?.();
-      unlistenB?.();
-    };
+  const cancelledRef = useRef(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const refresh = useCallback(() => {
+    getScanKpis()
+      .then((k) => {
+        if (!cancelledRef.current) setReviewPending(k.review_pending);
+      })
+      .catch(() => {
+        /* non-fatal */
+      });
   }, []);
+
+  useEffect(() => {
+    cancelledRef.current = false;
+    refresh();
+    return () => {
+      cancelledRef.current = true;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+  }, [refresh]);
+
+  const debouncedRefresh = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(refresh, 600);
+  }, [refresh]);
+
+  useTauriListen("scan-progress", debouncedRefresh);
+  useTauriListen("meta-fetch-progress", debouncedRefresh);
 
   const sidebar = useLibraryStore((s) => s.sidebar);
   const setSidebar = useLibraryStore((s) => s.setSidebar);

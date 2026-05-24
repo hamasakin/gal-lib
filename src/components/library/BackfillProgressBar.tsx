@@ -17,7 +17,6 @@
  */
 
 import { useEffect, useState } from "react";
-import { listen } from "@tauri-apps/api/event";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -35,6 +34,7 @@ import {
   type MetaFetchProgress,
   type MetaFetchProgressMeta,
 } from "@/lib/persons";
+import { useTauriListen } from "@/hooks/useTauriListen";
 
 const AUTO_HIDE_MS = 5_000;
 
@@ -47,55 +47,37 @@ export function BackfillProgressBar() {
   const [status, setStatus] = useState<Status>("idle");
   const [hidden, setHidden] = useState(true);
 
-  useEffect(() => {
-    let unlistenMeta: (() => void) | null = null;
-    let unlistenProgress: (() => void) | null = null;
+  useTauriListen<MetaFetchProgressMeta>("meta-fetch-progress-meta", (e) => {
+    const p = e.payload;
+    if (typeof p.total === "number" && p.total > 0) {
+      setTotal(p.total);
+      setCurrent(0);
+      setCurrentName("");
+      setStatus("running");
+      setHidden(false);
+      return;
+    }
+    if (p.cancelled) {
+      setStatus("cancelled");
+      return;
+    }
+    if (p.done) {
+      setStatus("done");
+    }
+  });
 
-    (async () => {
-      unlistenMeta = await listen<MetaFetchProgressMeta>(
-        "meta-fetch-progress-meta",
-        (e) => {
-          const p = e.payload;
-          if (typeof p.total === "number" && p.total > 0) {
-            setTotal(p.total);
-            setCurrent(0);
-            setCurrentName("");
-            setStatus("running");
-            setHidden(false);
-            return;
-          }
-          if (p.cancelled) {
-            setStatus("cancelled");
-            return;
-          }
-          if (p.done) {
-            setStatus("done");
-          }
-        },
-      );
-
-      unlistenProgress = await listen<MetaFetchProgress>(
-        "meta-fetch-progress",
-        (e) => {
-          const p = e.payload;
-          // Only update current name on `started` so the label tracks the
-          // active fetch rather than the previous one.
-          if (p.phase === "started") {
-            if (p.name) setCurrentName(p.name);
-            return;
-          }
-          if (p.phase === "finished") {
-            setCurrent((c) => c + 1);
-          }
-        },
-      );
-    })();
-
-    return () => {
-      unlistenMeta?.();
-      unlistenProgress?.();
-    };
-  }, []);
+  useTauriListen<MetaFetchProgress>("meta-fetch-progress", (e) => {
+    const p = e.payload;
+    // Only update current name on `started` so the label tracks the
+    // active fetch rather than the previous one.
+    if (p.phase === "started") {
+      if (p.name) setCurrentName(p.name);
+      return;
+    }
+    if (p.phase === "finished") {
+      setCurrent((c) => c + 1);
+    }
+  });
 
   // Auto-hide a few seconds after the terminal state lands. A new backfill
   // run resets `hidden` via the `meta` event with a fresh total.

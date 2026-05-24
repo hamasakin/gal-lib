@@ -18,10 +18,10 @@
  * we render the lucide ImageOff fallback.
  */
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { convertFileSrc, invoke } from "@tauri-apps/api/core";
-import { listen, type UnlistenFn } from "@tauri-apps/api/event";
 import { toast } from "sonner";
+import { useTauriListen } from "@/hooks/useTauriListen";
 import {
   ChevronDown,
   ChevronUp,
@@ -90,32 +90,29 @@ export function ReviewQueue({ onMutated, reseedSeq }: ReviewQueueProps) {
 
   useEffect(() => {
     void refetch();
-    // Refetch on scan / meta events that may mutate the queue (ingest enqueues,
-    // bind/refresh dequeue). Throttle with a 600 ms tail so a 200-game backfill
-    // doesn't refetch 400 times.
-    let pending: ReturnType<typeof setTimeout> | null = null;
-    const debounced = () => {
-      if (pending) clearTimeout(pending);
-      pending = setTimeout(() => {
-        pending = null;
-        void refetch();
-      }, 600);
-    };
-
-    let unlistenA: UnlistenFn | null = null;
-    let unlistenB: UnlistenFn | null = null;
-    listen("scan-progress", debounced).then((fn) => {
-      unlistenA = fn;
-    });
-    listen("meta-fetch-progress", debounced).then((fn) => {
-      unlistenB = fn;
-    });
-    return () => {
-      if (pending) clearTimeout(pending);
-      unlistenA?.();
-      unlistenB?.();
-    };
   }, [refetch]);
+
+  // Refetch on scan / meta events that may mutate the queue (ingest enqueues,
+  // bind/refresh dequeue). Throttle with a 600 ms tail so a 200-game backfill
+  // doesn't refetch 400 times. The timer ref persists across the two listens
+  // so they share one debounce window.
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    },
+    [],
+  );
+  const debounced = useCallback(() => {
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      debounceRef.current = null;
+      void refetch();
+    }, 600);
+  }, [refetch]);
+
+  useTauriListen("scan-progress", debounced);
+  useTauriListen("meta-fetch-progress", debounced);
 
   // Quick 20260512c — refetch on reseedSeq bump (parent just called reseed
   // IPC). Skip the initial mount value (handled by the effect above).
