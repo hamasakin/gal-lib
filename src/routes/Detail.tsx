@@ -395,6 +395,8 @@ export default function Detail() {
   const setSessionsForGame = useLibraryStore((s) => s.setSessionsForGame);
   const games = useLibraryStore((s) => s.games);
   const setFilter = useLibraryStore((s) => s.setFilter);
+  const advFilter = useLibraryStore((s) => s.advFilter);
+  const setAdvFilter = useLibraryStore((s) => s.setAdvFilter);
   const sidebar = useLibraryStore((s) => s.sidebar);
   const setSidebar = useLibraryStore((s) => s.setSidebar);
   const customViews: CustomViewRow[] = sidebar?.custom_views ?? [];
@@ -638,6 +640,22 @@ export default function Detail() {
     if (!game?.release_year) return;
     const decade = Math.floor(game.release_year / 10) * 10;
     setFilter({ year_decade: decade });
+    navigate("/");
+  }
+
+  // Quick 260524-dlr — 点击官方标签 chip 跳回图书馆并加入 advFilter.officialTags
+  // 多选筛选（OR）。同一名字已经在筛选里就直接跳。
+  function onOfficialTagJump(name: string) {
+    const next = new Set(advFilter.officialTags);
+    next.add(name);
+    setAdvFilter({ ...advFilter, officialTags: next });
+    navigate("/");
+  }
+
+  // Quick 260524-dlr — 点击用户「我的标签」chip 跳回图书馆并按该 tag_id 单标签
+  // 筛选（走后端 SearchFilter.tag_id 路径，与 sidebar 同语义）。
+  function onUserTagJump(tagId: number) {
+    setFilter({ tag_id: tagId });
     navigate("/");
   }
 
@@ -1516,9 +1534,12 @@ export default function Detail() {
             ) : (
               <div className="flex flex-wrap gap-1.5">
                 {gameTags.map((tag) => (
-                  <span
+                  <button
                     key={tag.id}
-                    className="inline-flex items-center gap-1 border border-line bg-bg-1 px-2.5 py-[3px] text-[11px] text-ink-1"
+                    type="button"
+                    onClick={() => onUserTagJump(tag.id)}
+                    title={`筛选「${tag.name}」`}
+                    className="inline-flex cursor-pointer items-center gap-1 border border-line bg-bg-1 px-2.5 py-[3px] text-[11px] text-ink-1 transition-colors hover:border-brand hover:bg-brand-soft hover:text-ink-0"
                     style={{ borderRadius: "9999px" }}
                   >
                     {tag.color && (
@@ -1529,7 +1550,7 @@ export default function Detail() {
                       />
                     )}
                     <span>{tag.name}</span>
-                  </span>
+                  </button>
                 ))}
               </div>
             )}
@@ -1551,7 +1572,11 @@ export default function Detail() {
             >
               <div className="flex flex-wrap gap-1.5">
                 {officialTags.map((t, i) => (
-                  <OfficialTagChip key={`${t.source}-${t.tag_name}-${i}`} row={t} />
+                  <OfficialTagChip
+                    key={`${t.source}-${t.tag_name}-${i}`}
+                    row={t}
+                    onJump={onOfficialTagJump}
+                  />
                 ))}
               </div>
             </DSection>
@@ -1743,22 +1768,32 @@ function PersonChip({
 }
 
 /**
- * Phase 11e — non-interactive chip showing one Bangumi/VNDB official tag
- * in the 官方标签 sidebar section. The `title` exposes source + weight so
- * the user can hover to see "bangumi · 234 用户".
+ * Phase 11e — chip showing one Bangumi/VNDB official tag in the 官方标签
+ * sidebar section. The `title` exposes source + weight so the user can
+ * hover to see "bangumi · 234 用户 — 点击筛选".
+ *
+ * Quick 260524-dlr — 标签可点击跳转图书馆并加入 advFilter.officialTags（OR）。
  */
-function OfficialTagChip({ row }: { row: OfficialTagRow }) {
+function OfficialTagChip({
+  row,
+  onJump,
+}: {
+  row: OfficialTagRow;
+  onJump: (name: string) => void;
+}) {
   const sourceLabel = row.source === "bangumi" ? "bangumi" : "vndb";
   const weightLabel =
     row.source === "bangumi" ? `${row.weight} 用户` : `权重 ${row.weight}`;
   return (
-    <span
-      title={`${sourceLabel} · ${weightLabel}`}
-      className="inline-flex items-center gap-1 border border-line bg-bg-2 px-2 py-[2px] text-[11px] text-ink-2"
-      style={{ borderRadius: "9999px", cursor: "default" }}
+    <button
+      type="button"
+      onClick={() => onJump(row.tag_name)}
+      title={`${sourceLabel} · ${weightLabel} — 点击筛选`}
+      className="inline-flex cursor-pointer items-center gap-1 border border-line bg-bg-2 px-2 py-[2px] text-[11px] text-ink-2 transition-colors hover:border-brand hover:bg-brand-soft hover:text-ink-0"
+      style={{ borderRadius: "9999px" }}
     >
       <span>{row.tag_name}</span>
-    </span>
+    </button>
   );
 }
 
