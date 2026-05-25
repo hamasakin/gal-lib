@@ -85,6 +85,17 @@ export interface Game {
    * has reached this row.
    */
   summary: string | null;
+  // ── Quick 260525-g1m / schema v13 fields ──
+  /**
+   * 官方评分（Bangumi rating.score 或 VNDB rating/10 后的 0..=10 浮点，1 位小数精度）。
+   * `null` 表示未绑定 / 源未返回。「评分」排序键按本字段 DESC NULL LAST。
+   * 本地用户打分仍走 `rating`（StarRating 用 1..=10 整数）。
+   */
+  external_rating: number | null;
+  /** 参与打分人数（Bangumi rating.total / VNDB votecount）。 */
+  external_rating_count: number | null;
+  /** 评分来源，与 metadata_source 同口径。 */
+  external_rating_source: "bangumi" | "vndb" | null;
   created_at: string;
   updated_at: string;
 }

@@ -57,7 +57,7 @@ export default function Screenshots() {
 
   useEffect(() => {
     if (games.length === 0) {
-      void searchGames(null, "last_played", null)
+      void searchGames(null, "last_played", "desc", null)
         .then(setGames)
         .catch((e: unknown) => {
           // eslint-disable-next-line no-console

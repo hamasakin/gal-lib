@@ -84,6 +84,12 @@ export interface SearchFilter {
  */
 export type SortBy = "last_played" | "created_at" | "name" | "playtime" | "rating";
 
+/**
+ * Quick 260525-g1m — 排序方向。与 SortBy 正交。后端 search_games 的 sort_dir
+ * 形参白名单只接受 asc / desc，缺省 desc；前端总是显式传值。
+ */
+export type SortDir = "asc" | "desc";
+
 // ── sidebar aggregate shapes ────────────────────────────────────────────────
 
 /** One tag + the count of games attached to it. */
@@ -139,13 +145,18 @@ export interface SidebarCategories {
  * (no string interpolation of user input) and filter clauses bind via
  * parameters where possible. Response shape matches `listGames()` —
  * frontend `Game[]` consumers can be reused directly.
+ *
+ * Quick 260525-g1m — 新增 sortDir 参数：asc / desc（必传，前端总是显式传值；后端
+ * 缺省 desc 仅为兜底）。与 sortBy 正交：升序时 NULL 仍沉底（IS NULL 子句固定，
+ * 不随方向翻转）。
  */
 export async function searchGames(
   query: string | null,
   sortBy: SortBy,
+  sortDir: SortDir,
   filter: SearchFilter | null,
 ): Promise<Game[]> {
-  return invoke<Game[]>("search_games", { query, sortBy, filter });
+  return invoke<Game[]>("search_games", { query, sortBy, sortDir, filter });
 }
 
 /**

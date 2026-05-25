@@ -205,6 +205,8 @@
   "settings.sort.name": "字母",
   "settings.sort.playtime": "时长",
   "settings.sort.rating": "评分",
+  "sort.direction.asc": "升序",
+  "sort.direction.desc": "降序",
 
   "tag_manager.title": "标签管理",
   "tag_manager.lede": "给游戏添加自定义标签便于筛选",

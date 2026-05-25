@@ -188,7 +188,7 @@ export default function Stats() {
   // Hydrate games if empty (route can be hit directly).
   useEffect(() => {
     if (games.length === 0) {
-      void searchGames(null, "playtime", null)
+      void searchGames(null, "playtime", "desc", null)
         .then(setGames)
         .catch((e: unknown) => {
           // eslint-disable-next-line no-console

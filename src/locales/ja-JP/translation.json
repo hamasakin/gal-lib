@@ -205,6 +205,8 @@
   "settings.sort.name": "名前順",
   "settings.sort.playtime": "プレイ時間",
   "settings.sort.rating": "評価",
+  "sort.direction.asc": "昇順",
+  "sort.direction.desc": "降順",
 
   "tag_manager.title": "タグ管理",
   "tag_manager.lede": "ゲームにカスタムタグを付けて絞り込みやすく",

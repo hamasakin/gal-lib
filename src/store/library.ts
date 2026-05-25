@@ -30,7 +30,7 @@ import { create } from "zustand";
 import type { ScanProgress, ScanRoot } from "@/lib/scan";
 import type { Game } from "@/lib/games";
 import type { ActiveSession, SessionRow } from "@/lib/launch";
-import type { SearchFilter, SidebarCategories, SortBy } from "@/lib/search";
+import type { SearchFilter, SidebarCategories, SortBy, SortDir } from "@/lib/search";
 import { type AdvancedFilter, EMPTY_ADV_FILTER } from "@/lib/advancedFilter";
 import type { Tag } from "@/lib/tags";
 import type { TopGame, TrendPoint } from "@/lib/stats";
@@ -43,6 +43,12 @@ import type { SaveBackup } from "@/lib/saves";
  * so unplayed games still appear, just sorted to the bottom.
  */
 const DEFAULT_SORT_BY: SortBy = "last_played";
+
+/**
+ * Quick 260525-g1m — 默认排序方向。最近游玩 / 评分 / 时长 都按 DESC 直观（高分/最近在前）。
+ * 不持久化（与 sortBy 同 pattern；项目未引入 zustand-persist 中间件）。
+ */
+const DEFAULT_SORT_DIR: SortDir = "desc";
 
 /**
  * Empty-but-typed filter sentinel. We DO NOT use `null` for the filter slice
@@ -164,6 +170,11 @@ interface LibraryState {
    */
   sortBy: SortBy;
   /**
+   * Quick 260525-g1m — 排序方向。与 `sortBy` 正交。
+   * 不持久化（与 sortBy 同 pattern；项目未引入 zustand-persist 中间件）。
+   */
+  sortDir: SortDir;
+  /**
    * Active filter clauses. UI mutates individual fields (e.g.
    * `setFilter({ ...filter, status: "playing" })`); pass `EMPTY_FILTER`
    * sentinel via `setFilter({})` to clear. Empty filter is sent to the
@@ -277,6 +288,7 @@ interface LibraryState {
   setSessionsForGame: (gameId: number, sessions: SessionRow[]) => void;
   setSearchQuery: (q: string) => void;
   setSortBy: (s: SortBy) => void;
+  setSortDir: (d: SortDir) => void;
   setFilter: (f: SearchFilter) => void;
   setAdvFilter: (f: AdvancedFilter) => void;
   setTags: (ts: Tag[]) => void;
@@ -299,6 +311,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
   sessionsByGame: {},
   searchQuery: "",
   sortBy: DEFAULT_SORT_BY,
+  sortDir: DEFAULT_SORT_DIR,
   filter: EMPTY_FILTER,
   advFilter: EMPTY_ADV_FILTER,
   tags: [],
@@ -401,6 +414,7 @@ export const useLibraryStore = create<LibraryState>((set) => ({
     })),
   setSearchQuery: (q) => set({ searchQuery: q }),
   setSortBy: (s) => set({ sortBy: s }),
+  setSortDir: (d) => set({ sortDir: d }),
   setFilter: (f) => set({ filter: f }),
   setAdvFilter: (f) => set({ advFilter: f }),
   setTags: (ts) => set({ tags: ts }),
