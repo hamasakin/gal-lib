@@ -228,8 +228,8 @@ export function GameList({ games }: GameListProps) {
                     </span>
                   </td>
                   <td className="px-3 py-2 text-right font-mono text-ink-1">
-                    {/* Quick 260525-g1m — 评分列改读官方评分 external_rating（toFixed(1)），
-                        本地 rating（StarRating 用户打分）不再露出在列表 */}
+                    {/* Quick 260525-g1m / 260526-0bi — 评分列读官方评分 external_rating
+                        （toFixed(1)）。本地用户评分字段已整体移除。 */}
                     {g.external_rating != null ? `★ ${g.external_rating.toFixed(1)}` : (
                       <span className="text-ink-3">—</span>
                     )}

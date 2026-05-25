@@ -23,9 +23,16 @@ export type DurationBucket =
 export interface AdvancedFilter {
   /** Multi-status include set; empty = no constraint. */
   statuses: Set<Game["status"]>;
-  /** Inclusive lower bound on `rating` (1..10). null = no lower bound. */
+  /**
+   * Inclusive lower bound on the (now sole) rating axis. null = no lower bound.
+   * Quick 260526-0bi — switched from local `rating` (1..10 int) to
+   * `external_rating` (0..=10 float); UI field name kept for compatibility.
+   */
   ratingMin: number | null;
-  /** Inclusive upper bound on `rating` (1..10). null = no upper bound. */
+  /**
+   * Inclusive upper bound on the (now sole) rating axis. null = no upper bound.
+   * Quick 260526-0bi — see ratingMin doc.
+   */
   ratingMax: number | null;
   /** Year-set include; empty = no constraint. Uses `release_year` directly
    *  (backend's single-decade filter is sidebar-driven and stays separate). */
@@ -114,10 +121,10 @@ export function applyAdvancedFilter(
   return games.filter((g) => {
     if (f.statuses.size > 0 && !f.statuses.has(g.status)) return false;
     if (f.ratingMin != null) {
-      if (g.rating == null || g.rating < f.ratingMin) return false;
+      if (g.external_rating == null || g.external_rating < f.ratingMin) return false;
     }
     if (f.ratingMax != null) {
-      if (g.rating == null || g.rating > f.ratingMax) return false;
+      if (g.external_rating == null || g.external_rating > f.ratingMax) return false;
     }
     if (f.years.size > 0) {
       if (g.release_year == null || !f.years.has(g.release_year)) return false;

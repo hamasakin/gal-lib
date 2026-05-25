@@ -79,7 +79,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@/components/ui/tabs";
-import { StarRating } from "@/components/library/StarRating";
 import { SafeImage } from "@/components/common/SafeImage";
 import { TagPicker } from "@/components/library/TagPicker";
 import { ScreenshotsTab } from "@/components/library/ScreenshotsTab";
@@ -90,7 +89,6 @@ import {
   openGameDir,
   updateGameFavorite,
   updateGameNotes,
-  updateGameRating,
   updateGameStatus,
   type Game,
 } from "@/lib/games";
@@ -735,16 +733,6 @@ export default function Detail() {
     }
   }
 
-  async function onSetRating(next: number | null) {
-    if (!game) return;
-    try {
-      await updateGameRating(game.id, next);
-      await refreshGame();
-    } catch (e: unknown) {
-      toast.error(t("toast.rating_failed", { err: String(e) }));
-    }
-  }
-
   async function onTagsChanged() {
     try {
       const [tags, gtags] = await Promise.all([
@@ -1356,10 +1344,6 @@ export default function Detail() {
                       ))}
                     </SelectContent>
                   </Select>
-                  <StarRating
-                    value={game.rating}
-                    onChange={(v) => void onSetRating(v)}
-                  />
                 </div>
               </DSection>
             </TabsContent>
@@ -1543,12 +1527,8 @@ export default function Detail() {
               </DD>
               <DT>{t("detail.info.status")}</DT>
               <DD>{t(STATUS_LABEL_KEY[game.status])}</DD>
-              <DT>{t("detail.info.rating")}</DT>
-              <DD>
-                {game.rating != null ? `★ ${game.rating} / 10` : "—"}
-              </DD>
-              {/* Quick 260525-g1m — 新增「官方评分」行（与本地 rating 并存）；
-                  NULL 时显示 — 占位（区别于上方本地 rating 行）。 */}
+              {/* Quick 260526-0bi — 本地用户评分 (games.rating) 已移除；
+                  仅保留「官方评分」一行；NULL 时显示 — 占位。 */}
               <DT>{t("detail.info.external_rating")}</DT>
               <DD>
                 {game.external_rating != null ? (
