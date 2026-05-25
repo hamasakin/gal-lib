@@ -28,6 +28,9 @@
 //! Schema v12 (Quick 260516-q3y) adds 1 new table (`scan_skip_dirs`) — a
 //! persistent skip-list of brand parent directories split into per-game
 //! subdir entries, so a full scan never re-discovers them as games.
+//! Schema v13 (Quick 260525-g1m) adds 3 columns on `games`
+//! (external_rating + external_rating_count + external_rating_source) and
+//! index `idx_games_external_rating` —— 官方评分（Bangumi/VNDB）入库与排序锚点。
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -43,6 +46,7 @@ const V9_SQL: &str = include_str!("../migrations/0009_add_scan_review_queue.sql"
 const V10_SQL: &str = include_str!("../migrations/0010_drop_age_rating.sql");
 const V11_SQL: &str = include_str!("../migrations/0011_add_metadata_fetched_at.sql");
 const V12_SQL: &str = include_str!("../migrations/0012_add_scan_skip_dirs.sql");
+const V13_SQL: &str = include_str!("../migrations/0013_add_external_rating.sql");
 
 /// All migrations to register with tauri-plugin-sql, in version order.
 /// Add future migrations as additional entries with monotonically increasing
@@ -119,6 +123,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 12,
             description: "add_scan_skip_dirs",
             sql: V12_SQL,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 13,
+            description: "add_external_rating",
+            sql: V13_SQL,
             kind: MigrationKind::Up,
         },
     ]
