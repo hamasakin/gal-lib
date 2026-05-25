@@ -80,3 +80,13 @@ opt-level = "s"
 panic = "abort"
 strip = true
 incremental = false
+
+# 本地快编 profile —— 给日常 `pnpm tauri build --profile dev-release --no-bundle` 验证用。
+# 继承 release 的 panic/strip 等设置，但放开并行 codegen / thin LTO / 增量编译，
+# 以 ~10~30% 体积代价换 2~3 倍编译加速。发版仍走默认 [profile.release]。
+[profile.dev-release]
+inherits = "release"
+codegen-units = 16
+lto = "thin"
+incremental = true
+opt-level = 2
