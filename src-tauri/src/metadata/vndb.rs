@@ -125,7 +125,8 @@ pub async fn fetch_detail(vndb_id: &str) -> Result<MetadataDetail, MetadataError
         "filters": ["id", "=", vndb_id],
         "fields": "id,title,titles{title,lang},image{url},description,released,\
             developers{name,original},tags{name,rating,spoiler,category},\
-            staff{id,name,original,role},va{staff{id,name,original},character{name,original}}",
+            staff{id,name,original,role},va{staff{id,name,original},character{name,original}},\
+            rating,votecount",
         "results": 1
     });
     let raw: DetailResp = with_retry(|| async {
@@ -180,6 +181,11 @@ pub async fn fetch_detail(vndb_id: &str) -> Result<MetadataDetail, MetadataError
         release_date: hit.released,
         brand,
         tags,
+        // Quick 260525-g1m — VNDB rating 是 0..=100 1 位小数 float；除以 10 归一化到
+        // 0..=10 与 Bangumi 同口径。注意：DetailHit.rating 是 VN 整体评分 (顶层 field)，
+        // 与 TagEntry.rating (标签权重 0..=3) 各自独立。
+        rating: hit.rating.map(|r| r / 10.0),
+        rating_count: hit.votecount,
     })
 }
 
@@ -305,6 +311,13 @@ struct DetailHit {
     developers: Option<Vec<DeveloperEntry>>,
     #[serde(default)]
     tags: Option<Vec<TagEntry>>,
+    /// Quick 260525-g1m — VNDB VN 整体评分 (0..=100 float, 1 位小数)；
+    /// 归一化 /10 后写入 MetadataDetail.rating。
+    #[serde(default)]
+    rating: Option<f64>,
+    /// Quick 260525-g1m — VNDB 投票数 (votecount)。
+    #[serde(default)]
+    votecount: Option<i64>,
 }
 
 #[derive(Deserialize)]

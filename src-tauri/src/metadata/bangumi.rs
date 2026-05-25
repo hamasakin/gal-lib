@@ -142,6 +142,10 @@ pub async fn fetch_detail(bangumi_id: &str) -> Result<MetadataDetail, MetadataEr
         release_date,
         brand,
         tags,
+        // Quick 260525-g1m — Bangumi rating.score 已是 0..=10 1 位小数 float，
+        // 直接写入；与 VNDB 归一化后同口径，前端不区分源 toFixed(1) 展示。
+        rating: raw.rating.as_ref().and_then(|r| r.score),
+        rating_count: raw.rating.as_ref().and_then(|r| r.total),
     })
 }
 
@@ -342,6 +346,18 @@ struct SubjectDetail {
     /// Phase 11 — official tags array; each has `name` + `count`.
     #[serde(default)]
     tags: Option<Vec<TagHit>>,
+    /// Quick 260525-g1m — Bangumi `rating` block ({rank,total,count,score})；
+    /// 当前只读 score + total，其他字段忽略。
+    #[serde(default)]
+    rating: Option<RatingObj>,
+}
+
+#[derive(Deserialize)]
+struct RatingObj {
+    #[serde(default)]
+    score: Option<f64>,
+    #[serde(default)]
+    total: Option<i64>,
 }
 
 #[derive(Deserialize)]
