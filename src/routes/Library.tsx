@@ -125,6 +125,7 @@ export function Library() {
   const scanProgress = useLibraryStore((s) => s.scanProgress);
   const searchQuery = useLibraryStore((s) => s.searchQuery);
   const sortBy = useLibraryStore((s) => s.sortBy);
+  const sortDir = useLibraryStore((s) => s.sortDir);
   const filter = useLibraryStore((s) => s.filter);
   const setFilter = useLibraryStore((s) => s.setFilter);
   const setSearchQuery = useLibraryStore((s) => s.setSearchQuery);
@@ -332,7 +333,7 @@ export function Library() {
     };
     const filterArg = isFilterEmpty(merged) ? null : merged;
     try {
-      const rows = await searchGames(queryArg, sortBy, filterArg);
+      const rows = await searchGames(queryArg, sortBy, sortDir, filterArg);
       // Stale response — a newer call already (or will) supersede us.
       if (seq !== refetchSeqRef.current) return;
       setGames(rows);
@@ -340,7 +341,7 @@ export function Library() {
       // eslint-disable-next-line no-console
       console.error("[Library] searchGames failed:", e);
     }
-  }, [searchQuery, sortBy, filter, advFilter, setGames]);
+  }, [searchQuery, sortBy, sortDir, filter, advFilter, setGames]);
 
   // Phase 11 multi-dim facet payload — fetch once on mount, then re-fetch
   // after each scan completes (the option set may shift if new brands /

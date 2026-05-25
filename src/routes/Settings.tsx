@@ -190,7 +190,7 @@ export function Settings() {
     const job = (async () => {
       await addGame(picked as string);
       const [games, sidebar] = await Promise.all([
-        searchGames(null, "last_played", null),
+        searchGames(null, "last_played", "desc", null),
         getSidebarCategories(),
       ]);
       useLibraryStore.getState().setGames(games);
@@ -241,7 +241,7 @@ export function Settings() {
     try {
       await clearAllData();
       const [games, sidebar, roots] = await Promise.all([
-        searchGames(null, "last_played", null),
+        searchGames(null, "last_played", "desc", null),
         getSidebarCategories(),
         listScanRoots(),
       ]);

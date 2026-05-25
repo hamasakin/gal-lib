@@ -3,10 +3,15 @@
  *
  * v1.1 visual: native styled `<select>` matching design's `.sort-sel`
  * (28px height, mono ↓ caret hint, line-strong border on hover).
+ *
+ * Quick 260525-g1m — 右侧增设升降序方向切换按钮（↑/↓），仅切换 store.sortDir；
+ * 不复用 select 的 onChange 路径。SORT_OPTIONS labels 暂未 i18n（与计划一致），
+ * 仅方向按钮的 aria-label/title 走 i18n。
  */
 
 import { useLibraryStore } from "@/store/library";
-import type { SortBy } from "@/lib/search";
+import type { SortBy, SortDir } from "@/lib/search";
+import { useTranslation } from "react-i18next";
 
 interface SortOption {
   value: SortBy;
@@ -24,6 +29,13 @@ const SORT_OPTIONS: readonly SortOption[] = [
 export function SortSelect() {
   const sortBy = useLibraryStore((s) => s.sortBy);
   const setSortBy = useLibraryStore((s) => s.setSortBy);
+  const sortDir = useLibraryStore((s) => s.sortDir);
+  const setSortDir = useLibraryStore((s) => s.setSortDir);
+  const { t } = useTranslation();
+
+  // Quick 260525-g1m — 当前方向的反向值（点击切换）和方向 label（aria/title 共用）。
+  const nextDir: SortDir = sortDir === "desc" ? "asc" : "desc";
+  const dirLabel = t(sortDir === "desc" ? "sort.direction.desc" : "sort.direction.asc");
 
   return (
     <div className="flex items-center gap-2">
@@ -53,6 +65,18 @@ export function SortSelect() {
           </option>
         ))}
       </select>
+      <button
+        type="button"
+        onClick={() => setSortDir(nextDir)}
+        aria-label={dirLabel}
+        title={dirLabel}
+        className="flex h-7 w-7 cursor-pointer items-center justify-center border border-line bg-bg-1 text-[12px] text-ink-1 outline-none transition-colors hover:border-line-strong hover:bg-bg-2 focus:border-brand"
+        style={{ borderRadius: "var(--r-md)" }}
+      >
+        <span aria-hidden className="font-mono">
+          {sortDir === "desc" ? "↓" : "↑"}
+        </span>
+      </button>
     </div>
   );
 }

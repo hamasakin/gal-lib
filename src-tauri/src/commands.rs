@@ -195,12 +195,18 @@ async fn apply_ingest_result(
     // Quick 20260512b — release_year written via COALESCE (preserve manual
     // year override, symmetric with brand).
     let release_year_i64: Option<i64> = result.release_year.map(|y| y as i64);
+    // Quick 260525-g1m — external_rating 三列写"覆盖"语义（与 summary 同），不走 COALESCE：
+    // 用户主动刷新元数据就期望最新评分覆盖旧值；无 match 路径 IngestResult 三字段为 None
+    // 自然写入 NULL（与 metadata_source = "none" 一致）。
     sqlx::query(
         "UPDATE games SET name = ?, name_cn = ?, cover_path = ?, cover_url = ?, \
                           bangumi_id = ?, vndb_id = ?, metadata_source = ?, \
                           match_confidence = ?, summary = ?, \
                           brand = COALESCE(?, brand), \
                           release_year = COALESCE(?, release_year), \
+                          external_rating = ?, \
+                          external_rating_count = ?, \
+                          external_rating_source = ?, \
                           last_scanned_at = datetime('now'), \
                           metadata_fetched_at = datetime('now') \
          WHERE id = ?",
@@ -216,6 +222,9 @@ async fn apply_ingest_result(
     .bind(&result.summary)
     .bind(&result.brand)
     .bind(release_year_i64)
+    .bind(result.external_rating)
+    .bind(result.external_rating_count)
+    .bind(&result.external_rating_source)
     .bind(game_id)
     .execute(pool)
     .await
@@ -1445,12 +1454,17 @@ pub async fn bind_metadata(
         // detail.release_date, same COALESCE shape as brand.
         let release_year_i64: Option<i64> =
             ingest::parse_release_year(detail.release_date.as_deref()).map(|y| y as i64);
+        // Quick 260525-g1m — bind_metadata 是用户手动绑定路径，写入官方评分三列；
+        // source 此处已是 "bangumi" / "vndb" 字符串。
         sqlx::query(
             "UPDATE games SET name = ?, name_cn = ?, cover_path = COALESCE(?, cover_path), \
                               cover_url = ?, bangumi_id = ?, vndb_id = ?, \
                               metadata_source = ?, match_confidence = 100, \
                               summary = ?, brand = COALESCE(?, brand), \
                               release_year = COALESCE(?, release_year), \
+                              external_rating = ?, \
+                              external_rating_count = ?, \
+                              external_rating_source = ?, \
                               last_scanned_at = datetime('now'), \
                               metadata_fetched_at = datetime('now') \
              WHERE id = ?",
@@ -1465,6 +1479,9 @@ pub async fn bind_metadata(
         .bind(&detail.summary)
         .bind(&detail.brand)
         .bind(release_year_i64)
+        .bind(detail.rating)
+        .bind(detail.rating_count)
+        .bind(Some(source.clone()))
         .bind(game_id)
         .execute(&*pool)
         .await
@@ -1488,6 +1505,9 @@ pub async fn bind_metadata(
             staff,
             tags: detail.tags.clone(),
             release_year: release_year_i64.map(|y| y as i32),
+            external_rating: detail.rating,
+            external_rating_count: detail.rating_count,
+            external_rating_source: Some(source.clone()),
         };
         write_staff_and_tags(&*pool, game_id, &source, &synthetic).await?;
 
@@ -1545,6 +1565,7 @@ pub async fn refresh_metadata(
         .await;
 
         let release_year_i64: Option<i64> = result.release_year.map(|y| y as i64);
+        // Quick 260525-g1m — refresh_metadata 也覆盖式写入 external_rating 三列。
         sqlx::query(
             "UPDATE games SET name = ?, name_cn = ?, cover_path = COALESCE(?, cover_path), \
                               cover_url = COALESCE(?, cover_url), \
@@ -1553,6 +1574,9 @@ pub async fn refresh_metadata(
                               metadata_source = ?, match_confidence = ?, \
                               summary = ?, brand = COALESCE(?, brand), \
                               release_year = COALESCE(?, release_year), \
+                              external_rating = ?, \
+                              external_rating_count = ?, \
+                              external_rating_source = ?, \
                               last_scanned_at = datetime('now'), \
                               metadata_fetched_at = datetime('now') \
              WHERE id = ?",
@@ -1568,6 +1592,9 @@ pub async fn refresh_metadata(
         .bind(&result.summary)
         .bind(&result.brand)
         .bind(release_year_i64)
+        .bind(result.external_rating)
+        .bind(result.external_rating_count)
+        .bind(&result.external_rating_source)
         .bind(game_id)
         .execute(&*pool)
         .await
@@ -1757,6 +1784,7 @@ pub async fn refresh_metadata_smart(
 
                         let release_year_i64: Option<i64> =
                             result.release_year.map(|y| y as i64);
+                        // Quick 260525-g1m — refresh_metadata_smart 未绑定路径补 external_rating 三列。
                         let _ = sqlx::query(
                             "UPDATE games SET name = ?, name_cn = ?, \
                                               cover_path = COALESCE(?, cover_path), \
@@ -1766,6 +1794,9 @@ pub async fn refresh_metadata_smart(
                                               metadata_source = ?, match_confidence = ?, \
                                               summary = ?, brand = COALESCE(?, brand), \
                                               release_year = COALESCE(?, release_year), \
+                                              external_rating = ?, \
+                                              external_rating_count = ?, \
+                                              external_rating_source = ?, \
                                               last_scanned_at = datetime('now'), \
                                               metadata_fetched_at = datetime('now') \
                              WHERE id = ?",
@@ -1781,6 +1812,9 @@ pub async fn refresh_metadata_smart(
                         .bind(&result.summary)
                         .bind(&result.brand)
                         .bind(release_year_i64)
+                        .bind(result.external_rating)
+                        .bind(result.external_rating_count)
+                        .bind(&result.external_rating_source)
                         .bind(id)
                         .execute(&*pool_t)
                         .await;
@@ -1876,12 +1910,17 @@ pub async fn refresh_metadata_smart(
                                         _ => unreachable!(),
                                     };
 
+                                    // Quick 260525-g1m — refresh_metadata_smart 已绑定路径补 external_rating
+                                    // 三列；这条 UPDATE 此前只写最小集，现按全量刷新口径补齐。
                                     let _ = sqlx::query(
                                         "UPDATE games SET \
                                             cover_url           = COALESCE(?, cover_url), \
                                             summary             = ?, \
                                             brand               = COALESCE(?, brand), \
                                             release_year        = ?, \
+                                            external_rating          = ?, \
+                                            external_rating_count    = ?, \
+                                            external_rating_source   = ?, \
                                             last_scanned_at     = datetime('now'), \
                                             metadata_fetched_at = datetime('now') \
                                          WHERE id = ?",
@@ -1890,6 +1929,9 @@ pub async fn refresh_metadata_smart(
                                     .bind(&detail.summary)
                                     .bind(&detail.brand)
                                     .bind(release_year_i64)
+                                    .bind(detail.rating)
+                                    .bind(detail.rating_count)
+                                    .bind(Some(source_str.to_string()))
                                     .bind(id)
                                     .execute(&*pool_t)
                                     .await;
@@ -1912,6 +1954,9 @@ pub async fn refresh_metadata_smart(
                                         release_year: ingest::parse_release_year(
                                             detail.release_date.as_deref(),
                                         ),
+                                        external_rating: detail.rating,
+                                        external_rating_count: detail.rating_count,
+                                        external_rating_source: Some(source_str.to_string()),
                                     };
 
                                     if let Err(e) = write_staff_and_tags(
@@ -2038,6 +2083,14 @@ pub struct Game {
     /// Synopsis text from Bangumi/VNDB. NULL when never enriched or when the
     /// source returned an empty summary.
     pub summary: Option<String>,
+    // ── Quick 260525-g1m / schema v13 fields ──
+    /// 官方评分（0..=10 浮点）。Bangumi rating.score 或 VNDB rating/10。
+    /// 「评分」排序键按本列 DESC NULL LAST。NULL 表示未绑定 / 源未返回。
+    pub external_rating: Option<f64>,
+    /// 官方评分投票数（Bangumi rating.total / VNDB votecount）。
+    pub external_rating_count: Option<i64>,
+    /// "bangumi" | "vndb"（评分的来源），用于详情页 pill 后缀。
+    pub external_rating_source: Option<String>,
 }
 
 /// Read every row from `games`, ordered by `created_at DESC`.
@@ -2058,6 +2111,7 @@ pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String>
                 rating, notes, metadata_source, match_confidence, last_scanned_at, \
                 metadata_fetched_at, \
                 brand, release_year, is_favorite, summary, \
+                external_rating, external_rating_count, external_rating_source, \
                 created_at, updated_at \
          FROM games ORDER BY created_at DESC",
     )
@@ -2088,6 +2142,7 @@ pub async fn get_game(
                 rating, notes, metadata_source, match_confidence, last_scanned_at, \
                 metadata_fetched_at, \
                 brand, release_year, is_favorite, summary, \
+                external_rating, external_rating_count, external_rating_source, \
                 created_at, updated_at \
          FROM games WHERE id = ?",
     )
@@ -2131,6 +2186,10 @@ fn row_to_game(row: &sqlx::sqlite::SqliteRow) -> Result<Game, String> {
         created_at: row.try_get("created_at").map_err(err_str)?,
         updated_at: row.try_get("updated_at").map_err(err_str)?,
         summary: row.try_get("summary").ok(),
+        // Quick 260525-g1m
+        external_rating: row.try_get("external_rating").ok(),
+        external_rating_count: row.try_get("external_rating_count").ok(),
+        external_rating_source: row.try_get("external_rating_source").ok(),
     })
 }
 
@@ -2539,32 +2598,52 @@ pub struct SearchFilter {
 ///   and any tag name attached via `game_tags`. Empty / whitespace-only query
 ///   means "no LIKE clause".
 /// - `sort_by`: one of `last_played | created_at | name | playtime | rating`.
-///   Unknown values → `Err`. NULL-handling matches CONTEXT.md (NULLS LAST for
-///   last_played/rating).
+///   Unknown values → `Err`. Rating 自 Quick 260525-g1m 起切到 `external_rating`
+///   （官方评分）；NULL-handling 始终把 NULL 沉底（NULLS LAST）。
+/// - `sort_dir`: `asc` | `desc`（缺省 desc）。Quick 260525-g1m — 配合 SortSelect
+///   旁的方向按钮；与 sort_by 正交。
 /// - `filter`: optional bag of clauses ANDed onto the WHERE.
 #[tauri::command]
 pub async fn search_games(
     query: Option<String>,
     sort_by: String,
+    sort_dir: Option<String>,
     filter: Option<SearchFilter>,
     state: State<'_, AppPaths>,
 ) -> Result<Vec<Game>, String> {
     let pool = state.pool().await.map_err(err_str)?;
 
+    // Quick 260525-g1m — sort_dir 白名单（小写）；缺省 desc。任何非 asc/desc → Err。
+    let dir = match sort_dir
+        .as_deref()
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("asc") => "ASC",
+        Some("desc") | None => "DESC",
+        Some(other) => {
+            return Err(format!(
+                "sort_dir must be 'asc' or 'desc' (got '{}')",
+                other
+            ));
+        }
+    };
+
     // Whitelist sort_by → ORDER BY clause (defensive: never interpolate user
-    // input). NULLS LAST on optional columns to keep "no value" rows at the
-    // end of ascending-meaning sorts.
-    let order_by: &str = match sort_by.as_str() {
-        "last_played" => "last_played_at IS NULL, last_played_at DESC",
-        "created_at" => "created_at DESC",
-        "name" => "name COLLATE NOCASE ASC",
-        "playtime" => "total_playtime_sec DESC",
-        "rating" => "rating IS NULL, rating DESC",
+    // input). NULLS LAST on optional columns (last_played / rating) — IS NULL
+    // 子句**始终**沉底 NULL，不随 dir 翻转，符合「先按 dir 翻转主键、NULL 始终在末尾」直觉。
+    // Quick 260525-g1m — "rating" 切到 `external_rating`（官方评分）；NULL 沉底语义不变。
+    let order_by: String = match sort_by.as_str() {
+        "last_played" => format!("last_played_at IS NULL, last_played_at {}", dir),
+        "created_at" => format!("created_at {}", dir),
+        "name" => format!("name COLLATE NOCASE {}", dir),
+        "playtime" => format!("total_playtime_sec {}", dir),
+        "rating" => format!("external_rating IS NULL, external_rating {}", dir),
         other => {
             return Err(format!(
                 "sort_by must be one of last_played|created_at|name|playtime|rating (got '{}')",
                 other
-            ))
+            ));
         }
     };
 
@@ -2699,6 +2778,7 @@ pub async fn search_games(
                 g.rating, g.notes, g.metadata_source, g.match_confidence, g.last_scanned_at, \
                 g.metadata_fetched_at, \
                 g.brand, g.release_year, g.is_favorite, g.summary, \
+                g.external_rating, g.external_rating_count, g.external_rating_source, \
                 g.created_at, g.updated_at \
          FROM games g {} ORDER BY {}",
         where_sql, order_by
@@ -3977,7 +4057,9 @@ pub async fn list_games_for_person(
                 g.rating, g.notes, g.metadata_source, g.match_confidence, \
                 g.last_scanned_at, g.metadata_fetched_at, \
                 g.brand, g.release_year, g.is_favorite, \
-                g.summary, g.created_at, g.updated_at \
+                g.summary, \
+                g.external_rating, g.external_rating_count, g.external_rating_source, \
+                g.created_at, g.updated_at \
          FROM games g \
          JOIN game_staff gs ON gs.game_id = g.id \
          WHERE gs.person_id = ?{} \

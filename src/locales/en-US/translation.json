@@ -205,6 +205,8 @@
   "settings.sort.name": "Name",
   "settings.sort.playtime": "Playtime",
   "settings.sort.rating": "Rating",
+  "sort.direction.asc": "Ascending",
+  "sort.direction.desc": "Descending",
 
   "tag_manager.title": "Tags",
   "tag_manager.lede": "Add custom tags to games for easier filtering",
@@ -345,6 +347,7 @@
   "detail.info.year": "Release year",
   "detail.info.status": "Status",
   "detail.info.rating": "Rating",
+  "detail.info.external_rating": "Official rating",
   "detail.info.bgm": "BGM",
   "detail.info.vndb": "VNDB",
   "detail.info.source": "Source",

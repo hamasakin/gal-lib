@@ -197,7 +197,7 @@ export function GameGrid({
               ? null
               : st.filter;
           try {
-            const fresh = await searchGames(queryArg, st.sortBy, filterArg);
+            const fresh = await searchGames(queryArg, st.sortBy, st.sortDir, filterArg);
             setGames(fresh);
           } catch {
             const fresh = await listGames();

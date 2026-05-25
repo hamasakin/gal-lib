@@ -70,6 +70,7 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
   const setSidebar = useLibraryStore((s) => s.setSidebar);
   const searchQuery = useLibraryStore((s) => s.searchQuery);
   const sortBy = useLibraryStore((s) => s.sortBy);
+  const sortDir = useLibraryStore((s) => s.sortDir);
   const filter = useLibraryStore((s) => s.filter);
 
   // Form state — reset when a different game opens the dialog.
@@ -174,7 +175,7 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
         filter.year_decade == null
           ? null
           : filter;
-      const fresh = await searchGames(queryArg, sortBy, filterArg);
+      const fresh = await searchGames(queryArg, sortBy, sortDir, filterArg);
       setGames(fresh);
       try {
         const cats = await getSidebarCategories();
