@@ -2598,32 +2598,52 @@ pub struct SearchFilter {
 ///   and any tag name attached via `game_tags`. Empty / whitespace-only query
 ///   means "no LIKE clause".
 /// - `sort_by`: one of `last_played | created_at | name | playtime | rating`.
-///   Unknown values → `Err`. NULL-handling matches CONTEXT.md (NULLS LAST for
-///   last_played/rating).
+///   Unknown values → `Err`. Rating 自 Quick 260525-g1m 起切到 `external_rating`
+///   （官方评分）；NULL-handling 始终把 NULL 沉底（NULLS LAST）。
+/// - `sort_dir`: `asc` | `desc`（缺省 desc）。Quick 260525-g1m — 配合 SortSelect
+///   旁的方向按钮；与 sort_by 正交。
 /// - `filter`: optional bag of clauses ANDed onto the WHERE.
 #[tauri::command]
 pub async fn search_games(
     query: Option<String>,
     sort_by: String,
+    sort_dir: Option<String>,
     filter: Option<SearchFilter>,
     state: State<'_, AppPaths>,
 ) -> Result<Vec<Game>, String> {
     let pool = state.pool().await.map_err(err_str)?;
 
+    // Quick 260525-g1m — sort_dir 白名单（小写）；缺省 desc。任何非 asc/desc → Err。
+    let dir = match sort_dir
+        .as_deref()
+        .map(str::to_ascii_lowercase)
+        .as_deref()
+    {
+        Some("asc") => "ASC",
+        Some("desc") | None => "DESC",
+        Some(other) => {
+            return Err(format!(
+                "sort_dir must be 'asc' or 'desc' (got '{}')",
+                other
+            ));
+        }
+    };
+
     // Whitelist sort_by → ORDER BY clause (defensive: never interpolate user
-    // input). NULLS LAST on optional columns to keep "no value" rows at the
-    // end of ascending-meaning sorts.
-    let order_by: &str = match sort_by.as_str() {
-        "last_played" => "last_played_at IS NULL, last_played_at DESC",
-        "created_at" => "created_at DESC",
-        "name" => "name COLLATE NOCASE ASC",
-        "playtime" => "total_playtime_sec DESC",
-        "rating" => "rating IS NULL, rating DESC",
+    // input). NULLS LAST on optional columns (last_played / rating) — IS NULL
+    // 子句**始终**沉底 NULL，不随 dir 翻转，符合「先按 dir 翻转主键、NULL 始终在末尾」直觉。
+    // Quick 260525-g1m — "rating" 切到 `external_rating`（官方评分）；NULL 沉底语义不变。
+    let order_by: String = match sort_by.as_str() {
+        "last_played" => format!("last_played_at IS NULL, last_played_at {}", dir),
+        "created_at" => format!("created_at {}", dir),
+        "name" => format!("name COLLATE NOCASE {}", dir),
+        "playtime" => format!("total_playtime_sec {}", dir),
+        "rating" => format!("external_rating IS NULL, external_rating {}", dir),
         other => {
             return Err(format!(
                 "sort_by must be one of last_played|created_at|name|playtime|rating (got '{}')",
                 other
-            ))
+            ));
         }
     };
 
