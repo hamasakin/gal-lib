@@ -347,6 +347,7 @@
   "detail.info.year": "発売年",
   "detail.info.status": "状態",
   "detail.info.rating": "評価",
+  "detail.info.external_rating": "公式評価",
   "detail.info.bgm": "BGM",
   "detail.info.vndb": "VNDB",
   "detail.info.source": "ソース",

@@ -347,6 +347,7 @@
   "detail.info.year": "发行年",
   "detail.info.status": "状态",
   "detail.info.rating": "评分",
+  "detail.info.external_rating": "官方评分",
   "detail.info.bgm": "BGM",
   "detail.info.vndb": "VNDB",
   "detail.info.source": "来源",

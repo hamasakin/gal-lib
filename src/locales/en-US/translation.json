@@ -347,6 +347,7 @@
   "detail.info.year": "Release year",
   "detail.info.status": "Status",
   "detail.info.rating": "Rating",
+  "detail.info.external_rating": "Official rating",
   "detail.info.bgm": "BGM",
   "detail.info.vndb": "VNDB",
   "detail.info.source": "Source",

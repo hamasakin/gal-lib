@@ -1106,8 +1106,17 @@ export default function Detail() {
                 {t(STATUS_LABEL_KEY[game.status])}
               </Pill>
               <Pill>{formatDuration(game.total_playtime_sec)}</Pill>
-              {game.rating != null ? (
-                <Pill>★ {(game.rating / 2).toFixed(1)} / 5</Pill>
+              {/* Quick 260525-g1m — 顶部 Pill 改读官方评分 external_rating，附带来源后缀；
+                  NULL 时整个 Pill 不渲染（避免「★ — / 5」无意义占位）。 */}
+              {game.external_rating != null ? (
+                <Pill>
+                  ★ {game.external_rating.toFixed(1)}
+                  {game.external_rating_source ? (
+                    <span className="ml-1 text-[10px] uppercase text-ink-3">
+                      · {game.external_rating_source === "bangumi" ? "BGM" : "VNDB"}
+                    </span>
+                  ) : null}
+                </Pill>
               ) : null}
               {reviewNeeded && (
                 <Pill className="border-[#ffd166]/50 text-[#ffd166]">
@@ -1537,6 +1546,28 @@ export default function Detail() {
               <DT>{t("detail.info.rating")}</DT>
               <DD>
                 {game.rating != null ? `★ ${game.rating} / 10` : "—"}
+              </DD>
+              {/* Quick 260525-g1m — 新增「官方评分」行（与本地 rating 并存）；
+                  NULL 时显示 — 占位（区别于上方本地 rating 行）。 */}
+              <DT>{t("detail.info.external_rating")}</DT>
+              <DD>
+                {game.external_rating != null ? (
+                  <>
+                    ★ {game.external_rating.toFixed(1)} / 10
+                    {game.external_rating_source ? (
+                      <span className="ml-1 text-ink-3">
+                        · {game.external_rating_source === "bangumi" ? "BGM" : "VNDB"}
+                      </span>
+                    ) : null}
+                    {game.external_rating_count != null && game.external_rating_count > 0 ? (
+                      <span className="ml-1 text-[10px] text-ink-3">
+                        ({game.external_rating_count})
+                      </span>
+                    ) : null}
+                  </>
+                ) : (
+                  <span className="text-ink-3">—</span>
+                )}
               </DD>
               <DT>{t("detail.info.bgm")}</DT>
               <DD className="font-mono">
