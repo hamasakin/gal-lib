@@ -44,7 +44,6 @@ export interface Game {
   total_playtime_sec: number;
   last_played_at: string | null;
   status: "unplayed" | "playing" | "cleared" | "dropped";
-  rating: number | null;
   notes: string | null;
   metadata_source: "bangumi" | "vndb" | "manual" | "none" | null;
   /** 0..=100; `null` until ingest runs. ≥80 = auto-bind, <80 = needs review. */
@@ -89,7 +88,8 @@ export interface Game {
   /**
    * 官方评分（Bangumi rating.score 或 VNDB rating/10 后的 0..=10 浮点，1 位小数精度）。
    * `null` 表示未绑定 / 源未返回。「评分」排序键按本字段 DESC NULL LAST。
-   * 本地用户打分仍走 `rating`（StarRating 用 1..=10 整数）。
+   * Quick 260526-0bi — 本地用户打分字段 `games.rating` 已移除，
+   * 现在 external_rating 是唯一评分维度。
    */
   external_rating: number | null;
   /** 参与打分人数（Bangumi rating.total / VNDB votecount）。 */
@@ -154,15 +154,6 @@ export async function updateGameStatus(
  */
 export async function updateGameFavorite(gameId: number, favorite: boolean): Promise<void> {
   await invoke("update_game_favorite", { gameId, isFavorite: favorite });
-}
-
-/**
- * Set or clear the rating. Backend enforces `1..=10` when `rating` is
- * non-null; pass `null` to clear. The games.rating column allows NULL and
- * has no CHECK on the value range — validation lives only in the command.
- */
-export async function updateGameRating(gameId: number, rating: number | null): Promise<void> {
-  await invoke("update_game_rating", { gameId, rating });
 }
 
 /**

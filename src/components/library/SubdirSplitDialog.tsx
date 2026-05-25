@@ -59,7 +59,6 @@ export function gameHasUserData(g: Game): boolean {
   return (
     g.total_playtime_sec > 0 ||
     (g.notes != null && g.notes.trim() !== "") ||
-    g.rating != null ||
     g.is_favorite === true ||
     g.status !== "unplayed"
   );
