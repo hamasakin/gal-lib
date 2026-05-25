@@ -75,6 +75,14 @@ pub struct IngestResult {
     /// "no opinion" so the apply path uses COALESCE to keep a prior manual
     /// year (symmetric with brand).
     pub release_year: Option<i32>,
+    /// Quick 260525-g1m — 官方评分（0..=10 归一化后）。来自 MetadataDetail.rating；
+    /// 无 match 路径 / 源未返回时 NULL。
+    pub external_rating: Option<f64>,
+    /// Quick 260525-g1m — 官方评分投票数。来自 MetadataDetail.rating_count。
+    pub external_rating_count: Option<i64>,
+    /// Quick 260525-g1m — "bangumi" | "vndb"（小写源串，与 metadata_source 同口径）；
+    /// metadata_source == "none" / "manual" 时为 None。
+    pub external_rating_source: Option<String>,
 }
 
 /// Quick 20260512b — parse a 4-digit year from the leading portion of a
@@ -212,24 +220,34 @@ async fn fetch_enrichment(
     Vec<PersonRef>,
     Vec<OfficialTagRef>,
     Option<i32>,
+    Option<f64>,
+    Option<i64>,
+    Option<String>,
 ) {
-    // 1. Detail (summary, brand, tags, release_year). On error: log + empty.
+    // Quick 260525-g1m — `source_str` 是 IngestResult.external_rating_source 的字符串口径，
+    // 与 metadata_source 完全一致：bangumi/vndb 时填名字，manual/none 时 None。
+    let source_str: Option<String> = match source {
+        MetadataSource::Bangumi => Some("bangumi".to_string()),
+        MetadataSource::Vndb => Some("vndb".to_string()),
+        _ => None,
+    };
+    // 1. Detail (summary, brand, tags, release_year, rating, rating_count). On error: log + empty.
     let detail = match source {
         MetadataSource::Bangumi => metadata::bangumi::fetch_detail(source_id).await,
         MetadataSource::Vndb => metadata::vndb::fetch_detail(source_id).await,
-        _ => return (None, None, Vec::new(), Vec::new(), None),
+        _ => return (None, None, Vec::new(), Vec::new(), None, None, None, None),
     };
-    let (summary, brand, tags, release_year) = match detail {
+    let (summary, brand, tags, release_year, rating, rating_count) = match detail {
         Ok(d) => {
             let year = parse_release_year(d.release_date.as_deref());
-            (d.summary, d.brand, d.tags, year)
+            (d.summary, d.brand, d.tags, year, d.rating, d.rating_count)
         }
         Err(e) => {
             eprintln!(
                 "[ingest] fetch_detail failed for {:?}/{}: {}",
                 source, source_id, e
             );
-            (None, None, Vec::new(), None)
+            (None, None, Vec::new(), None, None, None)
         }
     };
 
@@ -264,7 +282,10 @@ async fn fetch_enrichment(
         ),
     }
 
-    (summary, brand, staff, tags, release_year)
+    // Quick 260525-g1m — rating / rating_count / source_str 仅当 detail Ok 才有；
+    // 走 Err 分支会被早 return 截掉，到这里时 rating/rating_count 已就位。
+    // source_str 不受 detail 成功与否影响（由顶层 source 枚举决定）。
+    (summary, brand, staff, tags, release_year, rating, rating_count, source_str)
 }
 
 /// Process one discovered game: search → fallback → cover-cache.
@@ -307,6 +328,9 @@ pub async fn process_game(
         staff: Vec::new(),
         tags: Vec::new(),
         release_year: None,
+        external_rating: None,
+        external_rating_count: None,
+        external_rating_source: None,
     };
 
     // Skip metadata search entirely when clean_name is empty (defensive).
@@ -374,13 +398,17 @@ pub async fn process_game(
         // 4. Phase 11 — best-effort enrichment fetch (summary / brand /
         //    staff / tags). Any failure logs and leaves the field empty;
         //    never aborts ingest. Quick 20260512b — also captures release_year.
-        let (summary, brand, staff, tags, release_year) =
+        //    Quick 260525-g1m — 8 元组扩展：external_rating / count / source。
+        let (summary, brand, staff, tags, release_year, ext_r, ext_rc, ext_rs) =
             fetch_enrichment(c.source, &c.source_id).await;
         result.summary = summary;
         result.brand = brand;
         result.staff = staff;
         result.tags = tags;
         result.release_year = release_year;
+        result.external_rating = ext_r;
+        result.external_rating_count = ext_rc;
+        result.external_rating_source = ext_rs;
     }
 
     result
@@ -427,6 +455,9 @@ pub async fn process_game_cached(
         staff: Vec::new(),
         tags: Vec::new(),
         release_year: None,
+        external_rating: None,
+        external_rating_count: None,
+        external_rating_source: None,
     };
 
     if discovered.clean_name.trim().is_empty() {
@@ -485,13 +516,17 @@ pub async fn process_game_cached(
         // dedup cache only covers `pick_best_*` (search results); detail/
         // persons/characters aren't cached because each game's source_id
         // is unique by construction. Quick 20260512b — release_year too.
-        let (summary, brand, staff, tags, release_year) =
+        // Quick 260525-g1m — 8 元组扩展：external_rating / count / source。
+        let (summary, brand, staff, tags, release_year, ext_r, ext_rc, ext_rs) =
             fetch_enrichment(c.source, &c.source_id).await;
         result.summary = summary;
         result.brand = brand;
         result.staff = staff;
         result.tags = tags;
         result.release_year = release_year;
+        result.external_rating = ext_r;
+        result.external_rating_count = ext_rc;
+        result.external_rating_source = ext_rs;
     }
 
     result
