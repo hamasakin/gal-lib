@@ -2064,7 +2064,6 @@ pub struct Game {
     pub total_playtime_sec: i64,
     pub last_played_at: Option<String>,
     pub status: String,
-    pub rating: Option<i64>,
     pub notes: Option<String>,
     pub metadata_source: Option<String>,
     pub match_confidence: Option<i64>,
@@ -2108,7 +2107,7 @@ pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String>
     let rows = sqlx::query(
         "SELECT id, path, name, name_cn, executable_path, cover_path, cover_url, \
                 bangumi_id, vndb_id, total_playtime_sec, last_played_at, status, \
-                rating, notes, metadata_source, match_confidence, last_scanned_at, \
+                notes, metadata_source, match_confidence, last_scanned_at, \
                 metadata_fetched_at, \
                 brand, release_year, is_favorite, summary, \
                 external_rating, external_rating_count, external_rating_source, \
@@ -2139,7 +2138,7 @@ pub async fn get_game(
     let row_opt = sqlx::query(
         "SELECT id, path, name, name_cn, executable_path, cover_path, cover_url, \
                 bangumi_id, vndb_id, total_playtime_sec, last_played_at, status, \
-                rating, notes, metadata_source, match_confidence, last_scanned_at, \
+                notes, metadata_source, match_confidence, last_scanned_at, \
                 metadata_fetched_at, \
                 brand, release_year, is_favorite, summary, \
                 external_rating, external_rating_count, external_rating_source, \
@@ -2174,7 +2173,6 @@ fn row_to_game(row: &sqlx::sqlite::SqliteRow) -> Result<Game, String> {
         status: row
             .try_get("status")
             .unwrap_or_else(|_| "unplayed".to_string()),
-        rating: row.try_get("rating").ok(),
         notes: row.try_get("notes").ok(),
         metadata_source: row.try_get("metadata_source").ok(),
         match_confidence: row.try_get("match_confidence").ok(),
@@ -2775,7 +2773,7 @@ pub async fn search_games(
     let sql = format!(
         "SELECT g.id, g.path, g.name, g.name_cn, g.executable_path, g.cover_path, g.cover_url, \
                 g.bangumi_id, g.vndb_id, g.total_playtime_sec, g.last_played_at, g.status, \
-                g.rating, g.notes, g.metadata_source, g.match_confidence, g.last_scanned_at, \
+                g.notes, g.metadata_source, g.match_confidence, g.last_scanned_at, \
                 g.metadata_fetched_at, \
                 g.brand, g.release_year, g.is_favorite, g.summary, \
                 g.external_rating, g.external_rating_count, g.external_rating_source, \
@@ -3162,28 +3160,6 @@ pub async fn update_game_favorite(
     let pool = state.pool().await.map_err(err_str)?;
     let val: i64 = if is_favorite { 1 } else { 0 };
     sqlx::query("UPDATE games SET is_favorite = ?, updated_at = datetime('now') WHERE id = ?")
-        .bind(val)
-        .bind(game_id)
-        .execute(&*pool)
-        .await
-        .map_err(err_str)?;
-    Ok(())
-}
-
-#[tauri::command]
-pub async fn update_game_rating(
-    game_id: i64,
-    rating: Option<i32>,
-    state: State<'_, AppPaths>,
-) -> Result<(), String> {
-    if let Some(r) = rating {
-        if !(1..=10).contains(&r) {
-            return Err(format!("rating must be 1..=10 or null (got {})", r));
-        }
-    }
-    let pool = state.pool().await.map_err(err_str)?;
-    let val: Option<i64> = rating.map(|r| r as i64);
-    sqlx::query("UPDATE games SET rating = ?, updated_at = datetime('now') WHERE id = ?")
         .bind(val)
         .bind(game_id)
         .execute(&*pool)
@@ -4054,7 +4030,7 @@ pub async fn list_games_for_person(
         "SELECT DISTINCT g.id, g.path, g.name, g.name_cn, g.executable_path, \
                 g.cover_path, g.cover_url, g.bangumi_id, g.vndb_id, \
                 g.total_playtime_sec, g.last_played_at, g.status, \
-                g.rating, g.notes, g.metadata_source, g.match_confidence, \
+                g.notes, g.metadata_source, g.match_confidence, \
                 g.last_scanned_at, g.metadata_fetched_at, \
                 g.brand, g.release_year, g.is_favorite, \
                 g.summary, \

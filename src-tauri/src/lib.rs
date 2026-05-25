@@ -234,7 +234,6 @@ pub fn run() {
             // L9N-01 — one-shot historical backfill: unplayed + playtime>0 → playing
             commands::backfill_playing_status,
             commands::update_game_favorite,
-            commands::update_game_rating,
             commands::update_game_notes,
             commands::update_game_brand_year,
             // 05b — stats (2) + screenshots (5) + save backups (5) = 12 new
