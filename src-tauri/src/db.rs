@@ -31,6 +31,8 @@
 //! Schema v13 (Quick 260525-g1m) adds 3 columns on `games`
 //! (external_rating + external_rating_count + external_rating_source) and
 //! index `idx_games_external_rating` —— 官方评分（Bangumi/VNDB）入库与排序锚点。
+//! Schema v14 (Quick 260526-0bi) drops `games.rating` column —— 本地用户评分
+//! 字段移除，仅保留 v13 引入的官方评分 `external_rating`。
 
 use tauri_plugin_sql::{Migration, MigrationKind};
 
@@ -47,6 +49,7 @@ const V10_SQL: &str = include_str!("../migrations/0010_drop_age_rating.sql");
 const V11_SQL: &str = include_str!("../migrations/0011_add_metadata_fetched_at.sql");
 const V12_SQL: &str = include_str!("../migrations/0012_add_scan_skip_dirs.sql");
 const V13_SQL: &str = include_str!("../migrations/0013_add_external_rating.sql");
+const V14_SQL: &str = include_str!("../migrations/0014_drop_local_rating.sql");
 
 /// All migrations to register with tauri-plugin-sql, in version order.
 /// Add future migrations as additional entries with monotonically increasing
@@ -129,6 +132,12 @@ pub fn migrations() -> Vec<Migration> {
             version: 13,
             description: "add_external_rating",
             sql: V13_SQL,
+            kind: MigrationKind::Up,
+        },
+        Migration {
+            version: 14,
+            description: "drop_local_rating",
+            sql: V14_SQL,
             kind: MigrationKind::Up,
         },
     ]
@@ -536,6 +545,33 @@ mod tests {
         assert!(
             m10.sql.contains("schema_version") && m10.sql.contains("'10'"),
             "v10 bumps schema_version to '10'"
+        );
+    }
+
+    #[test]
+    fn migrations_v14_drops_local_rating() {
+        let m = migrations();
+        let m14 = m.iter().find(|x| x.version == 14).expect("v14 present");
+        assert_eq!(m14.description, "drop_local_rating");
+
+        // No ADD COLUMN — this migration only drops a column.
+        let add_column_count = m14
+            .sql
+            .lines()
+            .filter(|l| {
+                let t = l.trim_start();
+                !t.starts_with("--") && t.contains("ADD COLUMN")
+            })
+            .count();
+        assert_eq!(add_column_count, 0, "v14: no ADD COLUMN statements");
+
+        assert!(
+            m14.sql.contains("DROP COLUMN rating"),
+            "v14 drops rating column"
+        );
+        assert!(
+            m14.sql.contains("schema_version") && m14.sql.contains("'14'"),
+            "v14 bumps schema_version to '14'"
         );
     }
 }
