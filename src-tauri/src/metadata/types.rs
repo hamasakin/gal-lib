@@ -98,6 +98,12 @@ pub struct MetadataDetail {
     /// Phase 11 — official tags for this title (already normalized + sorted
     /// by descending weight by the client).
     pub tags: Vec<OfficialTagRef>,
+    /// Quick 260525-g1m — 官方评分（Bangumi rating.score, 或 VNDB rating/10 归一化后的 0..=10 浮点）。
+    /// NULL 表示源未返回（doujin / 老条目 / 未发售）。前端按 toFixed(1) 展示。
+    pub rating: Option<f64>,
+    /// Quick 260525-g1m — 参与打分人数（Bangumi rating.total / VNDB votecount）。
+    /// 当前未在 UI 直接展示；预留作 tooltip / hover 详情 / 未来按"投票数门槛"过滤。
+    pub rating_count: Option<i64>,
 }
 
 #[derive(Debug, thiserror::Error)]
