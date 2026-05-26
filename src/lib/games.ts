@@ -96,6 +96,18 @@ export interface Game {
   external_rating_count: number | null;
   /** 评分来源，与 metadata_source 同口径。 */
   external_rating_source: "bangumi" | "vndb" | null;
+  // ── Phase 3 / schema v3 launch-config fields ──
+  // 260526 历史欠账修复：后端 list_games / get_game / search_games 长期漏读这
+  // 三列，导致前端拿不到持久化值，详情页「启动配置」保存后再进入永远被重置成
+  // 默认（"le-jp" / 空 args / 空 cwd）。补回 SELECT + Game struct + 这里的
+  // TS interface 后保存才真正可见。
+  /** LE 启动 profile 哨兵值："Japanese" = 日区 LE 启动；"direct" = 直接启动。
+   *  Detail 页通过 `leProfileToMethod` 把这个映射回 LaunchMethod。 */
+  le_profile: string;
+  /** 自定义启动参数（whitespace 分割）；null = 未设置。 */
+  launch_args: string | null;
+  /** 自定义工作目录；null = 自动取 exe 父目录。 */
+  cwd: string | null;
   created_at: string;
   updated_at: string;
 }

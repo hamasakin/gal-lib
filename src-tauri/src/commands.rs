@@ -2090,6 +2090,19 @@ pub struct Game {
     pub external_rating_count: Option<i64>,
     /// "bangumi" | "vndb"（评分的来源），用于详情页 pill 后缀。
     pub external_rating_source: Option<String>,
+    // ── Phase 3 / schema v3 launch-config fields ──
+    // 历史欠账修复（260526）：这三列在 schema v3 起就存在且 `update_game_launch_config`
+    // 一直在写，但 Game struct + 三个 SELECT 长期漏读，导致前端永远拿不到持久化值，
+    // 详情页"启动配置"标签保存后再进入永远被重置回默认。
+    /// LE 启动 profile 哨兵值：`"Japanese"` 表示日区 LE 启动（默认）；`"direct"`
+    /// 表示直接启动（不经 LE）。schema v3 列为 `NOT NULL DEFAULT 'Japanese'`，
+    /// 所以这里用 `String` 而不是 `Option<String>` —— 真实 DB 行始终有值。
+    /// 已废弃的旧 profile 值（简中 / 繁中 / Custom）由前端 `leProfileToMethod` 兜底成 "le-jp"。
+    pub le_profile: String,
+    /// 自定义启动参数（whitespace 分割成 argv 的字符串）。NULL = 没设置。
+    pub launch_args: Option<String>,
+    /// 自定义工作目录。NULL = 自动取 exe 父目录。
+    pub cwd: Option<String>,
 }
 
 /// Read every row from `games`, ordered by `created_at DESC`.
@@ -2111,6 +2124,7 @@ pub async fn list_games(state: State<'_, AppPaths>) -> Result<Vec<Game>, String>
                 metadata_fetched_at, \
                 brand, release_year, is_favorite, summary, \
                 external_rating, external_rating_count, external_rating_source, \
+                le_profile, launch_args, cwd, \
                 created_at, updated_at \
          FROM games ORDER BY created_at DESC",
     )
@@ -2142,6 +2156,7 @@ pub async fn get_game(
                 metadata_fetched_at, \
                 brand, release_year, is_favorite, summary, \
                 external_rating, external_rating_count, external_rating_source, \
+                le_profile, launch_args, cwd, \
                 created_at, updated_at \
          FROM games WHERE id = ?",
     )
@@ -2188,6 +2203,13 @@ fn row_to_game(row: &sqlx::sqlite::SqliteRow) -> Result<Game, String> {
         external_rating: row.try_get("external_rating").ok(),
         external_rating_count: row.try_get("external_rating_count").ok(),
         external_rating_source: row.try_get("external_rating_source").ok(),
+        // 260526 启动配置回填 — schema v3 列，前端「启动配置」标签的持久化来源。
+        // le_profile 是 NOT NULL，但为了与历史脏数据兼容用 unwrap_or 兜底。
+        le_profile: row
+            .try_get::<String, _>("le_profile")
+            .unwrap_or_else(|_| "Japanese".to_string()),
+        launch_args: row.try_get("launch_args").ok(),
+        cwd: row.try_get("cwd").ok(),
     })
 }
 
@@ -2777,6 +2799,7 @@ pub async fn search_games(
                 g.metadata_fetched_at, \
                 g.brand, g.release_year, g.is_favorite, g.summary, \
                 g.external_rating, g.external_rating_count, g.external_rating_source, \
+                g.le_profile, g.launch_args, g.cwd, \
                 g.created_at, g.updated_at \
          FROM games g {} ORDER BY {}",
         where_sql, order_by

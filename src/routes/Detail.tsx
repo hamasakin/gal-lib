@@ -240,12 +240,6 @@ function statusBadgeText(status: SessionRow["status"]): string {
   }
 }
 
-type LaunchExtras = {
-  le_profile?: string | null;
-  launch_args?: string | null;
-  cwd?: string | null;
-};
-
 /** Display order for staff role groups in 总览 → 制作团队. */
 const STAFF_ROLE_ORDER: StaffRole[] = [
   "scenario",
@@ -505,12 +499,13 @@ export default function Detail() {
     setGame(g);
     if (g) {
       useLibraryStore.getState().upsertGame(g);
-      const x = g as Game & LaunchExtras;
       // Quick 260517-qnn — 把持久化的 le_profile 映射回两种启动方式之一。
       // 已废弃 profile（简中 / 繁中 / Custom）一律回落到「日区 LE 启动」。
-      setLaunchMethod(leProfileToMethod(x.le_profile));
-      setArgs(x.launch_args ?? "");
-      setCwd(x.cwd ?? "");
+      // 260526 — Game interface 已经包含 le_profile / launch_args / cwd，
+      // 不再需要 `as Game & LaunchExtras` cast；直接读字段。
+      setLaunchMethod(leProfileToMethod(g.le_profile));
+      setArgs(g.launch_args ?? "");
+      setCwd(g.cwd ?? "");
       setExePath(g.executable_path ?? "");
       notesHydratedRef.current = true;
       setNotes(g.notes ?? "");
@@ -762,6 +757,18 @@ export default function Detail() {
       return;
     }
     if (!game) return;
+    // 260526 Bug A 排查辅助 — 把 invoke 边界的入参/异常打到 Console，
+    // 让无法在子代理里跑 GUI 的真机验证可以拿到第一手证据。toast.error 已经
+    // 兜底了用户可见反馈，这里只补 console 一条结构化日志。
+    // eslint-disable-next-line no-console
+    console.info("[Detail] onLaunchClick start", {
+      gameId,
+      launchMethod,
+      useLe: launchMethod === "le-jp",
+      exePath: exePath.length > 0 ? exePath : "(use DB executable_path)",
+      cwd: cwd.length > 0 ? cwd : "(auto = exe parent dir)",
+      args,
+    });
     try {
       await updateGameLaunchConfig(gameId, {
         le_profile: methodToLeProfile(launchMethod),
@@ -771,6 +778,8 @@ export default function Detail() {
       });
       // Quick 260517-qnn — 日区 LE 启动经 Locale Emulator，直接启动不经 LE。
       await launchGame(gameId, launchMethod === "le-jp");
+      // eslint-disable-next-line no-console
+      console.info("[Detail] onLaunchClick spawn ok", { gameId });
       toastLaunchSuccess(
         displayName,
         launchMethod === "le-jp"
@@ -778,6 +787,8 @@ export default function Detail() {
           : t("detail.launch.direct_short"),
       );
     } catch (e: unknown) {
+      // eslint-disable-next-line no-console
+      console.error("[Detail] onLaunchClick failed:", e);
       toast.error(t("toast.launch_failed", { err: String(e) }));
     }
   }
