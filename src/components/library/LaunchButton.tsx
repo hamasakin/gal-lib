@@ -1,12 +1,10 @@
 import { useState, useRef, useEffect } from "react";
 import { useTranslation } from "react-i18next";
-import { Play, Square, ChevronUp } from "lucide-react";
+import { Play, Square } from "lucide-react";
 import { cn } from "@/lib/utils";
 
-// Quick 260517-qnn — 两种启动方式，取代旧的 4 个 LE profile
-// （日 / 简中 / 繁中 / Custom）。le-jp 走 Locale Emulator（默认 ja-JP），
-// direct 不经 LE 直接拉起 exe。
-// Quick 260524-olt — label / note 在组件内 t() 解析。
+// Quick 260526-vqr — 按钮本身固定 44×44 不再展开宽度，避免 hover 挤兄弟元素布局；
+// hover/focus 时上方仍弹启动方式 popover 用来快切日区 LE / 直接启动。
 const LAUNCH_METHODS = [
   {
     id: "le-jp",
@@ -39,15 +37,6 @@ interface LaunchButtonProps {
   disabledTitle?: string;
 }
 
-/**
- * Signature launch button — 44px circle that expands to 240px on hover.
- * Above the button: a 260px popover listing the 2 launch methods
- * （日区 LE 启动 / 直接启动）. Hover/focus keeps the popover open via a
- * small grace zone (mouseLeave + 200ms timer).
- *
- * Active state (game currently running): renders the destructive-red
- * square stop icon and skips the popover entirely.
- */
 export function LaunchButton({
   profile,
   onProfileChange,
@@ -83,7 +72,7 @@ export function LaunchButton({
     }, 180);
   }
 
-  const expanded = hover && !disabled && !isActive;
+  const popoverOpen = hover && !disabled && !isActive;
   const activeProfile =
     LAUNCH_METHODS.find((p) => p.id === profile) ?? LAUNCH_METHODS[0];
   const activeProfileLabel = t(activeProfile.labelKey);
@@ -119,7 +108,7 @@ export function LaunchButton({
       onFocus={open}
       onBlur={scheduleClose}
     >
-      {/* The button */}
+      {/* 固定 44×44 圆形按钮，不再展开宽度 */}
       <button
         type="button"
         onClick={onClick}
@@ -127,50 +116,37 @@ export function LaunchButton({
         title={disabled ? disabledTitle : t("detail.launch.tooltip", { label: activeProfileLabel })}
         aria-label={t("detail.launch.tooltip", { label: activeProfileLabel })}
         className={cn(
-          "relative inline-flex items-center overflow-hidden whitespace-nowrap rounded-full",
-          "transition-[width,box-shadow,background] duration-200",
+          "relative grid h-11 w-11 place-items-center rounded-full",
+          "transition-shadow hover:scale-105",
           disabled && "cursor-not-allowed opacity-50",
         )}
         style={{
-          height: 44,
-          width: expanded ? 240 : 44,
           background: "var(--accent)",
           color: "var(--accent-on)",
-          transitionTimingFunction: "cubic-bezier(.2,.8,.2,1)",
-          boxShadow: expanded
+          boxShadow: popoverOpen
             ? "0 12px 32px -10px var(--accent), 0 0 0 8px var(--accent-soft)"
             : "0 8px 24px -8px var(--accent), 0 0 0 0 var(--accent-soft)",
         }}
       >
-        <span className="grid h-11 w-11 flex-shrink-0 place-items-center">
-          {/* Right-pointing Play has its visual centroid offset to the
-              left of its bounding box (more mass on the wide-base side).
-              translateX nudges it back to perceived center. */}
-          <Play
-            size={16}
-            fill="currentColor"
-            strokeWidth={1}
-            style={{ transform: "translateX(1.5px)" }}
-          />
-        </span>
-        <span
-          className="pr-4 font-mono text-[11px] uppercase tracking-[0.14em] transition-opacity duration-150"
-          style={{ opacity: expanded ? 1 : 0 }}
-        >
-          <span className="font-serif font-semibold normal-case mr-2 tracking-normal">
-            {t("detail.launch.action")}
-          </span>
-          {activeProfileLabel}
-          <ChevronUp size={11} strokeWidth={2} className="ml-1 inline" />
-        </span>
+        {/* Right-pointing Play has its visual centroid offset to the
+            left of its bounding box. translateX nudges it back to
+            perceived center. */}
+        <Play
+          size={16}
+          fill="currentColor"
+          strokeWidth={1}
+          style={{ transform: "translateX(1.5px)" }}
+        />
       </button>
 
-      {/* 启动方式 popover */}
+      {/* 启动方式 popover — 绝对定位，不挤兄弟元素布局 */}
       <div
         role="menu"
         className={cn(
           "absolute right-0 z-30 w-[260px] border border-line-strong bg-bg-1 p-1.5 shadow-lift transition-all",
-          expanded ? "pointer-events-auto opacity-100 translate-y-0" : "pointer-events-none opacity-0 translate-y-1.5",
+          popoverOpen
+            ? "pointer-events-auto opacity-100 translate-y-0"
+            : "pointer-events-none opacity-0 translate-y-1.5",
         )}
         style={{ bottom: "calc(100% + 12px)", borderRadius: "var(--r-md)" }}
       >
