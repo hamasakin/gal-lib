@@ -997,9 +997,11 @@ export default function Detail() {
       </header>
 
       {/* ── HERO ──────────────────────────────────────────────────────── */}
-      <section className="relative h-[380px] overflow-hidden border-b border-line">
-        {/* Blurred bg */}
-        <div className="absolute inset-0">
+      <section className="relative min-h-[380px] border-b border-line">
+        {/* Blurred bg — own overflow-hidden so the transform:scale(1.15)
+            bleed is clipped to the hero box, while the section itself can
+            grow when a long title pushes the info column past 380px. */}
+        <div className="absolute inset-0 overflow-hidden">
           {coverSrc ? (
             <img
               src={coverSrc}
@@ -1028,7 +1030,7 @@ export default function Detail() {
 
         {/* Hero inner — 220px cover + info + actions */}
         <div
-          className="relative grid h-full items-end gap-7 px-8 pb-6 pt-9"
+          className="relative grid items-end gap-7 px-8 pb-6 pt-9"
           style={{ gridTemplateColumns: "220px 1fr auto" }}
         >
           {/* Cover-big with overflow */}
@@ -1084,8 +1086,9 @@ export default function Detail() {
               </div>
             )}
             <h1
-              className="font-serif text-[38px] font-medium leading-[1.1] tracking-[0.01em] text-ink-0"
+              className="font-serif text-[38px] font-medium leading-[1.1] tracking-[0.01em] text-ink-0 line-clamp-3 break-words"
               style={{ textWrap: "balance" }}
+              title={displayName}
             >
               {displayName}
             </h1>
@@ -1146,7 +1149,7 @@ export default function Detail() {
           </div>
 
           {/* Actions column */}
-          <div className="relative z-[3] flex items-center gap-2.5 pb-3">
+          <div className="relative z-[3] flex items-center gap-2.5 self-end pb-3">
             <button
               type="button"
               onClick={() => void onToggleFavorite()}
