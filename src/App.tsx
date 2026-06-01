@@ -1,12 +1,17 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Outlet } from "react-router-dom";
 import { toast } from "sonner";
 import { useTranslation } from "react-i18next";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
+import type { UnlistenFn } from "@tauri-apps/api/event";
 import { TitlebarSlot } from "@/components/layout/TitlebarSlot";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { TweaksPanel } from "@/components/tweaks/TweaksPanel";
 import { useAppStore } from "@/store/app";
 import { getDataDir } from "@/lib/db";
+import { addGame } from "@/lib/scan";
+import { getSidebarCategories, searchGames } from "@/lib/search";
+import { useLibraryStore } from "@/store/library";
 import { checkForUpdates, relaunchApp } from "@/lib/updater";
 import { usePreferencesStore } from "@/store/preferences";
 
@@ -33,6 +38,9 @@ export default function App() {
   const { t } = useTranslation();
   const setDataDir = useAppStore((s) => s.setDataDir);
   const autoCheckUpdate = usePreferencesStore((s) => s.autoCheckUpdate);
+  // Quick 260531-x57 — drag-drop overlay flag. `enter`/`over` raise it,
+  // `leave`/`drop` lower it. Purely visual; the actual ingest runs on `drop`.
+  const [dragActive, setDragActive] = useState(false);
 
   useEffect(() => {
     let cancelled = false;
@@ -82,13 +90,130 @@ export default function App() {
     };
   }, [autoCheckUpdate, t]);
 
+  // Quick 260531-x57 — explorer drag-drop → batch addGame.
+  //
+  // Uses Tauri v2's webview-level `onDragDropEvent` (NOT the v1
+  // `tauri://file-drop` event). `dragDropEnabled: true` on the main window
+  // (tauri.conf.json) keeps this firing as an explicit contract.
+  //
+  // The `cancelled` + then-fires-immediately pattern mirrors useTauriListen:
+  // `onDragDropEvent` resolves a `Promise<UnlistenFn>`, and React StrictMode /
+  // HMR can run effect cleanup before that promise settles, so a captured
+  // unlisten would still be null and the subscription would leak + double-fire.
+  //
+  // On `drop`, every dropped path is handed to the existing `addGame` (same
+  // ingest + Bangumi/VNDB metadata pipeline as scan / single-add). Paths are
+  // processed serially to avoid hammering the rate-limiter with a big drop, and
+  // a non-directory / unresolvable path simply returns Err on the Rust side
+  // (`add_game` guards `dir.is_dir()`), which we count as a failure — no
+  // plugin-fs probe needed (zero new deps).
+  useEffect(() => {
+    let cancelled = false;
+    let unlisten: UnlistenFn | null = null;
+    let processing = false;
+
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        const payload = event.payload;
+        switch (payload.type) {
+          case "enter":
+          case "over":
+            setDragActive(true);
+            break;
+          case "leave":
+            setDragActive(false);
+            break;
+          case "drop": {
+            setDragActive(false);
+            const paths = payload.paths ?? [];
+            // Guard against re-entrancy: ignore a second drop while a batch is
+            // still ingesting (serial loop below owns the rate-limiter budget).
+            if (processing) return;
+            if (paths.length === 0) {
+              toast.error(t("dragdrop.none"));
+              return;
+            }
+            processing = true;
+            void (async () => {
+              let ok = 0;
+              let fail = 0;
+              for (const p of paths) {
+                try {
+                  await addGame(p);
+                  ok += 1;
+                } catch (e: unknown) {
+                  fail += 1;
+                  // eslint-disable-next-line no-console
+                  console.error("[dragdrop] addGame failed:", p, e);
+                }
+              }
+              if (ok > 0) {
+                // Refresh grid + sidebar so the new entries surface immediately
+                // (placeholder rows; covers/titles backfill via meta pipeline).
+                try {
+                  const [games, sidebar] = await Promise.all([
+                    searchGames(null, "last_played", "desc", null),
+                    getSidebarCategories(),
+                  ]);
+                  useLibraryStore.getState().setGames(games);
+                  useLibraryStore.getState().setSidebar(sidebar);
+                } catch (e: unknown) {
+                  // eslint-disable-next-line no-console
+                  console.error("[dragdrop] refresh after add failed:", e);
+                }
+                if (fail > 0) {
+                  toast.warning(t("dragdrop.partial", { ok, fail }));
+                } else {
+                  toast.success(t("dragdrop.added", { count: ok }));
+                }
+              } else {
+                toast.error(t("dragdrop.none"));
+              }
+              processing = false;
+            })();
+            break;
+          }
+          default:
+            break;
+        }
+      })
+      .then((fn) => {
+        if (cancelled) {
+          fn();
+        } else {
+          unlisten = fn;
+        }
+      });
+
+    return () => {
+      cancelled = true;
+      unlisten?.();
+    };
+  }, [t]);
+
   return (
     <div className="flex h-screen flex-col bg-background text-foreground">
       <TitlebarSlot />
       <div className="flex min-h-0 flex-1">
         <Sidebar />
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+        <main className="relative flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
           <Outlet />
+          {/* Quick 260531-x57 — drag-drop overlay. `pointer-events-none` so it
+              never intercepts the OS drop; mirrors the dark dialog-overlay
+              tone used by MetadataPicker / alert-dialog. */}
+          {dragActive ? (
+            <div
+              aria-hidden
+              className="pointer-events-none absolute inset-0 z-50 grid place-items-center bg-black/55 backdrop-blur-[2px]"
+            >
+              <div
+                className="border-2 border-dashed border-brand bg-bg-1/90 px-8 py-6 font-serif text-[16px] text-ink-0 shadow-[0_12px_32px_-10px_rgba(0,0,0,.6)]"
+                style={{ borderRadius: "var(--r-md)" }}
+              >
+                {t("dragdrop.overlay")}
+              </div>
+            </div>
+          ) : null}
         </main>
       </div>
       <TweaksPanel />
