@@ -15,6 +15,7 @@ import { useEffect, useState } from "react";
 import { useTranslation } from "react-i18next";
 import {
   checkForUpdates,
+  downloadAndInstallUpdate,
   getCurrentVersion,
   relaunchApp,
   type UpdaterState,
@@ -55,6 +56,12 @@ export function AboutSection() {
     });
   }
 
+  async function onDownload(update: UpdaterState & { phase: "available" }) {
+    await downloadAndInstallUpdate(update.update, {
+      onProgress: (s) => setState(s),
+    });
+  }
+
   return (
     <div className="space-y-3 text-[12.5px] text-ink-1">
       <div className="flex items-center justify-between border-b border-ink-7/40 py-1.5">
@@ -68,7 +75,16 @@ export function AboutSection() {
           <UpdateStateLabel state={state} />
         </div>
         <div className="flex items-center gap-2">
-          {state.phase === "ready" ? (
+          {state.phase === "available" ? (
+            <button
+              type="button"
+              onClick={() => void onDownload(state)}
+              className="inline-flex h-8 items-center border border-primary/50 bg-primary/15 px-3 text-[12px] text-primary transition-colors hover:bg-primary/25"
+              style={{ borderRadius: "var(--r-md)" }}
+            >
+              {t("about.download_update")}
+            </button>
+          ) : state.phase === "ready" ? (
             <button
               type="button"
               onClick={() => void relaunchApp()}
@@ -125,6 +141,12 @@ function UpdateStateLabel({ state }: { state: UpdaterState }) {
       return <span className="text-[11px] text-ink-3">{t("about.checking")}</span>;
     case "up-to-date":
       return <span className="text-[11px] text-ink-3">{t("about.up_to_date")}</span>;
+    case "available":
+      return (
+        <span className="text-[11px] text-primary">
+          {t("about.update_available", { version: state.version })}
+        </span>
+      );
     case "downloading": {
       const pct =
         state.total && state.downloaded != null

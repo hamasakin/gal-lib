@@ -12,7 +12,7 @@ import { getDataDir } from "@/lib/db";
 import { addGames } from "@/lib/scan";
 import { getSidebarCategories, searchGames } from "@/lib/search";
 import { useLibraryStore } from "@/store/library";
-import { checkForUpdates, relaunchApp } from "@/lib/updater";
+import { checkForUpdates, downloadAndInstallUpdate, relaunchApp } from "@/lib/updater";
 import { usePreferencesStore } from "@/store/preferences";
 
 /**
@@ -60,33 +60,54 @@ export default function App() {
     };
   }, [setDataDir]);
 
-  // Quick 260514-upd — startup auto-update check (silent). 5 s delay keeps
-  // first paint snappy and avoids racing with data-dir resolution. Errors
-  // (offline / no release / unsigned bundle) are swallowed by silent mode.
+  // Quick 260514-upd / 260603-3w9 — startup auto-update check (silent).
+  //
+  // 挂载即检测，不再人为 setTimeout 延迟：检查只读 updater、不依赖 dataDir、
+  // 提示用非阻塞 sonner toast，网络延迟本身就是天然的「让首屏先走」，无需 delay。
+  // 仍保留 cancelled 守卫防 StrictMode 双跑 / 卸载竞态。
+  //
+  // 命中新版本不再静默强制安装：先弹 toast「发现新版本」带「现在更新」action，
+  // 用户点了才调 downloadAndInstallUpdate 下载安装，完成后换成「立即重启」toast；
+  // 点 toast 的关闭即「稍后」，不下载。
   useEffect(() => {
     if (!autoCheckUpdate) return;
     let cancelled = false;
-    const handle = setTimeout(() => {
+    void checkForUpdates({ silent: true }).then((state) => {
       if (cancelled) return;
-      void checkForUpdates({ silent: true }).then((state) => {
-        if (cancelled) return;
-        if (state.phase === "ready") {
-          toast.success(t("toast.update_ready", { version: state.version }), {
-            description: t("toast.update_ready_desc"),
-            duration: Infinity,
-            action: {
-              label: t("toast.restart_now"),
-              onClick: () => {
-                void relaunchApp();
-              },
-            },
-          });
-        }
+      if (state.phase !== "available") return;
+      const update = state.update;
+      const version = state.version;
+      const id = toast.info(t("toast.update_available", { version }), {
+        description: t("toast.update_available_desc"),
+        duration: Infinity,
+        action: {
+          label: t("toast.update_now"),
+          onClick: () => {
+            toast.dismiss(id);
+            const dlId = toast.loading(t("toast.update_downloading", { version }));
+            void downloadAndInstallUpdate(update).then((state2) => {
+              toast.dismiss(dlId);
+              if (state2.phase === "ready") {
+                toast.success(t("toast.update_ready", { version: state2.version }), {
+                  description: t("toast.update_ready_desc"),
+                  duration: Infinity,
+                  action: {
+                    label: t("toast.restart_now"),
+                    onClick: () => {
+                      void relaunchApp();
+                    },
+                  },
+                });
+              } else if (state2.phase === "error") {
+                toast.error(t("about.check_failed", { message: state2.message }));
+              }
+            });
+          },
+        },
       });
-    }, 5000);
+    });
     return () => {
       cancelled = true;
-      clearTimeout(handle);
     };
   }, [autoCheckUpdate, t]);
 
