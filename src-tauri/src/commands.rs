@@ -1033,6 +1033,93 @@ pub async fn add_game(
     ingest_one_dir(&*pool, &data_dir, &dg).await
 }
 
+/// Result of a batch drag-drop add. `added` = placeholders that landed in the
+/// library (= cards that appeared); `failed` = paths that couldn't be added at
+/// all (not a directory / unsafe path / placeholder INSERT error). Per-game
+/// enrich errors do NOT decrement `added` — the row exists either way.
+#[derive(Debug, Serialize)]
+pub struct AddGamesResult {
+    pub added: usize,
+    pub failed: usize,
+}
+
+/// Quick 260603-2g0 — batch directory add for explorer drag-drop, with the same
+/// progressive-reveal UX as the bulk scan. Two phases:
+///   1. Insert ALL placeholder rows first, emitting `games-changed` per row so
+///      every dropped folder's card surfaces instantly (with the "获取中" badge)
+///      before any network round-trip happens.
+///   2. Enrich each row serially (respects the metadata rate-limiter naturally),
+///      emitting `meta-fetch-progress` started/finished + `games-changed` around
+///      each — mirroring the `start_scan` enrich loop so the existing
+///      `Library.tsx` subscriptions backfill covers/titles and the per-card
+///      loading pulse with zero new frontend wiring.
+///
+/// Replaces the prior frontend serial `for (p) await addGame(p)` loop, which
+/// only refreshed once after the WHOLE batch finished enriching.
+#[tauri::command]
+pub async fn add_games(
+    paths: Vec<String>,
+    app: AppHandle,
+    state: State<'_, AppPaths>,
+) -> Result<AddGamesResult, String> {
+    let pool = state.pool().await.map_err(err_str)?;
+    let data_dir = state.data_dir.clone();
+
+    let mut failed = 0usize;
+    // Phase 1 — placeholders first so all cards appear at once.
+    let mut pending: Vec<(i64, scan::DiscoveredGame)> = Vec::with_capacity(paths.len());
+    for path in &paths {
+        let dir = PathBuf::from(path);
+        if !dir.is_dir() || ensure_safe_game_dir(&dir).is_err() {
+            failed += 1;
+            continue;
+        }
+        let raw_name = dir
+            .file_name()
+            .and_then(|s| s.to_str())
+            .unwrap_or("")
+            .to_string();
+        let clean_name = crate::title_clean::clean_title(&raw_name);
+        let executable = scan::walker::pick_best_exe(&dir);
+        let dg = scan::DiscoveredGame {
+            path: dir,
+            raw_name,
+            clean_name,
+            executable,
+        };
+        match insert_placeholder_dir(&*pool, &dg).await {
+            Ok(game_id) => {
+                let _ = app.emit("games-changed", ());
+                pending.push((game_id, dg));
+            }
+            Err(_) => failed += 1,
+        }
+    }
+
+    let added = pending.len();
+
+    // Phase 2 — enrich each placeholder; per-game events let the grid backfill
+    // and pulse-highlight just like the scan path. Enrich errors are swallowed:
+    // the placeholder row stays (metadata_source handling already covers the
+    // no-match case), so a network hiccup doesn't un-add an already-shown card.
+    for (game_id, dg) in &pending {
+        let _ = app.emit(
+            "meta-fetch-progress",
+            serde_json::json!({ "game_id": game_id, "phase": "started" }),
+        );
+        if let Err(e) = enrich_metadata_for_dir(&*pool, &data_dir, *game_id, dg).await {
+            eprintln!("[add_games] enrich failed for game {}: {}", game_id, e);
+        }
+        let _ = app.emit("games-changed", ());
+        let _ = app.emit(
+            "meta-fetch-progress",
+            serde_json::json!({ "game_id": game_id, "phase": "finished" }),
+        );
+    }
+
+    Ok(AddGamesResult { added, failed })
+}
+
 // ── Quick 260516-q3y — subdir split ─────────────────────────────────────────
 
 /// One direct child directory of a path being inspected for subdir-split.

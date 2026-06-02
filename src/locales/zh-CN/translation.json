@@ -430,6 +430,7 @@
   "toast.start_scan_failed": "启动扫描失败 — {{err}}",
   "toast.adding_basename": "正在添加 {{basename}} ...",
   "dragdrop.overlay": "松手以添加为游戏目录",
+  "dragdrop.adding": "正在添加目录…",
   "dragdrop.added": "已添加 {{count}} 个目录,正在匹配元数据…",
   "dragdrop.partial": "已添加 {{ok}} 个,{{fail}} 个失败",
   "dragdrop.none": "没有可添加的目录",

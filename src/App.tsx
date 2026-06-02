@@ -9,7 +9,7 @@ import { Sidebar } from "@/components/layout/Sidebar";
 import { TweaksPanel } from "@/components/tweaks/TweaksPanel";
 import { useAppStore } from "@/store/app";
 import { getDataDir } from "@/lib/db";
-import { addGame } from "@/lib/scan";
+import { addGames } from "@/lib/scan";
 import { getSidebarCategories, searchGames } from "@/lib/search";
 import { useLibraryStore } from "@/store/library";
 import { checkForUpdates, relaunchApp } from "@/lib/updater";
@@ -101,12 +101,14 @@ export default function App() {
   // HMR can run effect cleanup before that promise settles, so a captured
   // unlisten would still be null and the subscription would leak + double-fire.
   //
-  // On `drop`, every dropped path is handed to the existing `addGame` (same
-  // ingest + Bangumi/VNDB metadata pipeline as scan / single-add). Paths are
-  // processed serially to avoid hammering the rate-limiter with a big drop, and
-  // a non-directory / unresolvable path simply returns Err on the Rust side
-  // (`add_game` guards `dir.is_dir()`), which we count as a failure — no
-  // plugin-fs probe needed (zero new deps).
+  // Quick 260603-2g0 — on `drop`, all dropped paths go to the batch `addGames`
+  // command in ONE call. The backend inserts every placeholder row first
+  // (each emits `games-changed`, so all cards surface instantly), then enriches
+  // them one by one. Library.tsx's existing `games-changed` subscription drives
+  // the live grid refresh, so cards appear immediately and backfill metadata
+  // progressively — no more "nothing happens until the whole batch finishes".
+  // A non-directory / unresolvable / unsafe path is counted as `failed` on the
+  // Rust side (no plugin-fs probe needed, zero new deps).
   useEffect(() => {
     let cancelled = false;
     let unlisten: UnlistenFn | null = null;
@@ -134,22 +136,27 @@ export default function App() {
               return;
             }
             processing = true;
+            // Immediate dynamic feedback: a loading toast on drop, kept up while
+            // the batch enriches, then swapped for the terminal result.
+            const loadingId = toast.loading(t("dragdrop.adding"));
             void (async () => {
               let ok = 0;
               let fail = 0;
-              for (const p of paths) {
-                try {
-                  await addGame(p);
-                  ok += 1;
-                } catch (e: unknown) {
-                  fail += 1;
-                  // eslint-disable-next-line no-console
-                  console.error("[dragdrop] addGame failed:", p, e);
-                }
+              try {
+                const res = await addGames(paths);
+                ok = res.added;
+                fail = res.failed;
+              } catch (e: unknown) {
+                fail = paths.length;
+                // eslint-disable-next-line no-console
+                console.error("[dragdrop] addGames failed:", e);
               }
+              toast.dismiss(loadingId);
               if (ok > 0) {
-                // Refresh grid + sidebar so the new entries surface immediately
-                // (placeholder rows; covers/titles backfill via meta pipeline).
+                // Safety net for the case where the drop happened while the
+                // Library route (and its `games-changed` subscription) wasn't
+                // mounted — refresh the store directly. When Library IS mounted,
+                // its live subscription already kept the grid current.
                 try {
                   const [games, sidebar] = await Promise.all([
                     searchGames(null, "last_played", "desc", null),

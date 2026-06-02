@@ -105,6 +105,27 @@ export async function addGame(dirPath: string): Promise<number> {
   return invoke<number>("add_game", { dirPath });
 }
 
+/** Result of a batch drag-drop add. Mirrors Rust `commands::AddGamesResult`. */
+export interface AddGamesResult {
+  /** Placeholders that landed in the library (= cards that appeared). */
+  added: number;
+  /** Paths that couldn't be added at all (not a dir / unsafe / insert error). */
+  failed: number;
+}
+
+/**
+ * Quick 260603-2g0 — batch add directories from an explorer drag-drop with
+ * progressive reveal. The backend inserts ALL placeholder rows first (each
+ * emits `games-changed`, so every dropped card surfaces instantly), then
+ * enriches them one by one (emitting `meta-fetch-progress` + `games-changed`
+ * per game). The Library grid's existing `games-changed` subscription refreshes
+ * live — no per-call frontend refetch loop needed. Resolves once the whole
+ * batch has finished enriching.
+ */
+export async function addGames(paths: string[]): Promise<AddGamesResult> {
+  return invoke<AddGamesResult>("add_games", { paths });
+}
+
 /**
  * Quick 260513-3df — 统一刷新元数据入口。对未绑定行做模糊匹配（用
  * `games.name` 当 query），对已绑定行按 source_id 直拉

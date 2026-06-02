@@ -430,6 +430,7 @@
   "toast.start_scan_failed": "スキャン開始に失敗 — {{err}}",
   "toast.adding_basename": "{{basename}} を追加中 ...",
   "dragdrop.overlay": "ドロップしてゲームフォルダとして追加",
+  "dragdrop.adding": "フォルダを追加中…",
   "dragdrop.added": "{{count}} 件のフォルダを追加しました。メタデータを照合中…",
   "dragdrop.partial": "{{ok}} 件を追加、{{fail}} 件が失敗",
   "dragdrop.none": "追加できるフォルダがありません",

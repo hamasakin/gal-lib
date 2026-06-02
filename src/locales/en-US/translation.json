@@ -430,6 +430,7 @@
   "toast.start_scan_failed": "Failed to start scan — {{err}}",
   "toast.adding_basename": "Adding {{basename}} ...",
   "dragdrop.overlay": "Drop to add as game folders",
+  "dragdrop.adding": "Adding folders…",
   "dragdrop.added": "Added {{count}} folder(s), matching metadata…",
   "dragdrop.partial": "Added {{ok}}, {{fail}} failed",
   "dragdrop.none": "No folders to add",
