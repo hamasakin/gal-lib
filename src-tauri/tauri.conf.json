@@ -42,7 +42,10 @@
       "icons/128x128@2x.png",
       "icons/icon.ico"
     ],
-    "resources": ["resources/locale-emulator/*"],
+    "resources": [
+      "resources/locale-emulator/*",
+      "resources/locale-emulator/Lang/*"
+    ],
     "createUpdaterArtifacts": true
   },
   "plugins": {

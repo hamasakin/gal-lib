@@ -6,9 +6,10 @@ This directory ships **Locale Emulator v2.5.0.1** — the official portable bina
 - Release: https://github.com/xupefei/Locale-Emulator/releases/tag/v2.5.0.1
 - License: **LGPL-3.0**
 
-The files here are unmodified copies from the upstream release ZIP:
+The files here are unmodified official binaries from the v2.5.0.1 distribution:
 
 - `LEProc.exe` — command-line launcher
+- `LECommonLibrary.dll` — shared managed assembly required by LEProc at runtime (referenced but **not** shipped in the portable ZIP; extracted verbatim from the official `LEInstaller.exe` payload — 17920 bytes, `PublicKeyToken=a5ce8326c28d7c91`)
 - `LoaderDll.dll` — DLL injection bootstrap
 - `LocaleEmulator.dll` — locale-API hook DLL
 - `LEVersion.xml` — version metadata read by LEProc

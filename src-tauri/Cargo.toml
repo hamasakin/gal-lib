@@ -43,6 +43,9 @@ tauri-plugin-opener = "2"
 # `tauri-plugin-process` is needed for `relaunch()` after installing the update.
 tauri-plugin-updater = "2"
 tauri-plugin-process = "2"
+# Quick 260709-mnc — 单实例守卫：第二次启动聚焦已有窗口后退出。
+# 必须注册为 Builder 的第一个 plugin（官方要求）。
+tauri-plugin-single-instance = "2"
 once_cell = "1"
 futures-util = "0.3"
 # 02d — direct sqlx access from #[tauri::command] handlers (commands.rs).
