@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ✅ (verification-only)
 Plan: 全部完成；下一步 /gsd-audit-milestone v1.3
 Status: 4/4 phases shipped；自动化全绿；real-app walkthrough 清单交付待 audit
-Last activity: 2026-07-09 — 完成 quick task 260710-709：库页面新增按品牌分组的「分组」视图
+Last activity: 2026-07-09 — 发布 v0.3.9（携带 260710-709：按品牌分组的「分组」视图），tag 已推送、release.yml 出包中（run 29053433372）
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -118,6 +118,7 @@ None.
 | 260709-mnc | 修复转区启动一直失败（根因实锤：捆绑 LE 缺 LECommonLibrary.dll，LEProc 在 Main 入口抛 FileNotFoundException 秒崩——事件日志 .NET Runtime 1026/APPCRASH 与 sessions 表 launch_failed 时间精确吻合，游戏进程永不出现→find_game_pid 30s 超时）—— ① 从官方 LEInstaller.exe 资源流提取原版 LECommonLibrary.dll（17920 字节，官方 zip 根目录不含该文件）入 resources/locale-emulator/，NOTICE.md 补清单并注明来源；tauri.conf.json resources glob 补 `resources/locale-emulator/Lang/*`（原 `*` 不递归，安装包漏 Lang/）② 接入 tauri-plugin-single-instance（Rust-only）注册为 Builder 第一个 plugin，二次启动回调 show()+unminimize()+set_focus() 聚焦 main 窗口（应用有关闭到托盘，show() 不可省）。验证：argless LEProc 冒烟前后对照——修复后 LEConfig.xml 正常生成、事件日志零新增崩溃；cargo check 0 error。真机验证（转区实际启动游戏 / 双开聚焦 / 安装包含 Lang）待用户确认 | 2026-07-09 | de80223 · 5686e9e | [260709-mnc-lecommonlibrary-dll](./quick/260709-mnc-lecommonlibrary-dll/) |
 | 260709-fast | 发布 v0.3.8 patch 小版本 —— npm run release 无参 patch bump（0.3.7→0.3.8 四处版本字段单原子提交）+ annotated tag v0.3.8（消息含 260709-mnc 全部提交 changelog）+ push master 与 tag，release.yml 已触发出包（run 29011524009）。发版前清掉 src-tauri/Cargo.toml 的 CRLF 噪音改动；tag 定稿用 GIT_EDITOR 无操作方案直接采纳预填草稿 | 2026-07-09 | 9d734a4 | — |
 | 260710-709 | 库页面新增第三种视图「分组」—— 按品牌（brand）一组一组展示卡片网格：新建 GameGroupGrid.tsx（非虚拟化，useMemo 按 brand 归组、localeCompare("zh") 组间排序、null/空 brand 归「未知品牌」恒定置底，组内 repeat(auto-fill, minmax(var(--card-w),1fr)) 密度自适应，复用 GameCard 全部回调）；preferences.ts ViewMode 加 "group"（持久化自动兼容）；ViewToggle 三段化（网格/列表/分组，Boxes 图标）；Library.tsx 渲染分支 + DensityToggle 在分组视图也显示。tsc + vite build 全绿。GUI 真机验证 5 项（切换/密度/未知品牌置底/偏好持久化/右键菜单）待用户确认 | 2026-07-09 | 4d559c4 · 879b883 | [260710-709-brand-group-view](./quick/260710-709-brand-group-view/) |
+| 260710-fast | 发布 v0.3.9 patch 小版本 —— npm run release 无参 patch bump（0.3.8→0.3.9 四处版本字段单原子提交 986fec0）+ annotated tag v0.3.9（消息含 260710-709 分组视图 changelog）+ push master 与 tag，release.yml 已触发出包（run 29053433372）。发版前照例清掉 src-tauri/Cargo.toml 的 CRLF 噪音；tag 定稿沿用 GIT_EDITOR=true 无操作方案采纳预填草稿 | 2026-07-09 | 986fec0 | — |
 
 ## Session Continuity
 
