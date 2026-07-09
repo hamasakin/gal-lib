@@ -7,7 +7,7 @@
  * of the design axes.
  */
 
-import { LayoutGrid, List } from "lucide-react";
+import { LayoutGrid, List, Boxes } from "lucide-react";
 import { usePreferencesStore } from "@/store/preferences";
 import type { ViewMode } from "@/lib/preferences";
 import { cn } from "@/lib/utils";
@@ -15,6 +15,7 @@ import { cn } from "@/lib/utils";
 const OPTIONS: Array<{ value: ViewMode; label: string; Icon: typeof LayoutGrid }> = [
   { value: "grid", label: "网格", Icon: LayoutGrid },
   { value: "list", label: "列表", Icon: List },
+  { value: "group", label: "分组", Icon: Boxes },
 ];
 
 export function ViewToggle() {
