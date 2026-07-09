@@ -9,7 +9,7 @@ export type Theme = "midnight" | "papyrus" | "ink";
 export type Accent = "violet" | "teal" | "sakura" | "matcha";
 export type Radius = "sharp" | "soft";
 export type SidebarWidth = "icon" | "narrow" | "regular" | "wide";
-export type ViewMode = "grid" | "list";
+export type ViewMode = "grid" | "list" | "group";
 export type Density = "small" | "medium" | "large";
 /**
  * Quick 260524-olt — UI 语言（i18next 用同名 lng）。
@@ -58,7 +58,7 @@ export const SIDEBAR_WIDTHS: SidebarWidth[] = [
   "wide",
 ];
 export const DENSITIES: Density[] = ["small", "medium", "large"];
-export const VIEW_MODES: ViewMode[] = ["grid", "list"];
+export const VIEW_MODES: ViewMode[] = ["grid", "list", "group"];
 export const SUPPORTED_LNGS: SupportedLng[] = ["zh-CN", "ja-JP", "en-US"];
 
 const STORAGE_KEY = "gal-lib:prefs";

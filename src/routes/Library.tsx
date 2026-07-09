@@ -34,6 +34,7 @@ import type { Game } from "@/lib/games";
 import { deleteGame } from "@/lib/games";
 import { onGamesChanged, startScan, listScanRoots } from "@/lib/scan";
 import { GameGrid } from "@/components/library/GameGrid";
+import { GameGroupGrid } from "@/components/library/GameGroupGrid";
 import { GameList } from "@/components/library/GameList";
 import { ViewToggle } from "@/components/library/ViewToggle";
 import { FilterPanel } from "@/components/library/FilterPanel";
@@ -697,7 +698,7 @@ export function Library() {
           )}
           <SearchBar filterOptions={filterOptions} />
           <ViewToggle />
-          {viewMode === "grid" && <DensityToggle />}
+          {(viewMode === "grid" || viewMode === "group") && <DensityToggle />}
           <SortSelect />
         </div>
 
@@ -756,6 +757,15 @@ export function Library() {
           />
         )}
         {!isEmpty && viewMode === "list" && <GameList games={visibleGames} />}
+        {!isEmpty && viewMode === "group" && (
+          <GameGroupGrid
+            games={visibleGames}
+            onPickMetadata={setPickerGame}
+            onSplitSubdirs={onSplitSubdirs}
+            onRequestDelete={onRequestDelete}
+            onChildMutation={onChildMutation}
+          />
+        )}
         </div>
       </div>
 
