@@ -462,7 +462,7 @@ function CandidateCard({
         </div>
         <div className="min-w-0 flex-1">
           <div className="font-serif text-[14px] leading-snug text-ink-0">
-            {candidate.title}
+            {candidate.title_cn ?? candidate.title}
           </div>
           {candidate.alias.length > 0 && (
             <div className="mt-0.5 truncate font-mono text-[10.5px] text-ink-3">
