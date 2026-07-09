@@ -40,6 +40,28 @@ fn normalize_vndb_role(role: &str) -> Option<StaffRole> {
     }
 }
 
+/// 从 VNDB `titles[]` 里挑中文名：优先 `zh-Hans`（简体），其次 `zh-Hant`（繁体），
+/// 都无则 None。用于填充 `Candidate.title_cn` / `MetadataDetail.title_cn`。
+fn pick_zh_title(titles: &[TitleEntry]) -> Option<String> {
+    titles
+        .iter()
+        .find(|t| t.lang.as_deref() == Some("zh-Hans"))
+        .or_else(|| titles.iter().find(|t| t.lang.as_deref() == Some("zh-Hant")))
+        .map(|t| t.title.clone())
+}
+
+/// 从 VNDB `titles[]` 里挑回退名（缺中文时用）：优先 `ja`（日文原名），其次 `en`（英文），
+/// 都无则回退到顶层 `main`（`hit.title`，通常罗马字/英文 main title）。
+/// 这样标题回退顺序变为 中文 > 日文 > 英文 —— 修正此前直接用 `hit.title` 跳过日文的 BUG。
+fn pick_fallback_title(titles: &[TitleEntry], main: &str) -> String {
+    titles
+        .iter()
+        .find(|t| t.lang.as_deref() == Some("ja"))
+        .or_else(|| titles.iter().find(|t| t.lang.as_deref() == Some("en")))
+        .map(|t| t.title.clone())
+        .unwrap_or_else(|| main.to_string())
+}
+
 /// Lazily-built shared HTTP client. See bangumi.rs for full rationale —
 /// memoizes the first successful build, surfaces TLS-init failure as
 /// `MetadataError::Http` rather than panicking the whole Tauri backend
@@ -93,6 +115,10 @@ pub async fn search(query: &str) -> Result<Vec<Candidate>, MetadataError> {
         .results
         .into_iter()
         .map(|hit| {
+            // 语言优先级选取：回退名 ja>en>main、中文名 zh-Hans>zh-Hant。
+            // 必须在 titles 被 move 进 alias 之前先按引用算好。
+            let title = pick_fallback_title(hit.titles.as_deref().unwrap_or(&[]), &hit.title);
+            let title_cn = pick_zh_title(hit.titles.as_deref().unwrap_or(&[]));
             let alias: Vec<String> = hit
                 .titles
                 .unwrap_or_default()
@@ -103,13 +129,15 @@ pub async fn search(query: &str) -> Result<Vec<Candidate>, MetadataError> {
             // / ja / en variants). Without this, a Japanese directory name
             // scores 0 against an English `title` even when one of the
             // alternates is a perfect Japanese match.
+            // 评分池保持不变（顶层 hit.title + 全部 titles 别名），与展示 title 解耦。
             let mut pool: Vec<&str> = vec![hit.title.as_str()];
             pool.extend(alias.iter().map(|s| s.as_str()));
             let confidence = match_score::score_best(&query_owned, &pool);
             Candidate {
                 source: MetadataSource::Vndb,
                 source_id: hit.id,
-                title: hit.title.clone(),
+                title,
+                title_cn,
                 alias,
                 cover_url: hit.image.and_then(|i| i.url),
                 release_date: hit.released,
@@ -140,13 +168,11 @@ pub async fn fetch_detail(vndb_id: &str) -> Result<MetadataDetail, MetadataError
     })
     .await?;
     let hit = raw.results.into_iter().next().ok_or(MetadataError::NotFound)?;
-    let title_cn = hit.titles.as_ref().and_then(|ts| {
-        ts.iter()
-            .find(|t| {
-                t.lang.as_deref() == Some("zh-Hans") || t.lang.as_deref() == Some("zh-Hant")
-            })
-            .map(|t| t.title.clone())
-    });
+    // 语言优先级：中文名 zh-Hans>zh-Hant、回退名 ja>en>main（此前 title 直接用
+    // hit.title 跳过日文，导致缺中文时显示罗马字/英文而非日文原名）。
+    // 两个 helper 都按引用读取 hit.titles，必须在 hit.title 被 move 前算好。
+    let title_cn = pick_zh_title(hit.titles.as_deref().unwrap_or(&[]));
+    let title = pick_fallback_title(hit.titles.as_deref().unwrap_or(&[]), &hit.title);
     let brand = hit
         .developers
         .as_ref()
@@ -174,7 +200,7 @@ pub async fn fetch_detail(vndb_id: &str) -> Result<MetadataDetail, MetadataError
     Ok(MetadataDetail {
         source: MetadataSource::Vndb,
         source_id: hit.id,
-        title: hit.title,
+        title,
         title_cn,
         cover_url: hit.image.and_then(|i| i.url),
         summary: hit.description,
@@ -439,5 +465,42 @@ mod tests {
         assert_eq!(normalize_vndb_role("staff"), None);
         assert_eq!(normalize_vndb_role("translator"), None);
         assert_eq!(normalize_vndb_role(""), None);
+    }
+
+    fn te(title: &str, lang: Option<&str>) -> TitleEntry {
+        TitleEntry {
+            title: title.to_string(),
+            lang: lang.map(|s| s.to_string()),
+        }
+    }
+
+    #[test]
+    fn pick_zh_title_prefers_hans_then_hant() {
+        // [zh-Hant, zh-Hans] → 取 zh-Hans（简体优先，与顺序无关）。
+        let ts = vec![te("繁体名", Some("zh-Hant")), te("简体名", Some("zh-Hans"))];
+        assert_eq!(pick_zh_title(&ts), Some("简体名".to_string()));
+        // 仅 [zh-Hant] → 取 zh-Hant。
+        let ts = vec![te("繁体名", Some("zh-Hant"))];
+        assert_eq!(pick_zh_title(&ts), Some("繁体名".to_string()));
+        // [ja, en] → None（无中文）。
+        let ts = vec![te("日本語", Some("ja")), te("English", Some("en"))];
+        assert_eq!(pick_zh_title(&ts), None);
+        // 空数组 → None。
+        assert_eq!(pick_zh_title(&[]), None);
+    }
+
+    #[test]
+    fn pick_fallback_title_prefers_ja_then_en_then_main() {
+        // [ja, en] → ja（日文原名优先）。
+        let ts = vec![te("日本語", Some("ja")), te("English", Some("en"))];
+        assert_eq!(pick_fallback_title(&ts, "Romaji"), "日本語");
+        // 仅 [en] → en。
+        let ts = vec![te("English", Some("en"))];
+        assert_eq!(pick_fallback_title(&ts, "Romaji"), "English");
+        // [ko] + main="Romaji" → 回退 main（无 ja/en）。
+        let ts = vec![te("한국어", Some("ko"))];
+        assert_eq!(pick_fallback_title(&ts, "Romaji"), "Romaji");
+        // 空数组 + main → main。
+        assert_eq!(pick_fallback_title(&[], "Romaji"), "Romaji");
     }
 }

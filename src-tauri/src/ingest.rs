@@ -367,6 +367,9 @@ pub async fn process_game(
 
     if let Some(c) = final_choice {
         result.name = c.title.clone();
+        // 中文名写进 name_cn 列（与 bind_metadata 列语义对齐）：中文进 name_cn、
+        // 日文/英文进 name，displayGameName 两级回退即得 中文>日文>英文。
+        result.name_cn = c.title_cn.clone();
         result.match_confidence = Some(c.confidence);
         result.metadata_source = match c.source {
             MetadataSource::Bangumi => "bangumi",
@@ -487,6 +490,9 @@ pub async fn process_game_cached(
 
     if let Some(c) = final_choice {
         result.name = c.title.clone();
+        // 中文名写进 name_cn 列（与 bind_metadata 列语义对齐）：中文进 name_cn、
+        // 日文/英文进 name，displayGameName 两级回退即得 中文>日文>英文。
+        result.name_cn = c.title_cn.clone();
         result.match_confidence = Some(c.confidence);
         result.metadata_source = match c.source {
             MetadataSource::Bangumi => "bangumi",
