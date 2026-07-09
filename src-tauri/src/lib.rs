@@ -97,6 +97,16 @@ pub fn run() {
     let migrations = db::migrations();
 
     tauri::Builder::default()
+        // Quick 260709-mnc — 单实例守卫必须是第一个 plugin。第二次启动时
+        // 本回调在已运行的首实例进程内触发：show()（本应用有关闭到托盘逻辑，
+        // 窗口可能是 hidden，不可省）+ unminimize() + set_focus() 聚焦回来。
+        .plugin(tauri_plugin_single_instance::init(|app, _argv, _cwd| {
+            if let Some(win) = app.get_webview_window("main") {
+                let _ = win.show();
+                let _ = win.unminimize();
+                let _ = win.set_focus();
+            }
+        }))
         .plugin(
             tauri_plugin_sql::Builder::default()
                 .add_migrations(&db_url, migrations)
