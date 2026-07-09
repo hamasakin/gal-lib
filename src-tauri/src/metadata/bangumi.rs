@@ -89,7 +89,10 @@ pub async fn search(query: &str) -> Result<Vec<Candidate>, MetadataError> {
             Candidate {
                 source: MetadataSource::Bangumi,
                 source_id: s.id.to_string(),
-                title: s.name_cn.clone().filter(|x| !x.is_empty()).unwrap_or_else(|| s.name.clone()),
+                // title=原名（通常日文）、title_cn=中文名，与 fetch_detail 列语义对齐；
+                // 让 scan 自动入库把中文写进 name_cn 列、日文写进 name 列。
+                title: s.name.clone(),
+                title_cn: s.name_cn.clone().filter(|x| !x.is_empty()),
                 alias: vec![s.name],
                 cover_url: s.images.and_then(|i| i.large),
                 release_date: s.date,

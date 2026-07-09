@@ -74,7 +74,10 @@ pub struct Candidate {
     pub source: MetadataSource,
     /// Bangumi numeric id stringified, or VNDB "v123".
     pub source_id: String,
+    /// 回退名：日文优先其次英文（VNDB titles[] ja>en>main / Bangumi 原名 name）。
     pub title: String,
+    /// 中文名（VNDB zh-Hans>zh-Hant / Bangumi name_cn）；无中文时 None。
+    pub title_cn: Option<String>,
     pub alias: Vec<String>,
     pub cover_url: Option<String>,
     pub release_date: Option<String>,

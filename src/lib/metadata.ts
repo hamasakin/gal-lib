@@ -25,6 +25,8 @@ export interface Candidate {
   source: MetadataSource;
   source_id: string;
   title: string;
+  /** 中文名（镜像后端 Option<String>）；无中文时 null，候选卡按 title_cn ?? title 展示。 */
+  title_cn: string | null;
   alias: string[];
   cover_url: string | null;
   release_date: string | null;

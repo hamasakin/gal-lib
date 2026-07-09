@@ -301,7 +301,7 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                   const isSelected =
                     selected?.source === c.source && selected?.sourceId === c.source_id;
                   const hoverTitle = [
-                    c.title,
+                    c.title_cn ?? c.title,
                     c.alias.length > 0 ? `别名：${c.alias.join(" · ")}` : null,
                     c.summary && c.summary.trim().length > 0 ? c.summary : null,
                     "(双击打开源数据页)",
@@ -347,7 +347,7 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                         >
                           <SafeImage
                             src={c.cover_url}
-                            alt={c.title}
+                            alt={c.title_cn ?? c.title}
                             className="h-full w-full object-cover"
                           />
                         </div>
@@ -355,9 +355,9 @@ export function MetadataPicker({ game, onClose }: MetadataPickerProps) {
                           <div className="flex min-w-0 max-w-full items-start gap-2">
                             <div
                               className="min-w-0 flex-1 line-clamp-3 break-words text-body font-medium text-foreground"
-                              title={c.title}
+                              title={c.title_cn ?? c.title}
                             >
-                              {c.title}
+                              {c.title_cn ?? c.title}
                             </div>
                             <span className="mt-0.5 flex-shrink-0">
                               {confidenceBadge(c.confidence)}
