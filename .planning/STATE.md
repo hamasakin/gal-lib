@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ✅ (verification-only)
 Plan: 全部完成；下一步 /gsd-audit-milestone v1.3
 Status: 4/4 phases shipped；自动化全绿；real-app walkthrough 清单交付待 audit
-Last activity: 2026-07-09 — 发布 v0.3.9（携带 260710-709：按品牌分组的「分组」视图），tag 已推送、release.yml 出包中（run 29053433372）
+Last activity: 2026-07-09 — 完成 quick task 260710-8le：元数据标题回退顺序修正为 中文>日文>英文（v0.3.9 已出包成功）
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -119,6 +119,7 @@ None.
 | 260709-fast | 发布 v0.3.8 patch 小版本 —— npm run release 无参 patch bump（0.3.7→0.3.8 四处版本字段单原子提交）+ annotated tag v0.3.8（消息含 260709-mnc 全部提交 changelog）+ push master 与 tag，release.yml 已触发出包（run 29011524009）。发版前清掉 src-tauri/Cargo.toml 的 CRLF 噪音改动；tag 定稿用 GIT_EDITOR 无操作方案直接采纳预填草稿 | 2026-07-09 | 9d734a4 | — |
 | 260710-709 | 库页面新增第三种视图「分组」—— 按品牌（brand）一组一组展示卡片网格：新建 GameGroupGrid.tsx（非虚拟化，useMemo 按 brand 归组、localeCompare("zh") 组间排序、null/空 brand 归「未知品牌」恒定置底，组内 repeat(auto-fill, minmax(var(--card-w),1fr)) 密度自适应，复用 GameCard 全部回调）；preferences.ts ViewMode 加 "group"（持久化自动兼容）；ViewToggle 三段化（网格/列表/分组，Boxes 图标）；Library.tsx 渲染分支 + DensityToggle 在分组视图也显示。tsc + vite build 全绿。GUI 真机验证 5 项（切换/密度/未知品牌置底/偏好持久化/右键菜单）待用户确认 | 2026-07-09 | 4d559c4 · 879b883 | [260710-709-brand-group-view](./quick/260710-709-brand-group-view/) |
 | 260710-fast | 发布 v0.3.9 patch 小版本 —— npm run release 无参 patch bump（0.3.8→0.3.9 四处版本字段单原子提交 986fec0）+ annotated tag v0.3.9（消息含 260710-709 分组视图 changelog）+ push master 与 tag，release.yml 已触发出包（run 29053433372）。发版前照例清掉 src-tauri/Cargo.toml 的 CRLF 噪音；tag 定稿沿用 GIT_EDITOR=true 无操作方案采纳预填草稿 | 2026-07-09 | 986fec0 | — |
+| 260710-8le | 元数据标题语言回退顺序修正为 中文>日文>英文 —— 根因在 VNDB 适配层：search/fetch_detail 直接用顶层 title（罗马字/英文 main title）跳过 titles[] 日文条目，回退实际是 中文>英文。修复：vndb.rs 新增 pick_zh_title（zh-Hans>zh-Hant）+ pick_fallback_title（ja>en>顶层 main）纯函数带单测并接入两处；Candidate 加 title_cn，bangumi search 拆分 title=原名/title_cn=中文，ingest 两处 auto-bind 补写 name_cn（scan 与 bind 路径列语义统一：中文进 name_cn、日文/英文进 name）；前端候选卡片（MetadataPicker ×4 + ReviewQueue ×1）改 title_cn ?? title 中文优先。displayGameName 两级回退契约不动。老条目不迁移，重绑定/重扫后生效。验证：cargo test 3 passed / cargo check / tsc / vite build 全绿 | 2026-07-09 | 6ea6f24 · 760e925 | [260710-8le-title-lang-fallback](./quick/260710-8le-title-lang-fallback/) |
 
 ## Session Continuity
 
