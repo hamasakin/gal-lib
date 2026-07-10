@@ -28,7 +28,7 @@ See: `.planning/PROJECT.md` (updated 2026-05-12 with Current Milestone v1.3)
 Phase: 12 ✅ · 13 ✅ · 14 ✅ · 15 ✅ (verification-only)
 Plan: 全部完成；下一步 /gsd-audit-milestone v1.3
 Status: 4/4 phases shipped；自动化全绿；real-app walkthrough 清单交付待 audit
-Last activity: 2026-07-10 — 完成快速任务 260710-jk9：游戏详情手动编辑条目名称 + 所属品牌（品牌仅限已有列表下拉选择）
+Last activity: 2026-07-10 — 发布 v0.3.11（携带 260710-jk9：手动编辑条目名称/品牌），tag 已推送、release.yml 出包中（run 29080074225）
 
 ## Carried Tech Debt → v1.3 (folded into requirements)
 
@@ -122,6 +122,7 @@ None.
 | 260710-8le | 元数据标题语言回退顺序修正为 中文>日文>英文 —— 根因在 VNDB 适配层：search/fetch_detail 直接用顶层 title（罗马字/英文 main title）跳过 titles[] 日文条目，回退实际是 中文>英文。修复：vndb.rs 新增 pick_zh_title（zh-Hans>zh-Hant）+ pick_fallback_title（ja>en>顶层 main）纯函数带单测并接入两处；Candidate 加 title_cn，bangumi search 拆分 title=原名/title_cn=中文，ingest 两处 auto-bind 补写 name_cn（scan 与 bind 路径列语义统一：中文进 name_cn、日文/英文进 name）；前端候选卡片（MetadataPicker ×4 + ReviewQueue ×1）改 title_cn ?? title 中文优先。displayGameName 两级回退契约不动。老条目不迁移，重绑定/重扫后生效。验证：cargo test 3 passed / cargo check / tsc / vite build 全绿 | 2026-07-09 | 6ea6f24 · 760e925 | [260710-8le-title-lang-fallback](./quick/260710-8le-title-lang-fallback/) |
 | 260710-fast2 | 发布 v0.3.10 patch 小版本 —— npm run release 无参 patch bump（0.3.9→0.3.10 四处版本字段单原子提交 ca4046c）+ annotated tag v0.3.10（消息含 260710-8le 标题回退顺序修复 changelog）+ push master 与 tag，release.yml 已触发出包（run 29054581607）。v0.3.9 出包已确认 success | 2026-07-09 | ca4046c | — |
 | 260710-jk9 | 游戏详情手动编辑条目名称 + 所属品牌（品牌仅限已有列表下拉选择）—— 后端新增 update_game_title 命令（写 name_cn = NULLIF(?, name)，trim + 空标题拒绝，displayGameName 中文优先链路下改标题即时生效；refresh_metadata_smart 不触碰 name/name_cn，手动标题跨刷新保留）；品牌复用已有 update_game_brand_year（回传当前 release_year 防误清）；前端新建 EditGameInfoDialog（标题自由输入 + 品牌纯下拉，选项仅来自 get_filter_options().brands + 「无品牌」哨兵，无自由文本入口），Detail「更多」菜单加「编辑条目信息」入口，保存后 refreshGame；i18n 三语 +10 key → 545/545/545 对齐。cargo check / tsc / vite build 全绿；GUI 交互（菜单入口/即时生效/下拉只列已有/刷新后保留）待真机验证 | 2026-07-10 | a47a9a8 · 4a7997d | [260710-jk9-edit-title-brand](./quick/260710-jk9-edit-title-brand/) |
+| 260710-fast3 | 发布 v0.3.11 patch 小版本 —— npm run release 无参 patch bump（0.3.10→0.3.11 四处版本字段单原子提交 8cb3c72）+ annotated tag v0.3.11（携带 260710-jk9 手动编辑名称/品牌功能）+ push master 与 tag，release.yml 已触发出包（run 29080074225） | 2026-07-10 | 8cb3c72 | — |
 
 ## Session Continuity
 
