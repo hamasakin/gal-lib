@@ -57,6 +57,7 @@ import {
   MoreHorizontal,
   Music,
   PenLine,
+  Pencil,
   RefreshCw,
   Search,
 } from "lucide-react";
@@ -87,9 +88,11 @@ import { LaunchButton } from "@/components/library/LaunchButton";
 import {
   getGame,
   openGameDir,
+  updateGameBrandYear,
   updateGameFavorite,
   updateGameNotes,
   updateGameStatus,
+  updateGameTitle,
   type Game,
 } from "@/lib/games";
 import {
@@ -102,6 +105,7 @@ import {
 import { listGameTags, listTags, type Tag } from "@/lib/tags";
 import {
   bangumiSubjectUrl,
+  getFilterOptions,
   listOfficialTagsForGame,
   listPersonsForGame,
   openExternalUrl,
@@ -140,6 +144,7 @@ import {
   SubdirSplitDialog,
   gameHasUserData,
 } from "@/components/library/SubdirSplitDialog";
+import { EditGameInfoDialog } from "@/components/library/EditGameInfoDialog";
 import {
   AlertDialog,
   AlertDialogAction,
@@ -465,6 +470,10 @@ export default function Detail() {
   // Quick 260516-q3y —「整理子目录」拆分对话框 + 用户数据删除确认。
   const [splitOpen, setSplitOpen] = useState(false);
   const [splitConfirmOpen, setSplitConfirmOpen] = useState(false);
+  const [editOpen, setEditOpen] = useState(false);
+  const [brandOptions, setBrandOptions] = useState<
+    Array<{ name: string; count: number }>
+  >([]);
   // 重新抓取封面 button busy state (prevents double-click during the IPC roundtrip)
   const [refreshingCover, setRefreshingCover] = useState(false);
 
@@ -1206,6 +1215,17 @@ export default function Detail() {
                   {t("detail.menu.refresh_cover")}
                 </DropdownMenuItem>
                 <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onSelect={() => {
+                    void getFilterOptions()
+                      .then((o) => setBrandOptions(o.brands))
+                      .catch(() => setBrandOptions([]));
+                    setEditOpen(true);
+                  }}
+                >
+                  <Pencil size={14} className="mr-2" />
+                  {t("detail.menu.edit_info")}
+                </DropdownMenuItem>
                 <DropdownMenuItem onSelect={onSplitSubdirs}>
                   <FolderTree size={14} className="mr-2" />
                   {t("detail.menu.split_subdirs")}
@@ -1698,6 +1718,27 @@ export default function Detail() {
       {/* 重新匹配元数据 modal — controlled by the More-menu item; passes the
           current `game` through so MetadataPicker pre-populates the search. */}
       <MetadataPicker game={pickerOpen ? game : null} onClose={onClosePicker} />
+
+      {/* Quick 260710-jk9 —「编辑条目信息」对话框：改标题（写 name_cn）+ 品牌
+          （下拉复用 update_game_brand_year，回传当前 release_year 避免误清）。 */}
+      <EditGameInfoDialog
+        open={editOpen}
+        initialTitle={displayName}
+        initialBrand={game.brand}
+        brands={brandOptions}
+        onClose={() => setEditOpen(false)}
+        onSubmit={async (title, brand) => {
+          try {
+            await updateGameTitle(game.id, title);
+            await updateGameBrandYear(game.id, brand, game.release_year);
+            await refreshGame();
+            toast.success(t("detail.edit.saved"));
+          } catch (e) {
+            console.error("[Detail] edit info failed:", e);
+            toast.error(t("detail.edit.failed"));
+          }
+        }}
+      />
 
       {/* Quick 260516-q3y —「整理子目录」拆分对话框. 拆分成功后原条目被删，
           Detail 的 game 已失效 → 导航回库首页。 */}

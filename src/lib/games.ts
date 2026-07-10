@@ -192,6 +192,14 @@ export async function updateGameBrandYear(
 }
 
 /**
+ * 手动设置条目「显示标题」。后端写入 name_cn（displayGameName 首选字段）。
+ * 传入应为已 trim 的非空字符串；空串后端返回错误。
+ */
+export async function updateGameTitle(gameId: number, title: string): Promise<void> {
+  await invoke("update_game_title", { gameId, title });
+}
+
+/**
  * Open a filesystem path in the OS file manager (Windows Explorer).
  * Wraps the `open_in_explorer` Tauri command added for the Detail page's
  * 更多 ▸ 打开本地目录 entry. Errors propagate as toast-friendly Chinese
