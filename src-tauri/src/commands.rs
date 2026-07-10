@@ -3321,6 +3321,37 @@ pub async fn update_game_brand_year(
     Ok(())
 }
 
+/// 手动编辑条目「显示标题」。写入 `name_cn`（displayGameName 中最高优先、
+/// 无需 metadata_source 参与就能生效的字段），因此绝大多数条目（含中文优先
+/// name_cn 已填、或已绑定 bangumi/vndb）改标题都能让详情页 h1 立即变化。
+///
+/// 用 `NULLIF(?, name)`：当用户输入恰好等于底层 `name` 时 name_cn 落回 NULL，
+/// 避免详情页出现「主标题 + 与之相同的副标题(altName)」重复。
+///
+/// 保全性：refresh_metadata_smart（「刷新元数据」）不触碰 name_cn，手动标题
+/// 刷新后保留；bind_metadata（「重新匹配」）会覆盖，属用户显式重选匹配的预期。
+#[tauri::command]
+pub async fn update_game_title(
+    game_id: i64,
+    title: String,
+    state: State<'_, AppPaths>,
+) -> Result<(), String> {
+    let trimmed = title.trim();
+    if trimmed.is_empty() {
+        return Err("条目名称不能为空".to_string());
+    }
+    let pool = state.pool().await.map_err(err_str)?;
+    sqlx::query(
+        "UPDATE games SET name_cn = NULLIF(?, name), updated_at = datetime('now') WHERE id = ?",
+    )
+    .bind(trimmed)
+    .bind(game_id)
+    .execute(&*pool)
+    .await
+    .map_err(err_str)?;
+    Ok(())
+}
+
 // ── Phase 5 / 05b: stats + screenshots + save backups (12 commands) ──────────
 //
 // Stats (2): get_playtime_trend / get_top_games

@@ -247,6 +247,7 @@ pub fn run() {
             commands::update_game_favorite,
             commands::update_game_notes,
             commands::update_game_brand_year,
+            commands::update_game_title,
             // 05b — stats (2) + screenshots (5) + save backups (5) = 12 new
             commands::get_playtime_trend,
             commands::get_top_games,
